@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "build:web": "vite build --mode web --outDir dist-web --emptyOutDir",
+    "build:single": "vite build --mode single --outDir dist-single --emptyOutDir",
+    "build:web":"vite build --mode web --outDir dist-web --emptyOutDir",
     "preview:web": "vite preview --outDir dist-web --port 4173"
   },
   "dependencies": {
@@ -17,6 +18,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
-    "vite": "^5.4.11"
+    "vite": "^5.4.11",
+    "vite-plugin-singlefile": "^2.3.3"
   }
 }

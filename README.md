@@ -5,6 +5,11 @@ producción de biofilm según **Stepanović et al. (2000)**, *J Microbiol Method
 
 **Todo se calcula en tu navegador.** El archivo y los resultados no se envían a ningún servidor.
 
+## Descargar y usar sin internet
+
+[**Biofilm_un_solo_archivo.zip**](https://andrestorena06-spec.github.io/biofilm-web/Biofilm_un_solo_archivo.zip) (110 KB): descomprimir y hacer doble clic en `Biofilm.html`.
+No requiere instalar nada (ni R ni Node.js) ni conexión a internet. Se abre en Edge, Chrome o Firefox.
+
 ## Qué hace
 - Lee el archivo del lector (`.xlsx`, `.csv`, `.txt`), detecta la placa y la longitud de onda.
 - Configuración de pocillos por arrastre, con muestras, réplicas automáticas y blancos.
@@ -28,6 +33,7 @@ producción de biofilm según **Stepanović et al. (2000)**, *J Microbiol Method
 cd web
 npm install
 npm run build:web      # genera web/dist-web (copiar su contenido a docs/)
+npm run build:single   # genera web/dist-single/index.html (un solo archivo)
 ```
 
 Los resultados de esta versión coinciden con los del motor de R de la versión de escritorio (se verificó con los mismos
