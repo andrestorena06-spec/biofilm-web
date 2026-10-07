@@ -88,7 +88,7 @@ export function ExcluirTab({ s }) {
         <ExportDialog nombre="excluir_puntos" size0={tamDe(svg.current)} onClose={() => setExp(false)}
           render={(ref, tam) => <ExcluirChart ref={ref} estado={estado} orden={s.ordenMuestras} o={o} est={s.estilos.excluir}
             eje={s.ejeOD} onClickPunto={() => {}} onContext={(e) => e.preventDefault()} tam={tam} />} />
-      )}}
+      )}
     </div>
   )
 }
