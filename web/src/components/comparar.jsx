@@ -80,7 +80,7 @@ export function CompararTab({ s }) {
 
   const nota = `Barras: OD media de las réplicas aceptadas de cada placa${ERR_TXT[o.error] ? `; error: ${ERR_TXT[o.error]} entre pocillos de la placa` : ''}`
   const leyenda = placasSel.map((p) => ({ id: p.id, nombre: p.nombre, color: colores[p.id] }))
-  const oGraf = { valores: o.valores, puntos: o.puntos, rotar: o.rotar }
+  const oGraf = { valores: o.valores, errores: o.errores, puntos: o.puntos, rotar: o.rotar }
   const nBarras = grupos.reduce((a, g) => a + g.barras.length, 0)
 
   const cambiarCelda = (id, m, v) => {
@@ -159,6 +159,7 @@ export function CompararTab({ s }) {
             opciones={[['sd', 'Desviación estándar (entre pocillos)'], ['sem', 'Error estándar (SEM)'], ['ic95', 'IC 95 %'], ['ninguno', 'Ninguna']]} />
         </Campo>
         <Check label="Mostrar la OD sobre cada barra" checked={o.valores} onChange={(v) => setO('valores', v)} />
+        <Check label="Mostrar el error junto al valor medio" checked={o.errores} onChange={(v) => setO('errores', v)} />
         <Check label="Mostrar los pocillos individuales" checked={o.puntos} onChange={(v) => setO('puntos', v)} />
         <Campo label="Rotación de etiquetas (°)"><Num value={o.rotar} min={0} max={90} step={15} onChange={(v) => setO('rotar', v === '' ? 0 : v)} /></Campo>
         <hr />

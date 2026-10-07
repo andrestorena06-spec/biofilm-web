@@ -296,7 +296,6 @@ export const ExcluirChart = forwardRef(function ExcluirChart({ estado, orden, o,
             <g key={i}>
               <rect x={cx(i) - L.band * 0.4} y={y(b.Mediana + b.Limite)} width={L.band * 0.8}
                 height={Math.max(y(b.Mediana - b.Limite) - y(b.Mediana + b.Limite), 1)} fill="#9aa5b1" fillOpacity="0.28" />
-              <line x1={cx(i) - L.band * 0.4} x2={cx(i) + L.band * 0.4} y1={y(b.Mediana)} y2={y(b.Mediana)} stroke="#52606d" />
             </g>
           ) : null
         })}
@@ -365,10 +364,12 @@ export const GroupedBarChart = forwardRef(function GroupedBarChart({ grupos, pla
 
   // ancho estimado de cada barra (antes de conocer los márgenes) para decidir si el valor va girado
   const bw0 = Math.min(((W - 140) / Math.max(grupos.length, 1)) * 0.86 / nmax, 60)
-  const wValor = Math.max(0, ...todas.map((b) => medir(fmt(b.media), est.valores.size, est.valores.bold, est.valores.italic)))
+  const conErr = (b) => o.errores && Number.isFinite(b.err) && b.err > 0
+  const txtRot = (b) => (conErr(b) ? `${fmt(b.media)} ± ${fmt(b.err)}` : fmt(b.media))
+  const wValor = Math.max(0, ...todas.map((b) => medir(txtRot(b), est.valores.size, est.valores.bold, est.valores.italic)))
   const girado = o.valores && wValor + 4 > bw0
   let tope = Math.max(0, ...todas.map((b) => Math.max(b.media + (Number.isFinite(b.err) ? b.err : 0), ...(o.puntos ? b.pts : []))))
-  if (o.valores) tope *= 1 + ((girado ? wValor + 12 : est.valores.size * 1.5 + 6)) / 340
+  if (o.valores) tope *= 1 + ((girado ? wValor + 12 : est.valores.size * (o.errores ? 2.7 : 1.5) + 6)) / 340
   if (!(tope > 0)) tope = 1
   const eY = ticksBonitos(0, tope, 6)
   const yLabels = eY.ticks.map((t) => fmtTick(t, eY.paso))
@@ -431,9 +432,12 @@ export const GroupedBarChart = forwardRef(function GroupedBarChart({ grupos, pla
                         fill="#1b1f23" fillOpacity="0.8" />
                     ))}
                     {o.valores && (girado ? (
-                      <text transform={`translate(${mx + est.valores.size * 0.35},${yMax - 5}) rotate(-90)`} style={estiloTexto(est.valores)}>{fmt(b.media)}</text>
+                      <text transform={`translate(${mx + est.valores.size * 0.35},${yMax - 5}) rotate(-90)`} style={estiloTexto(est.valores)}>{txtRot(b)}</text>
                     ) : (
-                      <text x={mx} y={yMax - 5} textAnchor="middle" style={estiloTexto(est.valores)}>{fmt(b.media)}</text>
+                      <>
+                        {conErr(b) && <text x={mx} y={yMax - 5} textAnchor="middle" style={estiloTexto(est.valores)}>{'± ' + fmt(b.err)}</text>}
+                        <text x={mx} y={yMax - 5 - (conErr(b) ? est.valores.size * 1.25 : 0)} textAnchor="middle" style={estiloTexto(est.valores)}>{fmt(b.media)}</text>
+                      </>
                     ))}
                   </g>
                 )

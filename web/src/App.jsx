@@ -17,7 +17,7 @@ const optsDef = () => ({
     lineas: true, valoresClase: false, rotar: 45, muestrasSel: null,
   },
   comparar: {
-    error: 'sd', test: 'ninguno', control: '', puntos: false, valores: true, rotar: 45,
+    error: 'sd', test: 'ninguno', control: '', puntos: false, valores: true, errores: false, rotar: 45,
     placasSel: null, ocultos: [],   // ocultos: "idPlaca|muestra" que no se muestran
   },
 })
