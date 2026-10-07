@@ -254,3 +254,22 @@ code { background: #f6ebdb; }
 .x-placa:hover:not(:disabled) { background: #f3dcc3; color: #8e2a1c; }
 .agregar-placa { border-style: dashed; color: var(--acento-osc); background: transparent; }
 .fila-activa { background: #fff6e9; }
+
+/* ---------- Pestañas de placas arrastrables, aviso de trabajo anterior ---------- */
+.chip-placa[draggable="true"] { cursor: grab; }
+.chip-placa.sobre { box-shadow: -4px 0 0 0 var(--acento), var(--sombra); }
+.chip-placa:active { cursor: grabbing; }
+.resumen-guardado { margin: 8px 0 12px 18px; padding: 0; }
+.resumen-guardado li { margin: 4px 0; }
+.resumen-guardado small { color: var(--suave); }
+
+/* ---------- Comparar: matriz de muestras por placa y resultados ---------- */
+.matriz-muestras { border: 1px solid var(--borde); border-radius: 8px; background: #fff; max-height: 260px; overflow: auto; }
+.matriz-muestras table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+.matriz-muestras th { position: sticky; top: 0; background: #f8efe1; padding: 6px 4px; text-align: center; }
+.matriz-muestras td { padding: 3px 6px; border-top: 1px solid #f1e6d6; }
+.matriz-muestras td:first-child { max-width: 150px; }
+.matriz-muestras .check span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.matriz-muestras .celda-chk { text-align: center; }
+.resultado-test { margin-top: 18px; padding: 14px 16px; border: 1px solid var(--borde); border-radius: 10px; background: #fffaf2; }
+.resultado-test h2 { font-size: 15px; margin: 0 0 8px; }

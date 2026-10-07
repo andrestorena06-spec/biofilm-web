@@ -457,22 +457,42 @@ function MetodoDetalle({ d, odc }) {
       <p className="ayuda">Un test estadístico no distingue un error experimental de una variación biológica real: revisá cada sospechoso antes de excluirlo y no elimines datos solo porque no te gusta el resultado.</p>
 
       <h3>7. Comparación entre placas</h3>
-      <p>En la pestaña Comparar, cada placa aporta <b>un solo valor por muestra</b>: la media de sus réplicas aceptadas en esa placa. Los pocillos de una misma placa son <b>réplicas técnicas</b>; las placas (hechas en días o experimentos distintos) son las <b>réplicas biológicas</b>. Por eso el <b>n de la comparación es el número de placas</b>, no el de pocillos. Tratar los pocillos como réplicas independientes inflaría el n y daría diferencias «significativas» que no lo son (pseudorreplicación).</p>
-      <p><b>Valor que se compara</b> (se elige en el panel):</p>
+      <p>La pestaña Comparar muestra, para cada muestra, <b>una barra por placa</b>: la altura es la OD media de las réplicas aceptadas de esa muestra en esa placa, y el color indica la placa. No hay líneas de ODc ni clasificación: es una comparación directa de OD.</p>
+
+      <h4>Qué cuenta como réplica</h4>
+      <p>Los pocillos de una misma placa son <b>réplicas técnicas</b>: salen del mismo cultivo, el mismo día y el mismo lector. Las <b>placas</b> (hechas en días o experimentos distintos) son las <b>réplicas biológicas</b>. Para las pruebas estadísticas cada placa aporta <b>un solo número por muestra</b> (su OD media), así que el <b>n es el número de placas</b>, no el de pocillos. Si se contaran los pocillos como réplicas independientes, aparecerían diferencias «significativas» que en realidad no lo son (esto se llama pseudorreplicación).</p>
+
+      <h4>Barras de error del gráfico</h4>
+      <p>Son las de la sección 2, calculadas con los <b>pocillos de esa placa</b> (SD, SEM o IC 95 %). Muestran cuánto varían las réplicas técnicas dentro de cada placa; <b>no</b> miden la diferencia entre placas.</p>
+
+      <h4>La prueba estadística (opcional)</h4>
+      <p>Responde una pregunta: <i>¿la diferencia que veo entre dos muestras es real o podría deberse al azar de este experimento?</i> El resultado es un número, el <b>valor de p</b>: la probabilidad de ver una diferencia igual o mayor <i>si en realidad no hubiera ninguna</i>. Por convención, <b>p menor que 0,05</b> se considera que la diferencia es real («estadísticamente significativa»); p mayor significa «no hay evidencia suficiente de diferencia», que <b>no</b> es lo mismo que «son iguales».</p>
+      <p><b>Opción «Cada muestra contra un control».</b> Elegís una muestra de referencia (por ejemplo la cepa sin tratar) y se compara cada una de las otras contra ella con la <b>prueba t de Welch</b>:</p>
       <ul>
-        <li><b>OD ÷ ODc de su placa</b> (recomendado): <code>R = Media_muestra / ODc_placa</code>. Cada placa tiene su propio blanco y su propio ODc, así que dividir por él quita la variación entre placas (lector, medio, día). Un valor 1 es el punto de corte; la clasificación de Stepanović se vuelve R ≤ 1, 1–2, 2–4 y &gt; 4.</li>
-        <li><b>OD media</b>: la OD sin normalizar. Solo es comparable si las placas son muy parecidas; no permite clasificar porque cada placa tiene un ODc distinto.</li>
-        <li><b>% del control</b>: <code>100 × Media_muestra / Media_control</code>, con el control de la <i>misma placa</i>.</li>
+        <li><code>t = (x̄₁ − x̄₂) / √(s₁²/n₁ + s₂²/n₂)</code>, donde x̄ es la media entre placas, s la desviación estándar entre placas y n el número de placas de cada muestra.</li>
+        <li>Los grados de libertad se calculan con Welch–Satterthwaite: <code>gl = (s₁²/n₁ + s₂²/n₂)² / [ (s₁²/n₁)²/(n₁−1) + (s₂²/n₂)²/(n₂−1) ]</code>. No supone que las dos muestras varíen igual. Equivale a <code>t.test(x, y)</code> de R.</li>
+        <li><b>p</b> es la probabilidad de la distribución t con esos grados de libertad (prueba de dos colas).</li>
+        <li>Como se hacen <b>varias comparaciones a la vez</b>, la probabilidad de equivocarse al menos una vez crece. Por eso se corrige con el <b>ajuste de Holm</b>: se ordenan los p de menor a mayor y <code>p ajustado(k) = máximo de ( (m − j + 1) × p(j) ) para j ≤ k</code>, con tope en 1 (m = cantidad de comparaciones). Equivale a <code>p.adjust(p, "holm")</code>. <b>El que hay que mirar es el «p ajustado».</b></li>
       </ul>
-      <p><b>Resumen por muestra</b> con las n placas: media, DE, SEM e IC 95 % con las fórmulas de la sección 2, con n = número de placas y t(0,975; n − 1). Con una sola placa no hay error.</p>
-      <p><b>Pruebas estadísticas</b> (opcionales):</p>
+      <p><b>Opción «ANOVA».</b> Pregunta algo más general: <i>¿hay alguna diferencia entre todas las muestras mostradas?</i> Compara cuánto varían las medias entre muestras con cuánto varían las placas dentro de cada muestra: <code>F = [SCentre / (k − 1)] / [SCdentro / (N − k)]</code>, con k muestras y N valores en total. Un p pequeño dice que <b>al menos dos</b> muestras difieren, pero <b>no cuáles</b>; para eso está la opción anterior. Equivale a <code>summary(aov(y ~ muestra))</code>.</p>
+
+      <h4>Cómo leer los resultados</h4>
       <ul>
-        <li><b>Prueba t de Welch contra el control</b> (bilateral, no supone varianzas iguales): <code>t = (x̄₁ − x̄₂) / √(s₁²/n₁ + s₂²/n₂)</code>, con grados de libertad de Welch–Satterthwaite <code>gl = (s₁²/n₁ + s₂²/n₂)² / [ (s₁²/n₁)²/(n₁−1) + (s₂²/n₂)²/(n₂−1) ]</code>. Equivale a <code>t.test(x, y)</code> de R. Necesita al menos 2 placas por muestra.</li>
-        <li><b>Ajuste de Holm</b> para comparar varias muestras contra el control: se ordenan los p de menor a mayor y <code>p_aj(k) = máx de los ( (m − j + 1) × p(j) ) para j ≤ k</code>, limitado a 1. Equivale a <code>p.adjust(p, "holm")</code>.</li>
-        <li><b>ANOVA de una vía</b> (p global entre todas las muestras comparadas): <code>F = [SCentre / (k − 1)] / [SCdentro / (N − k)]</code>. Equivale a <code>summary(aov(y ~ muestra))</code>.</li>
+        <li><b>Diferencia con el control</b>: muestra − control, en unidades de OD. Positiva = la muestra produce más que el control.</li>
+        <li><b>p ajustado &lt; 0,05</b> → «Distinta del control». Las marcas son: <code>*</code> p &lt; 0,05 · <code>**</code> p &lt; 0,01 · <code>***</code> p &lt; 0,001.</li>
+        <li><b>p ajustado ≥ 0,05</b> → «Sin diferencia clara con el control»: con estos datos no se puede afirmar que difieran.</li>
+        <li><b>No se puede calcular</b>: la muestra o el control aparecen en menos de 2 placas, y con un solo valor no hay forma de medir la variación.</li>
       </ul>
-      <p>Se verificó que estas funciones dan los mismos valores que R. Con 2 o 3 placas por muestra las pruebas tienen muy poca potencia: mirá los puntos individuales además del valor de p.</p>
-      <p><b>Consistencia entre placas</b>: para cada muestra se muestra la clasificación que le tocó en cada placa; es <i>consistente</i> si es la misma en todas.</p>
+      <p><i>Ejemplo:</i> con 3 placas, la cepa A tiene medias 0,52 · 0,55 · 0,49 y el control 0,21 · 0,25 · 0,22. La diferencia es +0,29 y es grande frente a la variación entre placas, así que p sale muy chico (0,0003): «Distinta del control». Si en cambio A fuera 0,24 · 0,31 · 0,19, la diferencia (+0,02) se pierde en la variación entre placas, p sería 0,63 y el resultado «Sin diferencia clara» (valores calculados con t.test de R).</p>
+
+      <h4>Precauciones</h4>
+      <ul>
+        <li><b>Pocas placas, poca potencia.</b> Con 2 o 3 placas solo se detectan diferencias muy grandes. Un p alto no prueba que no haya diferencia: puede faltar información. Idealmente, 3 o más placas independientes.</li>
+        <li><b>La OD se compara tal cual.</b> Si las placas tienen blancos o lecturas de base muy distintas (mirá el ODc de cada placa en la barra de placas), la variación entre placas aumenta y la prueba se vuelve menos sensible. En ese caso conviene que las placas se hayan leído en condiciones parecidas.</li>
+        <li>Las pruebas suponen que las medias de las placas tienen una distribución aproximadamente normal. Con tan pocos datos no se puede comprobar: tomalas como una guía, mirando siempre el gráfico.</li>
+        <li>Solo se comparan las barras que están marcadas en «Muestras a mostrar de cada placa»; si ocultás una muestra en una placa, esa placa no entra en la prueba para esa muestra.</li>
+      </ul>
+      <p className="ayuda">Los cálculos de esta sección se verificaron contra R (t.test, p.adjust y aov) con los mismos datos.</p>
     </section>
   )
 }

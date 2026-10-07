@@ -351,3 +351,120 @@ export const ExcluirChart = forwardRef(function ExcluirChart({ estado, orden, o,
     </div>
   )
 })
+
+// ---------------------------------------------------------------
+// BARRAS AGRUPADAS: para cada muestra, una barra por placa (color = placa)
+// grupos: [{ muestra, barras: [{ id, placa, color, media, err, pts: [OD...] }] }]
+// ---------------------------------------------------------------
+export const GroupedBarChart = forwardRef(function GroupedBarChart({ grupos, placas, o, est, eje, onContext, tam, nota }, svgRef) {
+  const [wrap, Wmed] = useAncho()
+  const W = tam ? tam.w : Wmed
+  const labels = grupos.map((g) => g.muestra)
+  const nmax = Math.max(1, ...grupos.map((g) => g.barras.length))
+  const todas = grupos.flatMap((g) => g.barras)
+
+  // ancho estimado de cada barra (antes de conocer los márgenes) para decidir si el valor va girado
+  const bw0 = Math.min(((W - 140) / Math.max(grupos.length, 1)) * 0.86 / nmax, 60)
+  const wValor = Math.max(0, ...todas.map((b) => medir(fmt(b.media), est.valores.size, est.valores.bold, est.valores.italic)))
+  const girado = o.valores && wValor + 4 > bw0
+  let tope = Math.max(0, ...todas.map((b) => Math.max(b.media + (Number.isFinite(b.err) ? b.err : 0), ...(o.puntos ? b.pts : []))))
+  if (o.valores) tope *= 1 + ((girado ? wValor + 12 : est.valores.size * 1.5 + 6)) / 340
+  if (!(tope > 0)) tope = 1
+  const eY = ticksBonitos(0, tope, 6)
+  const yLabels = eY.ticks.map((t) => fmtTick(t, eY.paso))
+
+  // leyenda de placas (color), en varias filas si no cabe
+  const itemsLey = placas.map((p) => ({ ...p, w: 26 + medir(p.nombre, 12) + 16 }))
+  const filasLey = []
+  let fila = [], ancho = 0
+  itemsLey.forEach((it) => {
+    if (ancho + it.w > W - 60 && fila.length) { filasLey.push(fila); fila = []; ancho = 0 }
+    fila.push(it); ancho += it.w
+  })
+  if (fila.length) filasLey.push(fila)
+
+  const L = calcularLayout({
+    W, etiquetas: labels, ang: o.rotar, est, yLabels, derecha: 16,
+    titulo: !!est.titulo.texto, tituloX: !!est.leyendaX.texto, altoPlot: 340 + est.valores.size * 2,
+    extraAbajo: filasLey.length * 22 + 28, fijoH: tam ? tam.h : 0,
+    anchoTituloY: medir(est.leyendaY.texto || eje, est.leyendaY.size, est.leyendaY.bold, est.leyendaY.italic),
+  })
+  const y = (v) => L.top + L.plotH - (v / eY.max) * L.plotH
+  const cx = (i) => L.left + L.band * (i + 0.5)
+  const bw = Math.max(Math.min((L.band * 0.86) / nmax, 60), 4)
+  const yLey = L.top + L.plotH + L.altoEtiquetas + L.altoLeyX + 34
+
+  return (
+    <div ref={wrap} className="chart-wrap" onContextMenu={onContext}>
+      <svg ref={svgRef} viewBox={`0 0 ${W} ${L.H}`} width={W} height={L.H} fontFamily={FUENTE}>
+        <rect width={W} height={L.H} fill="#fff" />
+        <Titulo W={W} est={est} />
+        <EjeY ticks={eY.ticks} paso={eY.paso} y={y} left={L.left} plotW={L.plotW} est={est} titulo={est.leyendaY.texto || eje} />
+        <line x1={L.left} x2={L.left + L.plotW} y1={y(0)} y2={y(0)} stroke="#444" />
+        <line x1={L.left} x2={L.left} y1={L.top} y2={y(0)} stroke="#444" />
+
+        {grupos.map((g, gi) => {
+          const x0 = cx(gi) - (g.barras.length * bw) / 2
+          return (
+            <g key={g.muestra}>
+              {g.barras.map((b, k) => {
+                const bx = x0 + k * bw
+                const mx = bx + bw / 2
+                const hasErr = Number.isFinite(b.err) && b.err > 0
+                const yTop = y(hasErr ? b.media + b.err : b.media)
+                const yMax = o.puntos && b.pts.length ? Math.min(yTop, y(Math.max(...b.pts))) : yTop
+                return (
+                  <g key={b.id}>
+                    <rect x={bx + 1} y={y(b.media)} width={Math.max(bw - 2, 1)} height={Math.max(y(0) - y(b.media), 0)}
+                      fill={b.color} stroke="#333" strokeWidth="0.7">
+                      <title>{`${g.muestra} · ${b.placa}\nOD media = ${fmt(b.media)}${hasErr ? ` ± ${fmt(b.err)}` : ''}\n${b.pts.length} pocillos`}</title>
+                    </rect>
+                    {hasErr && (
+                      <g stroke="#111" strokeWidth="1.2">
+                        <line x1={mx} x2={mx} y1={y(Math.max(b.media - b.err, 0))} y2={y(b.media + b.err)} />
+                        <line x1={mx - bw * 0.18} x2={mx + bw * 0.18} y1={y(b.media + b.err)} y2={y(b.media + b.err)} />
+                        <line x1={mx - bw * 0.18} x2={mx + bw * 0.18} y1={y(Math.max(b.media - b.err, 0))} y2={y(Math.max(b.media - b.err, 0))} />
+                      </g>
+                    )}
+                    {o.puntos && b.pts.map((v, j) => (
+                      <circle key={j} cx={mx + (b.pts.length > 1 ? (j / (b.pts.length - 1) - 0.5) * bw * 0.5 : 0)} cy={y(v)} r="2.6"
+                        fill="#1b1f23" fillOpacity="0.8" />
+                    ))}
+                    {o.valores && (girado ? (
+                      <text transform={`translate(${mx + est.valores.size * 0.35},${yMax - 5}) rotate(-90)`} style={estiloTexto(est.valores)}>{fmt(b.media)}</text>
+                    ) : (
+                      <text x={mx} y={yMax - 5} textAnchor="middle" style={estiloTexto(est.valores)}>{fmt(b.media)}</text>
+                    ))}
+                  </g>
+                )
+              })}
+            </g>
+          )
+        })}
+
+        <EtiquetasX labels={labels} cx={cx} yBase={y(0)} ang={o.rotar} est={est} />
+        <LeyendaX L={L} est={est} />
+
+        {filasLey.map((f, r) => {
+          const tot = f.reduce((a, it) => a + it.w, 0)
+          let x = L.left + L.plotW / 2 - tot / 2
+          return (
+            <g key={r} transform={`translate(0,${yLey + r * 22})`}>
+              {f.map((it) => {
+                const g = (
+                  <g key={it.id} transform={`translate(${x},0)`}>
+                    <rect width="14" height="14" y="-11" rx="2" fill={it.color} stroke="#333" strokeWidth="0.6" />
+                    <text x="20" style={{ fontSize: 12, fill: '#333' }}>{it.nombre}</text>
+                  </g>
+                )
+                x += it.w
+                return g
+              })}
+            </g>
+          )
+        })}
+        <text x={L.left + L.plotW} y={L.H - 8} textAnchor="end" style={{ fontSize: 11, fill: '#6b7785' }}>{nota}</text>
+      </svg>
+    </div>
+  )
+})

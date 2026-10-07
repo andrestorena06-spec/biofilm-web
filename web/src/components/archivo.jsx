@@ -14,6 +14,7 @@ export function ArchivoTab({ s }) {
   const destinoRef = useRef(null) // placa a la que se le asigna un archivo (si venía sin datos)
   const sesionRef = useRef()
   const layoutRef = useRef()
+  const destinoLayout = useRef(false)   // true = el CSV que se elija va a todas las placas
 
   const abrirArchivos = async (files, idDestino = null) => {
     if (!files || !files.length) return
@@ -28,29 +29,30 @@ export function ArchivoTab({ s }) {
     descargarTexto(aCSV(filas, ['Pocillo', 'Muestra', 'Replica', 'Blanco']), 'layout_placa.csv')
   }
 
-  const importarLayout = async (file) => {
+  // Lee el CSV del layout y lo aplica a la placa activa (aTodas = false) o a todas las placas con datos (aTodas = true)
+  const importarLayout = async (file, aTodas) => {
     const txt = (await file.text()).replace(/^﻿/, '')
     const lineas = txt.split(/\r?\n/).filter(Boolean)
+    if (!lineas.length) return s.avisar('El archivo está vacío.', 'error')
     const sep = lineas[0].includes(';') ? ';' : ','
     const cab = lineas[0].split(sep).map((x) => x.trim().toLowerCase())
     const ix = (n) => cab.findIndex((c) => n.includes(c))
     const iP = ix(['pocillo', 'well']), iM = ix(['muestra', 'sample']), iR = ix(['replica', 'rep']), iB = ix(['blanco', 'blank', 'esblanco'])
     if (iP < 0 || iM < 0) return s.avisar("El layout necesita las columnas 'Pocillo' y 'Muestra'.", 'error')
-    const disp = new Set(s.placa?.datos.map((d) => d.Pocillo))
+    const validos = new Set(pocillos96())
     const cfg = []
     for (const l of lineas.slice(1)) {
       const c = l.split(sep).map((x) => x.trim().replace(/^"|"$/g, ''))
       const p = c[iP]?.toUpperCase().replace(/^([A-H])0+(\d)/, '$1$2')
-      if (!p || !disp.has(p) || !c[iM] || cfg.some((x) => x.Pocillo === p)) continue
+      if (!p || !validos.has(p) || !c[iM] || cfg.some((x) => x.Pocillo === p)) continue
       cfg.push({ Pocillo: p, Muestra: c[iM], Replica: iR >= 0 ? Number(c[iR]) || 0 : 0,
         EsBlanco: iB >= 0 && ['1', 'true', 'si', 'sí', 'yes', 'x'].includes((c[iB] || '').toLowerCase()) })
     }
+    if (!cfg.length) return s.avisar('Ningún pocillo válido (A1 a H12) con muestra en el layout.', 'error')
     const ordenados = cfg.sort((a, b) => pocillos96().indexOf(a.Pocillo) - pocillos96().indexOf(b.Pocillo))
     const cont = {}
     ordenados.forEach((c) => { cont[c.Muestra] = (cont[c.Muestra] || 0) + 1; if (!c.Replica) c.Replica = cont[c.Muestra] })
-    s.setConfig(ordenados)
-    s.setMuestras([...new Set([...s.muestras, ...ordenados.map((c) => c.Muestra)])])
-    s.avisar(`Layout importado: ${ordenados.length} pocillos.`)
+    s.aplicarLayout(ordenados, aTodas)
   }
 
   const guardarSesion = () => descargarBlob(new Blob([JSON.stringify(s.exportarSesion())], { type: 'application/json' }), 'sesion_biofilm.json')
@@ -177,15 +179,27 @@ export function ArchivoTab({ s }) {
             <p className="ayuda" style={{ marginTop: 0 }}>CSV con las columnas Pocillo, Muestra y, opcionalmente, Replica y Blanco (1/0).</p>
             <div className="fila-ctrl">
               <button onClick={exportarLayout} disabled={!s.config.length}>Exportar CSV</button>
-              <button onClick={() => layoutRef.current.click()} disabled={!p}>Importar CSV</button>
-              <input ref={layoutRef} type="file" hidden accept=".csv,.txt" onChange={(e) => { e.target.files[0] && importarLayout(e.target.files[0]); e.target.value = '' }} />
+              <button onClick={() => { destinoLayout.current = false; layoutRef.current.click() }} disabled={!p}>
+                Importar CSV en «{act?.nombre || 'placa activa'}»
+              </button>
+              {s.placas.length > 1 && (
+                <button className="primario" onClick={() => { destinoLayout.current = true; layoutRef.current.click() }} disabled={!s.placas.some((x) => x.placa)}>
+                  Importar CSV en todas las placas
+                </button>
+              )}
+              <input ref={layoutRef} type="file" hidden accept=".csv,.txt"
+                onChange={(e) => { e.target.files[0] && importarLayout(e.target.files[0], destinoLayout.current); e.target.value = '' }} />
             </div>
             {s.placas.length > 1 && (
               <div className="fila-ctrl">
-                <button disabled={!s.config.length} onClick={() => s.copiarConfig()}>Copiar esta configuración a las demás placas</button>
+                <button disabled={!s.config.length} onClick={() => s.copiarConfig()}>Copiar el layout de esta placa a las demás</button>
               </div>
             )}
-            {s.placas.length > 1 && <p className="ayuda">Útil cuando todas las placas tienen la misma distribución de muestras. Solo copia la distribución, no las exclusiones.</p>}
+            <p className="ayuda">
+              {s.placas.length > 1
+                ? 'Aplicar el layout a todas es una copia única: después, los cambios que hagas en la pestaña Placa afectan solo a la placa activa.'
+                : 'Con varias placas vas a poder aplicar el mismo layout a todas de una vez.'}
+            </p>
           </section>
         </div>
       </div>

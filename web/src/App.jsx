@@ -4,10 +4,11 @@ import { PlacaTab, AnalisisTab } from './components/tabs.jsx'
 import { ArchivoTab } from './components/archivo.jsx'
 import { ExcluirTab, GraficoTab, DatosTab } from './components/tabs2.jsx'
 import { CompararTab } from './components/comparar.jsx'
+import { Modal } from './components/ui.jsx'
 import { estiloDefecto, normalizarEstilo, paletaMuestras } from './utils.js'
 
 const CLAVE = 'biofilm-react-v3'
-const CLAVES_ANTERIORES = ['biofilm-react-v2', 'biofilm-react-v1']
+const MUESTRAS_DEF = ['L100A1', 'L100A1 Rug', 'L100A1 SCV', 'L101B2', 'L101B2 Rug', 'L201', 'L201 Rug', 'BHI', 'TSBye']
 
 const optsDef = () => ({
   excluir: { puntos: true, medias: true, errores: false, error: 'sd', banda: true, rotar: 45 },
@@ -16,9 +17,8 @@ const optsDef = () => ({
     lineas: true, valoresClase: false, rotar: 45, muestrasSel: null,
   },
   comparar: {
-    metrica: 'razon', error: 'ic95', test: 'control', control: '', orden: 'lista', color: 'clase',
-    puntos: true, medias: true, errores: true, lineas: true, valoresClase: false, rotar: 45,
-    muestrasSel: null, placasSel: null,
+    error: 'sd', test: 'ninguno', control: '', puntos: false, valores: true, rotar: 45,
+    placasSel: null, ocultos: [],   // ocultos: "idPlaca|muestra" que no se muestran
   },
 })
 const deteccionDef = () => ({ metodo: 'hampel', usar: false, nsig: 3, min: 0.02, conf: '95' })
@@ -29,13 +29,11 @@ const placaVacia = (nombre) => ({
 })
 
 function cargarGuardado() {
-  for (const k of [CLAVE, ...CLAVES_ANTERIORES]) {
-    try {
-      const v = JSON.parse(localStorage.getItem(k))
-      if (v) return v
-    } catch { /* clave dañada: se prueba la siguiente */ }
+  try {
+    return JSON.parse(localStorage.getItem(CLAVE)) || {}
+  } catch {
+    return {}
   }
-  return {}
 }
 
 const PESTANAS = [
@@ -59,36 +57,40 @@ const LogoPlaca = () => (
   </svg>
 )
 
-// Estado de arranque: placas guardadas, o una placa con la configuración de versiones anteriores
 function placasIniciales(g) {
   if (Array.isArray(g.placas) && g.placas.length) {
     return g.placas.map((p) => ({ exclManual: [], exclForzado: [], blancosUsados: null, config: [], ...p }))
   }
-  if (g.config?.length) {
-    return [{ ...placaVacia('Placa 1'), config: g.config, exclManual: g.exclManual || [], exclForzado: g.exclForzado || [], blancosUsados: g.blancosUsados ?? null }]
-  }
   return []
 }
 
+const optsDe = (x) => ({
+  excluir: { ...optsDef().excluir, ...(x.opts?.excluir || {}) },
+  barras: { ...optsDef().barras, ...(x.opts?.barras || {}) },
+  comparar: { ...optsDef().comparar, ...(x.opts?.comparar || {}) },
+})
+const estilosDe = (x) => ({
+  barras: normalizarEstilo(x.estilos?.barras), excluir: normalizarEstilo(x.estilos?.excluir), comparar: normalizarEstilo(x.estilos?.comparar),
+})
+
 export default function App() {
   const g = useMemo(cargarGuardado, [])
+  // Si hay un trabajo anterior con placas, no se carga solo: se le pregunta a la persona
+  const [pendiente, setPendiente] = useState(() => !!(g.placas && g.placas.length))
+  const gi = pendiente ? {} : g
   const [tab, setTab] = useState('archivo')
-  const [placas, setPlacas] = useState(() => placasIniciales(g))
-  const [activaId, setActivaId] = useState(() => g.activaId || null)
-  const [muestras, setMuestras] = useState(g.muestras || ['L100A1', 'L100A1 Rug', 'L100A1 SCV', 'L101B2', 'L101B2 Rug', 'L201', 'L201 Rug', 'BHI', 'TSBye'])
-  const [deteccion, setDeteccion] = useState(() => ({ ...deteccionDef(), ...(g.hampel || {}), ...(g.deteccion || {}) }))
-  const [opts, setOpts] = useState(() => ({
-    excluir: { ...optsDef().excluir, ...(g.opts?.excluir || {}) },
-    barras: { ...optsDef().barras, ...(g.opts?.barras || {}) },
-    comparar: { ...optsDef().comparar, ...(g.opts?.comparar || {}) },
-  }))
-  const [estilos, setEstilos] = useState(() => ({
-    barras: normalizarEstilo(g.estilos?.barras), excluir: normalizarEstilo(g.estilos?.excluir), comparar: normalizarEstilo(g.estilos?.comparar),
-  }))
+  const [placas, setPlacas] = useState(() => placasIniciales(gi))
+  const [activaId, setActivaId] = useState(() => gi.activaId || null)
+  const [muestras, setMuestras] = useState(gi.muestras || MUESTRAS_DEF)
+  const [deteccion, setDeteccion] = useState(() => ({ ...deteccionDef(), ...(gi.hampel || {}), ...(gi.deteccion || {}) }))
+  const [opts, setOpts] = useState(() => optsDe(gi))
+  const [estilos, setEstilos] = useState(() => estilosDe(gi))
   const [analisisMap, setAnalisisMap] = useState({})
   const [avisos, setAvisos] = useState([])
   const [motor, setMotor] = useState(true)
   const archivosRef = useRef({})        // id de placa -> File (solo mientras la pestaña está abierta)
+  const arrastrada = useRef(null)       // placa que se está arrastrando en la barra de placas
+  const [arrastrandoSobre, setArrastrandoSobre] = useState(null)
   const inputPlacas = useRef()
 
   const activa = placas.find((p) => p.id === activaId) || placas[0] || null
@@ -97,11 +99,27 @@ export default function App() {
   useEffect(() => { ping().then(setMotor) }, [])
 
   // Todo el trabajo (incluidos los datos de cada Excel) se guarda en el navegador
+  // (mientras se espera la decisión sobre el trabajo anterior no se guarda nada, para no pisarlo)
   useEffect(() => {
+    if (pendiente) return
     try {
-      localStorage.setItem(CLAVE, JSON.stringify({ placas, activaId, muestras, deteccion, opts, estilos }))
+      localStorage.setItem(CLAVE, JSON.stringify({ fecha: new Date().toISOString(), placas, activaId, muestras, deteccion, opts, estilos }))
     } catch { /* sin almacenamiento o sin espacio */ }
-  }, [placas, activaId, muestras, deteccion, opts, estilos])
+  }, [pendiente, placas, activaId, muestras, deteccion, opts, estilos])
+
+  const continuarAnterior = () => {
+    setPlacas(placasIniciales(g))
+    setActivaId(g.activaId || null)
+    setMuestras(g.muestras || MUESTRAS_DEF)
+    setDeteccion({ ...deteccionDef(), ...(g.hampel || {}), ...(g.deteccion || {}) })
+    setOpts(optsDe(g))
+    setEstilos(estilosDe(g))
+    setPendiente(false)
+  }
+  const empezarDeCero = () => {
+    try { localStorage.removeItem(CLAVE) } catch { /* sin almacenamiento */ }
+    setPendiente(false)
+  }
 
   const avisar = useCallback((texto, tipo = 'ok') => {
     const id = Math.random()
@@ -205,11 +223,13 @@ export default function App() {
     const creadas = []
     let primeraActiva = null
     let restantes = nuevas
-    if (idDestino) {
+    // si hay una placa sin datos (por ejemplo una que venía de una sesión antigua), el primer archivo va ahí
+    const destino = idDestino || placas.find((p) => !p.placa)?.id || null
+    if (destino) {
       const n = nuevas[0]
-      archivosRef.current[idDestino] = n.file
-      setPlacas((ps) => ps.map((p) => (p.id === idDestino ? armar(n, p) : p)))
-      primeraActiva = idDestino
+      archivosRef.current[destino] = n.file
+      setPlacas((ps) => ps.map((p) => (p.id === destino ? armar(n, p) : p)))
+      primeraActiva = destino
       restantes = nuevas.slice(1)
     }
     restantes.forEach((n) => {
@@ -247,6 +267,41 @@ export default function App() {
     if (!nombre) return avisar('El nombre no puede estar vacío.', 'error')
     if (placas.some((p) => p.id !== id && p.nombre.toLowerCase() === nombre.toLowerCase())) return avisar(`Ya hay una placa llamada «${nombre}».`, 'error')
     actualizar(id, { nombre })
+  }
+
+  // Cambia el orden de las pestañas de placas (arrastrando una sobre otra)
+  const reordenarPlacas = (idMovida, idDestino) => {
+    if (idMovida === idDestino) return
+    setPlacas((ps) => {
+      const mov = ps.find((p) => p.id === idMovida)
+      if (!mov) return ps
+      const sin = ps.filter((p) => p.id !== idMovida)
+      const i = sin.findIndex((p) => p.id === idDestino)
+      const posOriginal = ps.findIndex((p) => p.id === idMovida)
+      const posDestino = ps.findIndex((p) => p.id === idDestino)
+      // si se arrastra hacia la derecha queda después del destino; hacia la izquierda, antes
+      sin.splice(posOriginal < posDestino ? i + 1 : i, 0, mov)
+      return sin
+    })
+  }
+
+  // Aplica un layout leído de un CSV a la placa activa o a todas (solo pocillos con datos en cada una).
+  // No queda enlazado: los cambios posteriores en la pestaña Placa afectan solo a la placa activa.
+  const aplicarLayout = (cfgCrudo, aTodas) => {
+    const destinos = aTodas ? placas.filter((p) => p.placa) : activa?.placa ? [activa] : []
+    if (!destinos.length) return avisar('No hay placas con datos para aplicar el layout.', 'error')
+    const orden = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
+    const clave = (p) => orden.indexOf(p[0]) * 100 + Number(p.slice(1))
+    let omitidos = 0
+    setPlacas((ps) => ps.map((p) => {
+      if (!destinos.some((d) => d.id === p.id)) return p
+      const disp = new Set(p.placa.datos.map((d) => d.Pocillo))
+      const cfg = cfgCrudo.filter((c) => disp.has(c.Pocillo)).map((c) => ({ ...c })).sort((a, b) => clave(a.Pocillo) - clave(b.Pocillo))
+      omitidos += cfgCrudo.length - cfg.length
+      return { ...p, config: cfg, exclManual: [], exclForzado: [] }
+    }))
+    setMuestras((m) => [...new Set([...m, ...cfgCrudo.map((c) => c.Muestra)])])
+    avisar(aTodas ? `Layout aplicado a ${destinos.length} ${destinos.length === 1 ? 'placa' : 'placas'}.` : `Layout importado en «${activa.nombre}».`)
   }
 
   // Copia la distribución de muestras de la placa activa a las demás (solo pocillos con datos)
@@ -317,7 +372,8 @@ export default function App() {
   const s = {
     // placas
     placas, activaId: activa?.id || null, a: activa, setActiva: setActivaId, analisisMap,
-    agregarPlacas, quitarPlaca, renombrarPlaca, cambiarHoja, copiarConfig, tieneArchivo: (id) => !!archivosRef.current[id],
+    agregarPlacas, quitarPlaca, renombrarPlaca, cambiarHoja, copiarConfig, reordenarPlacas, aplicarLayout,
+    tieneArchivo: (id) => !!archivosRef.current[id],
     // datos de la placa activa (así las pestañas existentes funcionan sin cambios)
     archivo: activa?.archivo || null, placa: activa?.placa || null,
     config: activa?.config || [], setConfig: (c) => activa && actualizar(activa.id, { config: c }),
@@ -367,8 +423,14 @@ export default function App() {
         <div className="barra-placas">
           {placas.map((p) => (
             <div key={p.id} role="tab" tabIndex={0} aria-selected={p.id === activa?.id}
-              className={`chip-placa ${p.id === activa?.id ? 'activa' : ''}`}
-              onClick={() => setActivaId(p.id)} title="Clic para ver esta placa · doble clic para renombrar"
+              className={`chip-placa ${p.id === activa?.id ? 'activa' : ''} ${arrastrandoSobre === p.id ? 'sobre' : ''}`}
+              draggable
+              onDragStart={(e) => { arrastrada.current = p.id; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', p.id) }}
+              onDragOver={(e) => { if (arrastrada.current) { e.preventDefault(); setArrastrandoSobre(p.id) } }}
+              onDragLeave={() => setArrastrandoSobre((v) => (v === p.id ? null : v))}
+              onDrop={(e) => { e.preventDefault(); if (arrastrada.current) reordenarPlacas(arrastrada.current, p.id); arrastrada.current = null; setArrastrandoSobre(null) }}
+              onDragEnd={() => { arrastrada.current = null; setArrastrandoSobre(null) }}
+              onClick={() => setActivaId(p.id)} title="Clic para ver esta placa · arrastrá para cambiar el orden · doble clic para renombrar"
               onDoubleClick={() => { const n = window.prompt('Nombre de la placa', p.nombre); if (n !== null) renombrarPlaca(p.id, n.trim()) }}>
               <i className="punto-placa" style={{ background: colores[p.id] }} />
               <span className="nombre-placa">{p.nombre}</span>
@@ -383,6 +445,24 @@ export default function App() {
         </div>
         <Vista s={s} />
       </main>
+      {pendiente && (
+        <Modal titulo="Encontré trabajo anterior" ancho={540}
+          pie={<>
+            <button onClick={empezarDeCero}>Empezar de cero</button>
+            <button className="primario" onClick={continuarAnterior}>Continuar con lo anterior</button>
+          </>}>
+          <p>
+            En este navegador quedó guardado un trabajo
+            {g.fecha ? <> del <b>{new Date(g.fecha).toLocaleString('es', { dateStyle: 'medium', timeStyle: 'short' })}</b></> : ''}:
+          </p>
+          <ul className="resumen-guardado">
+            {g.placas.map((p) => (
+              <li key={p.id}><b>{p.nombre}</b> <small>{p.placa ? `${p.placa.datos.length} pocillos` : 'sin datos'} · {p.config?.length || 0} configurados</small></li>
+            ))}
+          </ul>
+          <p className="ayuda">«Continuar con lo anterior» recupera todo tal como lo dejaste. «Empezar de cero» borra ese trabajo guardado del navegador y arranca vacío (si querés conservarlo antes, cargá un archivo de sesión que hayas descargado).</p>
+        </Modal>
+      )}
       <div className="toasts">{avisos.map((a) => <div key={a.id} className={`toast ${a.tipo}`}>{a.texto}</div>)}</div>
     </div>
   )

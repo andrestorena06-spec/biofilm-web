@@ -1,15 +1,14 @@
 import { useMemo, useRef, useState } from 'react'
-import { BarChart } from './charts.jsx'
+import { GroupedBarChart } from './charts.jsx'
 import { ExportDialog } from './exportar.jsx'
-import { TablaAvanzada } from './tabs2.jsx'
 import { Vacio } from './tabs.jsx'
 import { Campo, Check, EstiloDialog, MenuContextual, Num, Panel, Select, useMenuContextual } from './ui.jsx'
 import { anova1, holm, marcaSig, resumenGrupo, welch } from '../estadistica.js'
 import { estiloDefecto, fmt, paletaMuestras } from '../utils.js'
 
-const clasificarR = (r) => (!Number.isFinite(r) ? null : r <= 1 ? 'No productor' : r <= 2 ? 'Productor débil' : r <= 4 ? 'Productor moderado' : 'Productor fuerte')
-const redondear = (x, d = 4) => (Number.isFinite(x) ? Number(x.toFixed(d)) : null)
 const tamDe = (svg) => ({ w: svg.viewBox.baseVal.width, h: svg.viewBox.baseVal.height })
+const ERR_TXT = { ic95: 'IC 95 %', sd: 'desviación estándar', sem: 'error estándar', ninguno: '' }
+const pTxt = (p) => (p === null || p === undefined || !Number.isFinite(p) ? '–' : p < 0.0001 ? '< 0,0001' : p.toFixed(4).replace('.', ','))
 
 export function CompararTab({ s }) {
   const svg = useRef()
@@ -22,125 +21,89 @@ export function CompararTab({ s }) {
   const conAnalisis = s.placas.filter((p) => s.analisisMap[p.id]?.resumen?.length)
   const placasSel = o.placasSel ? conAnalisis.filter((p) => o.placasSel.includes(p.id)) : conAnalisis
   const colores = useMemo(() => paletaMuestras(s.placas.map((p) => p.id)), [s.placas])
+  const ocultos = useMemo(() => new Set(o.ocultos || []), [o.ocultos])
+  const clave = (id, m) => `${id}|${m}`
 
   // muestras presentes en las placas elegidas (en el orden de la lista de muestras)
-  const todas = useMemo(() => {
+  const muestras = useMemo(() => {
     const pres = [...new Set(placasSel.flatMap((p) => s.analisisMap[p.id].resumen.map((r) => r.Muestra)))]
     return [...s.muestras.filter((m) => pres.includes(m)), ...pres.filter((m) => !s.muestras.includes(m))]
   }, [placasSel, s.muestras, s.analisisMap])
-  const selMuestras = o.muestrasSel ? o.muestrasSel.filter((m) => todas.includes(m)) : todas
-  const control = todas.includes(o.control) ? o.control : todas[0] || ''
 
-  const metrica = o.metrica
-  const etiquetaMetrica = { razon: 'OD ÷ ODc de cada placa', media: s.ejeOD, pct: '% del control de cada placa' }[metrica]
+  const tieneMuestra = (p, m) => s.analisisMap[p.id].resumen.some((r) => r.Muestra === m)
 
-  // un valor por muestra y por placa
-  const valores = useMemo(() => {
-    const r = {}
-    todas.forEach((m) => { r[m] = [] })
-    placasSel.forEach((p) => {
+  // grupos del gráfico: una barra por placa para cada muestra (solo las que están marcadas)
+  const grupos = useMemo(() => muestras.map((m) => ({
+    muestra: m,
+    barras: placasSel.flatMap((p) => {
+      if (ocultos.has(clave(p.id, m))) return []
       const A = s.analisisMap[p.id]
-      const ctrl = A.resumen.find((x) => x.Muestra === control)
-      A.resumen.forEach((row) => {
-        let v = null
-        if (metrica === 'media') v = row.Media
-        else if (metrica === 'razon') v = row.Razon_ODc
-        else if (ctrl && Number.isFinite(ctrl.Media) && Number.isFinite(row.Media)) v = (100 * row.Media) / ctrl.Media
-        if (Number.isFinite(v)) {
-          r[row.Muestra]?.push({
-            placa: p.nombre, id: p.id, valor: v, color: colores[p.id],
-            clase: row.Clasificacion, razon: row.Razon_ODc,
-          })
-        }
-      })
-    })
-    return r
-  }, [placasSel, todas, metrica, control, s.analisisMap, colores])
+      const r = A.resumen.find((x) => x.Muestra === m)
+      if (!r || !Number.isFinite(r.Media)) return []
+      const err = o.error === 'ic95' ? r.IC95 : o.error === 'sd' ? r.SD : o.error === 'sem' ? r.SEM : null
+      return [{
+        id: p.id + '|' + m, placa: p.nombre, color: colores[p.id], media: r.Media, err: Number.isFinite(err) ? err : null,
+        pts: A.estado.filter((e) => !e.EsBlanco && e.Muestra === m && e.Usado).map((e) => e.OD),
+      }]
+    }),
+  })).filter((g) => g.barras.length), [muestras, placasSel, ocultos, o.error, colores, s.analisisMap])
 
   if (!conAnalisis.length) {
     return <Vacio texto="Cargá al menos dos placas (botón «+ Agregar placa»), configurá sus pocillos y volvé acá para compararlas." />
   }
 
-  // ---- estadísticos por muestra ----
-  const stats = selMuestras.map((m) => ({ m, g: resumenGrupo(valores[m].map((x) => x.valor)), v: valores[m] })).filter((x) => x.g.n > 0)
-  const ctrlVals = (valores[control] || []).map((x) => x.valor)
-  let pAjustados = {}
-  let pCrudos = {}
-  let difs = {}
+  // ---- prueba estadística (opcional): cada placa aporta un valor por muestra ----
+  const control = grupos.some((g) => g.muestra === o.control) ? o.control : grupos[0]?.muestra || ''
+  const valoresDe = (m) => (grupos.find((g) => g.muestra === m)?.barras || []).map((b) => b.media)
+  let filasTest = []
+  let anova = null
   if (o.test === 'control') {
-    const otros = stats.filter((x) => x.m !== control)
-    const res = otros.map((x) => welch(x.v.map((y) => y.valor), ctrlVals))
+    const ctrl = valoresDe(control)
+    const otros = grupos.filter((g) => g.muestra !== control)
+    const res = otros.map((g) => welch(valoresDe(g.muestra), ctrl))
     const aj = holm(res.map((r) => (r ? r.p : NaN)))
-    otros.forEach((x, i) => { pCrudos[x.m] = res[i]?.p ?? null; pAjustados[x.m] = aj[i]; difs[x.m] = res[i]?.dif ?? null })
-  }
-  const anova = o.test === 'anova' ? anova1(stats.map((x) => x.v.map((y) => y.valor))) : null
-
-  // ---- gráfico ----
-  let filas = stats.map((x) => ({
-    Muestra: x.m, Media: x.g.media, SD: x.g.sd, SEM: x.g.sem, IC95: x.g.ic95,
-    Clasificacion: metrica === 'razon' ? clasificarR(x.g.media) : null,
-  }))
-  if (o.orden === 'asc') filas = [...filas].sort((a, b) => a.Media - b.Media)
-  if (o.orden === 'desc') filas = [...filas].sort((a, b) => b.Media - a.Media)
-  const puntos = stats.flatMap((x) => x.v.map((y) => ({ Muestra: x.m, OD: y.valor, Pocillo: y.placa, color: y.color })))
-  const oGraf = { ...o, lineas: o.lineas && metrica === 'razon', color: metrica === 'razon' ? o.color : 'uno', error: o.error }
-  const errTxt = { ic95: 'IC 95 %', sd: 'desviación estándar', sem: 'error estándar', ninguno: '' }[o.error]
-  const nota = `Barras: media de ${placasSel.length} ${placasSel.length === 1 ? 'placa' : 'placas'} (réplicas biológicas); puntos: cada placa${errTxt ? `; error: ${errTxt}` : ''}`
-  const ejeY = { razon: 'OD ÷ ODc', media: s.ejeOD, pct: '% del control' }[metrica]
-
-  // ---- tablas ----
-  const tablaStats = stats.map((x) => {
-    const clases = x.v.map((y) => y.clase).filter(Boolean)
-    const consistente = clases.length < 2 ? '–' : clases.every((c) => c === clases[0]) ? 'Sí' : 'No'
-    const f = {
-      Muestra: x.m, Placas: x.g.n, Media: redondear(x.g.media), DE: redondear(x.g.sd), SEM: redondear(x.g.sem),
-      IC95_mas_menos: redondear(x.g.ic95), CV_pct: redondear(x.g.cv, 2),
-    }
-    if (metrica === 'razon') f.Clasificacion = clasificarR(x.g.media) || ''
-    f.Consistente = consistente
-    if (o.test === 'control') {
-      const es = x.m === control
-      f.Dif_vs_control = es ? null : redondear(difs[x.m])
-      f.p_Welch = es ? null : redondear(pCrudos[x.m], 4)
-      f.p_ajustado_Holm = es ? null : redondear(pAjustados[x.m], 4)
-      f.Signif = es ? 'control' : marcaSig(pAjustados[x.m])
-    }
-    return f
-  })
-  const colsStats = Object.keys(tablaStats[0] || { Muestra: 1 })
-
-  const nombresPlacas = placasSel.map((p) => p.nombre)
-  const matriz = selMuestras.map((m) => {
-    const f = { Muestra: m }
-    placasSel.forEach((p) => {
-      const row = s.analisisMap[p.id].resumen.find((r) => r.Muestra === m)
-      f[p.nombre] = row && Number.isFinite(row.Razon_ODc) ? `${row.Razon_ODc.toFixed(2)} · ${row.Clasificacion}` : '–'
+    filasTest = grupos.map((g) => {
+      const r = resumenGrupo(valoresDe(g.muestra))
+      if (g.muestra === control) return { m: g.muestra, n: r.n, media: r.media, sd: r.sd, dif: null, p: null, pa: null, texto: 'control' }
+      const i = otros.findIndex((x) => x.muestra === g.muestra)
+      const w = res[i]
+      const pa = aj[i]
+      return {
+        m: g.muestra, n: r.n, media: r.media, sd: r.sd, dif: w ? w.dif : null, p: w ? w.p : null, pa,
+        texto: !w ? 'No se puede calcular (hacen falta 2 o más placas en la muestra y en el control)'
+          : pa < 0.05 ? `Distinta del control (${marcaSig(pa)})` : 'Sin diferencia clara con el control',
+      }
     })
-    const cl = (valores[m] || []).map((y) => y.clase).filter(Boolean)
-    f.Consistente = cl.length < 2 ? '–' : cl.every((c) => c === cl[0]) ? 'Sí' : 'No'
-    return f
-  })
+  } else if (o.test === 'anova') {
+    anova = anova1(grupos.map((g) => valoresDe(g.muestra)))
+  }
 
-  const tablaPlacas = placasSel.map((p) => {
-    const A = s.analisisMap[p.id]
-    return {
-      Placa: p.nombre, Pocillos_con_dato: p.placa?.datos.length ?? null, Configurados: p.config.length,
-      Blancos_aceptados: A.odc.n, Media_blancos: redondear(A.odc.media), DE_blancos: redondear(A.odc.sd), ODc: redondear(A.odc.odc),
-      Excluidos: A.estado.filter((e) => !e.Usado).length, Sospechosos: A.estado.filter((e) => e.Sospechoso).length,
-    }
-  })
+  const nota = `Barras: OD media de las réplicas aceptadas de cada placa${ERR_TXT[o.error] ? `; error: ${ERR_TXT[o.error]} entre pocillos de la placa` : ''}`
+  const leyenda = placasSel.map((p) => ({ id: p.id, nombre: p.nombre, color: colores[p.id] }))
+  const oGraf = { valores: o.valores, puntos: o.puntos, rotar: o.rotar }
+  const nBarras = grupos.reduce((a, g) => a + g.barras.length, 0)
 
-  const noop = () => {}
+  const cambiarCelda = (id, m, v) => {
+    const k = clave(id, m)
+    const sin = (o.ocultos || []).filter((x) => x !== k)
+    setO('ocultos', v ? sin : [...sin, k])
+  }
+  const cambiarFila = (m, v) => {
+    const ks = placasSel.filter((p) => tieneMuestra(p, m)).map((p) => clave(p.id, m))
+    const sin = (o.ocultos || []).filter((x) => !ks.includes(x))
+    setO('ocultos', v ? sin : [...sin, ...ks])
+  }
+  const todoVisible = (v) => {
+    const ks = placasSel.flatMap((p) => muestras.filter((m) => tieneMuestra(p, m)).map((m) => clave(p.id, m)))
+    const sin = (o.ocultos || []).filter((x) => !ks.includes(x))
+    setO('ocultos', v ? sin : [...sin, ...ks])
+  }
 
   return (
     <div className="con-lateral">
       <Panel titulo="Comparar placas">
-        <p className="ayuda">Cada placa aporta un valor por muestra (la media de sus réplicas). Las placas son las réplicas biológicas.</p>
-        <Campo label="Valor a comparar">
-          <Select value={metrica} onChange={(v) => setO('metrica', v)}
-            opciones={[['razon', 'OD ÷ ODc de cada placa (recomendado)'], ['media', 'OD media sin normalizar'], ['pct', '% del control de cada placa']]} />
-        </Campo>
-        <Campo label="Placas incluidas">
+        <p className="ayuda">Barras de OD de cada muestra, una por placa. El color indica de qué placa es cada barra.</p>
+        <Campo label="Placas a ver">
           <div className="fila-ctrl" style={{ margin: '0 0 4px' }}>
             <button className="chico" onClick={() => setO('placasSel', conAnalisis.map((p) => p.id))}>Todas</button>
             <button className="chico" onClick={() => setO('placasSel', [])}>Ninguna</button>
@@ -149,79 +112,123 @@ export function CompararTab({ s }) {
             {conAnalisis.map((p) => (
               <Check key={p.id} label={<><i className="punto-placa" style={{ background: colores[p.id] }} /> {p.nombre}</>}
                 checked={placasSel.some((x) => x.id === p.id)}
-                onChange={(v) => setO('placasSel', v ? [...placasSel.map((x) => x.id), p.id] : placasSel.filter((x) => x.id !== p.id).map((x) => x.id))} />
+                onChange={(v) => setO('placasSel', v ? conAnalisis.filter((x) => x.id === p.id || placasSel.some((y) => y.id === x.id)).map((x) => x.id) : placasSel.filter((x) => x.id !== p.id).map((x) => x.id))} />
             ))}
           </div>
         </Campo>
-        <Campo label="Muestras incluidas">
+
+        <Campo label="Muestras a mostrar de cada placa">
           <div className="fila-ctrl" style={{ margin: '0 0 4px' }}>
-            <button className="chico" onClick={() => setO('muestrasSel', todas)}>Todas</button>
-            <button className="chico" onClick={() => setO('muestrasSel', [])}>Ninguna</button>
+            <button className="chico" onClick={() => todoVisible(true)}>Mostrar todas</button>
+            <button className="chico" onClick={() => todoVisible(false)}>Ocultar todas</button>
           </div>
-          <div className="lista-check">
-            {todas.map((m) => (
-              <Check key={m} label={m} checked={selMuestras.includes(m)}
-                onChange={(v) => setO('muestrasSel', v ? [...selMuestras, m] : selMuestras.filter((x) => x !== m))} />
-            ))}
+          <div className="matriz-muestras">
+            <table>
+              <thead>
+                <tr>
+                  <th />
+                  {placasSel.map((p) => <th key={p.id} title={p.nombre}><i className="punto-placa" style={{ background: colores[p.id] }} /></th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {muestras.map((m) => {
+                  const existentes = placasSel.filter((p) => tieneMuestra(p, m))
+                  const todas = existentes.every((p) => !ocultos.has(clave(p.id, m)))
+                  return (
+                    <tr key={m}>
+                      <td><label className="check" style={{ margin: 0 }}>
+                        <input type="checkbox" checked={todas} onChange={(e) => cambiarFila(m, e.target.checked)} /><span>{m}</span></label></td>
+                      {placasSel.map((p) => (
+                        <td key={p.id} className="celda-chk">
+                          {tieneMuestra(p, m)
+                            ? <input type="checkbox" checked={!ocultos.has(clave(p.id, m))} onChange={(e) => cambiarCelda(p.id, m, e.target.checked)} title={`${m} en ${p.nombre}`} />
+                            : <span className="ayuda">–</span>}
+                        </td>
+                      ))}
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
+          <p className="ayuda">Cada columna es una placa (mismo color que en el gráfico). Destildá una celda para ocultar esa muestra solo en esa placa, o la casilla de la izquierda para ocultarla en todas.</p>
         </Campo>
-        <Campo label="Muestra control">
-          <Select value={control} onChange={(v) => setO('control', v)} opciones={todas.map((m) => [m, m])} />
-        </Campo>
-        <Campo label="Prueba estadística">
-          <Select value={o.test} onChange={(v) => setO('test', v)}
-            opciones={[['control', 'Cada muestra vs. control (Welch + Holm)'], ['anova', 'ANOVA de una vía (p global)'], ['ninguno', 'Ninguna']]} />
-        </Campo>
-        <hr />
+
         <Campo label="Barras de error">
           <Select value={o.error} onChange={(v) => setO('error', v)}
-            opciones={[['ic95', 'IC 95 %'], ['sd', 'Desviación estándar'], ['sem', 'Error estándar (SEM)'], ['ninguno', 'Ninguna']]} />
+            opciones={[['sd', 'Desviación estándar (entre pocillos)'], ['sem', 'Error estándar (SEM)'], ['ic95', 'IC 95 %'], ['ninguno', 'Ninguna']]} />
         </Campo>
-        <Campo label="Orden de las muestras">
-          <Select value={o.orden} onChange={(v) => setO('orden', v)}
-            opciones={[['lista', 'Como en la lista'], ['asc', 'Valor creciente'], ['desc', 'Valor decreciente']]} />
-        </Campo>
-        <Check label="Mostrar un punto por placa" checked={o.puntos} onChange={(v) => setO('puntos', v)} />
-        <Check label="Mostrar valores promedio" checked={o.medias} onChange={(v) => setO('medias', v)} />
-        {o.medias && <Check label="Mostrar error junto al promedio" checked={o.errores} onChange={(v) => setO('errores', v)} />}
-        {metrica === 'razon' && <Check label="Mostrar líneas de clasificación (1, 2 y 4 × ODc)" checked={o.lineas} onChange={(v) => setO('lineas', v)} />}
+        <Check label="Mostrar la OD sobre cada barra" checked={o.valores} onChange={(v) => setO('valores', v)} />
+        <Check label="Mostrar los pocillos individuales" checked={o.puntos} onChange={(v) => setO('puntos', v)} />
         <Campo label="Rotación de etiquetas (°)"><Num value={o.rotar} min={0} max={90} step={15} onChange={(v) => setO('rotar', v === '' ? 0 : v)} /></Campo>
-        <button className="primario ancho" onClick={() => setExp(true)} disabled={!filas.length}>Descargar imagen…</button>
+        <hr />
+        <Campo label="Prueba estadística (opcional)">
+          <Select value={o.test} onChange={(v) => setO('test', v)}
+            opciones={[['ninguno', 'Ninguna'], ['control', 'Cada muestra contra un control'], ['anova', 'ANOVA: ¿hay alguna diferencia?']]} />
+        </Campo>
+        {o.test === 'control' && (
+          <Campo label="Muestra control">
+            <Select value={control} onChange={(v) => setO('control', v)} opciones={grupos.map((g) => [g.muestra, g.muestra])} />
+          </Campo>
+        )}
+        <button className="primario ancho" onClick={() => setExp(true)} disabled={!grupos.length}>Descargar imagen…</button>
       </Panel>
 
       <div className="principal">
-        <h1>Comparación entre placas <span className="sub">· {etiquetaMetrica}</span></h1>
-        {placasSel.length < 2 && <p className="aviso-sel">Hay {placasSel.length === 1 ? 'una sola placa' : 'ninguna placa'} incluida: sin al menos 2 placas no se puede calcular el error ni hacer pruebas estadísticas.</p>}
-        {filas.length ? (
-          <BarChart ref={svg} filas={filas} puntos={o.puntos ? puntos : []} odc={metrica === 'razon' ? 1 : NaN} o={oGraf}
-            est={s.estilos.comparar} eje={ejeY} onContext={abrirMenu} nota={nota}
-            leyendaPuntos={o.puntos ? placasSel.map((p) => ({ nombre: p.nombre, color: colores[p.id] })) : []} />
-        ) : <Vacio texto="Elegí al menos una placa y una muestra con datos." />}
-        <p className="ayuda">Clic derecho sobre el gráfico: estilo de todos los textos. Pasá el mouse sobre un punto para ver de qué placa es.</p>
-        {anova && (
-          <p className="aviso-sel" style={{ background: '#f3f8ef', borderColor: '#d5e5c8', color: '#4b6b34' }}>
-            ANOVA de una vía entre las {stats.length} muestras: F({anova.df1}; {anova.df2}) = {Number.isFinite(anova.F) ? anova.F.toFixed(3) : '∞'}, p = {anova.p < 0.0001 ? '< 0,0001' : anova.p.toFixed(4)} {marcaSig(anova.p)}
-          </p>
-        )}
-        {o.test === 'control' && control && <p className="ayuda">Comparaciones contra <b>{control}</b> con la prueba t de Welch y ajuste de Holm. n = número de placas; con 2 o 3 placas por muestra la potencia es muy baja, mirá también los puntos.</p>}
+        <h1>Comparación entre placas <span className="sub">· OD de cada muestra</span></h1>
+        {grupos.length ? (
+          <GroupedBarChart ref={svg} grupos={grupos} placas={leyenda} o={oGraf} est={s.estilos.comparar} eje={s.ejeOD} onContext={abrirMenu} nota={nota} />
+        ) : <Vacio texto="Elegí al menos una placa y una muestra para mostrar." />}
+        <p className="ayuda">Clic derecho sobre el gráfico: estilo de todos los textos. Pasá el mouse sobre una barra para ver su placa y su valor. {nBarras > 0 && `${nBarras} barras.`}</p>
 
-        <TablaAvanzada id="comparacion_muestras" titulo="Resumen por muestra (entre placas)" columnas={colsStats} filas={tablaStats} onVista={noop} />
-        <TablaAvanzada id="clasificacion_por_placa" titulo="Clasificación por placa (OD ÷ ODc · clase)" columnas={['Muestra', ...nombresPlacas, 'Consistente']} filas={matriz} onVista={noop} />
-        <TablaAvanzada id="control_de_placas" titulo="Control de las placas" columnas={Object.keys(tablaPlacas[0] || { Placa: 1 })} filas={tablaPlacas} onVista={noop} />
+        {o.test === 'anova' && (
+          <section className="resultado-test">
+            <h2>Resultado del ANOVA</h2>
+            {anova ? (
+              <>
+                <p>F({anova.df1}; {anova.df2}) = {Number.isFinite(anova.F) ? anova.F.toFixed(3).replace('.', ',') : '∞'} · <b>p = {pTxt(anova.p)}</b></p>
+                <p>{anova.p < 0.05
+                  ? <><b>Hay diferencias</b> entre al menos dos de las muestras mostradas (p menor que 0,05). El ANOVA no dice cuáles: para eso usá «Cada muestra contra un control».</>
+                  : <><b>No hay evidencia de diferencias</b> entre las muestras mostradas (p mayor o igual que 0,05).</>}</p>
+              </>
+            ) : <p>No se puede calcular: hacen falta al menos 2 muestras y más datos que grupos.</p>}
+            <p className="ayuda">Cada placa cuenta como una réplica. Más detalle en Datos › Método, sección 7.</p>
+          </section>
+        )}
+
+        {o.test === 'control' && (
+          <section className="resultado-test">
+            <h2>Cada muestra contra «{control}»</h2>
+            <div className="tabla-scroll">
+              <table className="tabla">
+                <thead><tr><th>Muestra</th><th>Placas</th><th>Media entre placas</th><th>DE entre placas</th><th>Diferencia con el control</th><th>p</th><th>p ajustado</th><th>Resultado</th></tr></thead>
+                <tbody>
+                  {filasTest.map((f) => (
+                    <tr key={f.m} className={f.texto === 'control' ? 'fila-activa' : ''}>
+                      <td><b>{f.m}</b></td><td>{f.n}</td><td>{fmt(f.media)}</td><td>{fmt(f.sd)}</td>
+                      <td>{f.dif === null ? '–' : (f.dif > 0 ? '+' : '') + fmt(f.dif)}</td>
+                      <td>{pTxt(f.p)}</td><td>{pTxt(f.pa)}</td><td>{f.texto}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="ayuda">Cada placa cuenta como una réplica (n = número de placas). Con 2 o 3 placas la prueba detecta solo diferencias muy grandes. Cómo leer esta tabla: Datos › Método, sección 7.</p>
+          </section>
+        )}
       </div>
 
       <MenuContextual menu={menu} items={[
         ['Estilo de texto…', () => { cerrarMenu(); setDlg(true) }],
         ['Restablecer estilo de texto', () => { cerrarMenu(); s.setEstilos({ ...s.estilos, comparar: estiloDefecto() }) }],
       ]} />
-      {dlg && <EstiloDialog estilo={s.estilos.comparar} conClases ejeDefecto={ejeY} onClose={() => setDlg(false)}
+      {dlg && <EstiloDialog estilo={s.estilos.comparar} conClases={false} ejeDefecto={s.ejeOD} onClose={() => setDlg(false)}
         onGuardar={(e) => { s.setEstilos({ ...s.estilos, comparar: e }); setDlg(false) }} />}
       {exp && svg.current && (
         <ExportDialog nombre="comparacion_placas" size0={tamDe(svg.current)} onClose={() => setExp(false)}
           render={(ref, tam) => (
-            <BarChart ref={ref} filas={filas} puntos={o.puntos ? puntos : []} odc={metrica === 'razon' ? 1 : NaN} o={oGraf}
-              est={s.estilos.comparar} eje={ejeY} onContext={(e) => e.preventDefault()} tam={tam} nota={nota}
-              leyendaPuntos={o.puntos ? placasSel.map((p) => ({ nombre: p.nombre, color: colores[p.id] })) : []} />
+            <GroupedBarChart ref={ref} grupos={grupos} placas={leyenda} o={oGraf} est={s.estilos.comparar} eje={s.ejeOD}
+              onContext={(e) => e.preventDefault()} tam={tam} nota={nota} />
           )} />
       )}
     </div>
