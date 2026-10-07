@@ -69,7 +69,7 @@ const LeyendaX = ({ L, est }) => est.leyendaX.texto ? (
 // ---------------------------------------------------------------
 // GRÁFICO DE BARRAS
 // ---------------------------------------------------------------
-export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, est, eje, onContext, tam }, svgRef) {
+export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, est, eje, onContext, tam, nota, leyendaPuntos }, svgRef) {
   const [wrap, Wmed] = useAncho()
   const W = tam ? tam.w : Wmed
   const lineas = o.lineas && Number.isFinite(odc)
@@ -117,7 +117,7 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
     W, etiquetas: labels, ang: o.rotar, est, yLabels,
     derecha: lineas ? wClases + 28 : 16,
     titulo: !!est.titulo.texto, tituloX: !!est.leyendaX.texto, altoPlot: 340 + est.valores.size * 2,
-    extraAbajo: (leyenda ? 30 : 0) + 22, fijoH: tam ? tam.h : 0,
+    extraAbajo: (leyenda ? 30 : 0) + (leyendaPuntos?.length ? 26 : 0) + 22, fijoH: tam ? tam.h : 0,
     anchoTituloY: medir(est.leyendaY.texto || eje, est.leyendaY.size, est.leyendaY.bold, est.leyendaY.italic),
   })
   const y = (v) => L.top + L.plotH - (v / yMax) * L.plotH
@@ -165,8 +165,10 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
                 </g>
               )}
               {o.puntos && pts.map((q, k) => (
-                <circle key={q.Pocillo} cx={cx(i) + (pts.length > 1 ? (k / (pts.length - 1) - 0.5) * bw * 0.45 : 0)} cy={y(q.OD)} r="3.3"
-                  fill="#1b1f23" fillOpacity="0.85" />
+                <circle key={q.Pocillo} cx={cx(i) + (pts.length > 1 ? (k / (pts.length - 1) - 0.5) * bw * 0.45 : 0)} cy={y(q.OD)} r={q.color ? 4.4 : 3.3}
+                  fill={q.color || '#1b1f23'} fillOpacity="0.9" stroke={q.color ? '#fff' : 'none'} strokeWidth="1">
+                  <title>{`${q.Pocillo}: ${fmt(q.OD)}`}</title>
+                </circle>
               ))}
               {o.medias && (
                 <EtiquetaFondo x={cx(i)} y={y(topDe[i]) - 7} est={est.valores}
@@ -206,8 +208,26 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
             })()}
           </g>
         )}
+        {leyendaPuntos?.length > 0 && (
+          <g transform={`translate(${L.left + L.plotW / 2},${yLeyenda + (leyenda ? 26 : 0)})`}>
+            {(() => {
+              const w = leyendaPuntos.map((p) => 20 + medir(p.nombre, 12) + 18)
+              let x = -w.reduce((a, b) => a + b, 0) / 2
+              return leyendaPuntos.map((p, i) => {
+                const gr = (
+                  <g key={p.nombre} transform={`translate(${x},0)`}>
+                    <circle cx="6" cy="-4" r="5" fill={p.color} stroke="#fff" strokeWidth="1" />
+                    <text x="16" style={{ fontSize: 12, fill: '#333' }}>{p.nombre}</text>
+                  </g>
+                )
+                x += w[i]
+                return gr
+              })
+            })()}
+          </g>
+        )}
         <text x={L.left + L.plotW} y={L.H - 8} textAnchor="end" style={{ fontSize: 11, fill: '#6b7785' }}>
-          Barras: media de las réplicas aceptadas{errTxt ? `; error: ${errTxt}` : ''}
+          {nota ?? `Barras: media de las réplicas aceptadas${errTxt ? `; error: ${errTxt}` : ''}`}
         </text>
       </svg>
     </div>

@@ -42,13 +42,13 @@ function betacf(a, b, x) {
   }
   return h
 }
-function betaInc(x, a, b) {
+export function betaInc(x, a, b) {
   if (x <= 0) return 0
   if (x >= 1) return 1
   const bt = Math.exp(lgamma(a + b) - lgamma(a) - lgamma(b) + a * Math.log(x) + b * Math.log(1 - x))
   return x < (a + 1) / (a + b + 2) ? (bt * betacf(a, b, x)) / a : 1 - (bt * betacf(b, a, 1 - x)) / b
 }
-const tCdf = (t, df) => {
+export const tCdf = (t, df) => {
   const p = 0.5 * betaInc(df / (df + t * t), df / 2, 0.5)
   return t > 0 ? 1 - p : p
 }

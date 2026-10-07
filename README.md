@@ -11,6 +11,12 @@ producción de biofilm según **Stepanović et al. (2000)**, *J Microbiol Method
 No requiere instalar nada (ni R ni Node.js) ni conexión a internet. Se abre en Edge, Chrome o Firefox.
 
 ## Qué hace
+- **Varias placas a la vez**: cada Excel (o cada hoja con una placa) es una placa distinta, con una barra de placas
+  arriba para cambiar de una a otra. Se puede copiar la distribución de muestras a todas las placas.
+- **La sesión guarda los datos de todos los Excel**: para continuar otro día alcanza con cargar la sesión.
+- **Comparar entre placas**: cada placa es una réplica biológica (n = número de placas). Valor `OD ÷ ODc` por placa,
+  media ± error entre placas, prueba t de Welch contra un control con ajuste de Holm, ANOVA, matriz de
+  consistencia de la clasificación y control de las placas (verificado contra R).
 - Lee el archivo del lector (`.xlsx`, `.csv`, `.txt`), detecta la placa y la longitud de onda.
 - Configuración de pocillos por arrastre, con muestras, réplicas automáticas y blancos.
 - Detección de valores atípicos: filtro de Hampel (mediana y MAD), test Q de Dixon y test de Dixon general.

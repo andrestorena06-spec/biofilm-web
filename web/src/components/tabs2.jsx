@@ -259,7 +259,7 @@ function PopoverFiltro({ col, pos, valor, onChange, onClose }) {
   )
 }
 
-function TablaAvanzada({ id, titulo, columnas, filas, onVista }) {
+export function TablaAvanzada({ id, titulo, columnas, filas, onVista }) {
   const [orden, setOrden] = useState(columnas)
   const [filtros, setFiltros] = useState({})
   const [abierto, setAbierto] = useState(null)
@@ -455,6 +455,24 @@ function MetodoDetalle({ d, odc }) {
       <h3>6. Qué pasa con los sospechosos</h3>
       <p>Sea cual sea el método, un pocillo sospechoso solo se <b>excluye automáticamente</b> si activás esa opción. Siempre podés forzar el estado de cada pocillo con un clic en el gráfico o en el mapa de la placa: lo que se decide a mano tiene prioridad sobre el test. Un pocillo excluido a mano no entra en el cálculo de los tests ni en las medias, y si era un blanco deja de contarse en el ODc.</p>
       <p className="ayuda">Un test estadístico no distingue un error experimental de una variación biológica real: revisá cada sospechoso antes de excluirlo y no elimines datos solo porque no te gusta el resultado.</p>
+
+      <h3>7. Comparación entre placas</h3>
+      <p>En la pestaña Comparar, cada placa aporta <b>un solo valor por muestra</b>: la media de sus réplicas aceptadas en esa placa. Los pocillos de una misma placa son <b>réplicas técnicas</b>; las placas (hechas en días o experimentos distintos) son las <b>réplicas biológicas</b>. Por eso el <b>n de la comparación es el número de placas</b>, no el de pocillos. Tratar los pocillos como réplicas independientes inflaría el n y daría diferencias «significativas» que no lo son (pseudorreplicación).</p>
+      <p><b>Valor que se compara</b> (se elige en el panel):</p>
+      <ul>
+        <li><b>OD ÷ ODc de su placa</b> (recomendado): <code>R = Media_muestra / ODc_placa</code>. Cada placa tiene su propio blanco y su propio ODc, así que dividir por él quita la variación entre placas (lector, medio, día). Un valor 1 es el punto de corte; la clasificación de Stepanović se vuelve R ≤ 1, 1–2, 2–4 y &gt; 4.</li>
+        <li><b>OD media</b>: la OD sin normalizar. Solo es comparable si las placas son muy parecidas; no permite clasificar porque cada placa tiene un ODc distinto.</li>
+        <li><b>% del control</b>: <code>100 × Media_muestra / Media_control</code>, con el control de la <i>misma placa</i>.</li>
+      </ul>
+      <p><b>Resumen por muestra</b> con las n placas: media, DE, SEM e IC 95 % con las fórmulas de la sección 2, con n = número de placas y t(0,975; n − 1). Con una sola placa no hay error.</p>
+      <p><b>Pruebas estadísticas</b> (opcionales):</p>
+      <ul>
+        <li><b>Prueba t de Welch contra el control</b> (bilateral, no supone varianzas iguales): <code>t = (x̄₁ − x̄₂) / √(s₁²/n₁ + s₂²/n₂)</code>, con grados de libertad de Welch–Satterthwaite <code>gl = (s₁²/n₁ + s₂²/n₂)² / [ (s₁²/n₁)²/(n₁−1) + (s₂²/n₂)²/(n₂−1) ]</code>. Equivale a <code>t.test(x, y)</code> de R. Necesita al menos 2 placas por muestra.</li>
+        <li><b>Ajuste de Holm</b> para comparar varias muestras contra el control: se ordenan los p de menor a mayor y <code>p_aj(k) = máx de los ( (m − j + 1) × p(j) ) para j ≤ k</code>, limitado a 1. Equivale a <code>p.adjust(p, "holm")</code>.</li>
+        <li><b>ANOVA de una vía</b> (p global entre todas las muestras comparadas): <code>F = [SCentre / (k − 1)] / [SCdentro / (N − k)]</code>. Equivale a <code>summary(aov(y ~ muestra))</code>.</li>
+      </ul>
+      <p>Se verificó que estas funciones dan los mismos valores que R. Con 2 o 3 placas por muestra las pruebas tienen muy poca potencia: mirá los puntos individuales además del valor de p.</p>
+      <p><b>Consistencia entre placas</b>: para cada muestra se muestra la clasificación que le tocó en cada placa; es <i>consistente</i> si es la misma en todas.</p>
     </section>
   )
 }
