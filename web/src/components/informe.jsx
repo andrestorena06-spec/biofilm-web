@@ -15,7 +15,7 @@ const tabla = (cols, filas) => `<table><thead><tr>${cols.map((c) => `<th>${esc(c
 // Informe en PDF de todo lo procesado: se arma una página con gráficos y tablas y se abre el cuadro de impresión
 // (en Chrome: Destino › «Guardar como PDF»).
 export function abrirInforme(s) {
-  const conAn = s.placas.filter((p) => s.analisisMap[p.id]?.resumen?.length)
+  const conAn = s.placas.filter((p) => !p.oculta && s.analisisMap[p.id]?.resumen?.length)
   if (!conAn.length) return false
   const noop = () => {}
   const ejeDe = (p) => (Number.isFinite(p.placa?.onda) ? `DO a ${p.placa.onda} nm` : 'Densidad óptica (OD)')
@@ -54,22 +54,22 @@ export function abrirInforme(s) {
     </section>`
   })
 
-  // comparaciÃ³n entre placas: la misma que se ve en Â«CompararÂ» (columnas por placa, por medio o por pocillo; barras, cajas y puntos)
+  // comparación entre placas: la misma que se ve en «Comparar» (columnas por placa, por medio o por pocillo; barras, cajas y puntos)
   let comparacion = ''
   if (conAn.length > 1) {
     const oc = s.opts.comparar
     const D = armarComparacion(s)
     const el = {
-      barras: oc.barras !== false, cajas: !!oc.cajas, puntos: oc.puntos !== false, barrasError: oc.barrasError !== false,
+      barras: oc.barras !== false, barrasError: oc.barrasError !== false, caja: oc.caja ?? !!oc.cajas, mediana: oc.mediana ?? !!oc.cajas, bigotes: oc.bigotes ?? !!oc.cajas, media: oc.media ?? !!oc.cajas, puntos: oc.puntos !== false,
       valores: oc.valores !== false, errores: !!oc.errores, rotar: oc.rotar ?? 45,
     }
-    if (D.grupos.length && (el.barras || el.cajas || el.puntos)) {
+    if (D.grupos.length && (el.barras || el.caja || el.mediana || el.bigotes || el.media || el.puntos)) {
       const fig = svgStr(<CompararChart grupos={D.grupos} leyenda={D.leyenda} o={el} est={s.estilos.comparar} eje={ejeDe(D.placasSel[0])} tam={{ w: 900, h: 560 }} nota={D.nota} />)
       const filasT = D.grupos.flatMap((g) => g.barras.map((b) => ({
         Muestra: g.etiqueta, [D.modo === 'medio' ? 'Medio' : D.modo === 'pocillo' ? 'Pocillo' : 'Placa']: b.placa,
         OD_media: r4(b.media), Error: b.err === null || b.err === undefined ? '' : r4(b.err), N: (b.vp || b.pts).length,
       })))
-      comparacion = `<section class="placa salto"><h2>ComparaciÃ³n entre placas${D.modo === 'medio' ? ' por medio de cultivo' : D.modo === 'pocillo' ? ' (pocillo por pocillo)' : ''}</h2>
+      comparacion = `<section class="placa salto"><h2>Comparación entre placas${D.modo === 'medio' ? ' por medio de cultivo' : D.modo === 'pocillo' ? ' (pocillo por pocillo)' : ''}</h2>
         <p class="meta">${D.placasSel.map((p) => `<b>${esc(p.nombre)}</b>${p.medio ? ' (' + esc(p.medio) + ')' : ''}`).join(' Â· ')}</p>
         <div class="fig">${fig}</div>${tabla(Object.keys(filasT[0]), filasT)}</section>`
     }

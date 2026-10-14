@@ -277,3 +277,12 @@ code { background: #f6ebdb; }
 .medio-placa { background: #f1e3cf; color: #7a4a1c; border-radius: 999px; padding: 1px 8px; margin-left: 6px; font-size: 10.5px; font-weight: 600; }
 .con-lateral.lateral-der { grid-template-columns: minmax(0, 1fr) 330px; }
 .lateral-der .lateral h3 { text-transform: none; letter-spacing: 0; }
+
+.desplegable { position: relative; }
+.desplegable-btn { display: flex; align-items: center; gap: 8px; width: 100%; justify-content: space-between; text-align: left; padding: 8px 12px; border-radius: 8px; }
+.desplegable-btn small { margin-left: auto; color: var(--suave); }
+.desplegable-btn.abierto { border-color: var(--acento); background: var(--acento-claro); }
+.desplegable-panel { position: absolute; z-index: 40; top: calc(100% + 4px); left: 0; max-width: calc(100vw - 40px); background: #fffdf9; border: 1px solid var(--borde); border-radius: 10px; box-shadow: 0 10px 28px rgba(60, 40, 20, .22); padding: 10px 12px; }
+.chip-placa.oculta { opacity: .55; border-style: dashed; }
+.agregar-placa.ver-ocultas { border-style: solid; color: var(--suave); }
+.agregar-placa.ver-ocultas.on { background: var(--acento-claro); color: var(--acento-osc); }

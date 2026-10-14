@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { CompararChart } from './compararchart.jsx'
+import { Desplegable } from './desplegable.jsx'
 import { ExportDialog } from './exportar.jsx'
 import { Vacio } from './tabs.jsx'
 import { Campo, Check, EstiloDialog, MenuContextual, Num, Panel, Select, useMenuContextual } from './ui.jsx'
@@ -24,11 +25,21 @@ export function CompararTab({ s }) {
   const D = useMemo(() => armarComparacion(s), [s.placas, s.analisisMap, s.muestras, o])
   const { modo, conAnalisis, placasSel, mediosPres, colores, colorBase, ocultos, clave, muestras, etiqueta, tieneMuestra, grupos, leyenda, nota, sinMedio } = D
 
+  // elementos del gráfico (cada uno se muestra u oculta por separado; las sesiones viejas traían una sola opción «cajas»)
   const elementos = {
-    barras: o.barras !== false, cajas: !!o.cajas, puntos: o.puntos !== false, barrasError: o.barrasError !== false,
-    valores: o.valores !== false, errores: !!o.errores, rotar: o.rotar ?? 45,
+    barras: o.barras !== false, barrasError: o.barrasError !== false,
+    caja: o.caja ?? !!o.cajas, mediana: o.mediana ?? !!o.cajas, bigotes: o.bigotes ?? !!o.cajas, media: o.media ?? !!o.cajas,
+    puntos: o.puntos !== false, valores: o.valores !== false, errores: !!o.errores, rotar: o.rotar ?? 45,
+    errorNombre: { sd: 'desviación estándar', sem: 'error estándar de la media', ic95: 'intervalo de confianza del 95 %', ninguno: 'error' }[o.error] || 'error',
   }
-  const sinElementos = !elementos.barras && !elementos.cajas && !elementos.puntos
+  const sinElementos = !elementos.barras && !elementos.caja && !elementos.mediana && !elementos.bigotes && !elementos.media && !elementos.puntos
+  const LISTA = [
+    ['barras', 'Barras (promedio)'], ['barrasError', 'Barras de error'], ['caja', 'Caja (cuartiles Q1–Q3)'], ['mediana', 'Mediana (línea)'],
+    ['bigotes', 'Bigotes (mínimo y máximo)'], ['media', 'Media (rombo ◇)'], ['puntos', modo === 'medio' && o.puntosMedio === 'placas' ? 'Puntos (uno por placa)' : 'Puntos (cada valor)'],
+    ['valores', 'Etiquetas con el valor'], ['errores', 'Error dentro de la etiqueta'],
+  ]
+  const nActivos = LISTA.filter(([k]) => elementos[k]).length
+  const poner = (cambios) => setVarios({ ...cambios, cajas: undefined })
 
   if (!conAnalisis.length) {
     return <Vacio texto="Cargá al menos dos placas (botón «+ Agregar placa»), configurá sus pocillos y volvé acá para compararlas." />
@@ -96,7 +107,6 @@ export function CompararTab({ s }) {
     const sin = (o.ocultos || []).filter((x) => !ks.includes(x))
     setO('ocultos', v ? sin : [...sin, ...ks])
   }
-  const preset = elementos.barras && elementos.cajas ? 'ambas' : elementos.cajas ? 'cajas' : elementos.barras ? 'barras' : ''
 
   return (
     <div className="con-lateral">
@@ -117,20 +127,18 @@ export function CompararTab({ s }) {
         )}
 
         <Campo label="Qué mostrar en el gráfico">
-          <div className="seg">
-            <button className={preset === 'barras' ? 'on' : ''} onClick={() => setVarios({ barras: true, cajas: false })}>Barras</button>
-            <button className={preset === 'cajas' ? 'on' : ''} onClick={() => setVarios({ barras: false, cajas: true })}>Cajas</button>
-            <button className={preset === 'ambas' ? 'on' : ''} onClick={() => setVarios({ barras: true, cajas: true })}>Ambas</button>
-          </div>
-          <div className="lista-check" style={{ marginTop: 6 }}>
-            <Check label="Barras (promedio)" checked={elementos.barras} onChange={(v) => setO('barras', v)} />
-            <Check label="Cajas (cuartiles, mediana y media ◇)" checked={elementos.cajas} onChange={(v) => setO('cajas', v)} />
-            <Check label={modo === 'medio' && o.puntosMedio === 'placas' ? 'Puntos (uno por placa)' : 'Puntos (pocillos)'} checked={elementos.puntos} onChange={(v) => setO('puntos', v)} />
-            <Check label="Barras de error" checked={elementos.barrasError} onChange={(v) => setO('barrasError', v)} />
-            <Check label="Etiquetas con el valor de cada columna" checked={elementos.valores} onChange={(v) => setO('valores', v)} />
-            {elementos.valores && <Check label="Incluir el error en la etiqueta" checked={elementos.errores} onChange={(v) => setO('errores', v)} />}
-          </div>
-          {sinElementos && <p className="aviso-sel">No hay nada para dibujar: activá barras, cajas o puntos.</p>}
+          <Desplegable etiqueta="Elementos del gráfico" resumen={`${nActivos} de ${LISTA.length}`} ancho={290}>
+            <div className="fila-ctrl" style={{ margin: '0 0 6px' }}>
+              <button className="chico" onClick={() => poner({ barras: true, barrasError: true, caja: false, mediana: false, bigotes: false, media: false, puntos: true })}>Barras</button>
+              <button className="chico" onClick={() => poner({ barras: false, barrasError: false, caja: true, mediana: true, bigotes: true, media: true, puntos: true })}>Cajas</button>
+              <button className="chico" onClick={() => poner({ barras: true, barrasError: true, caja: true, mediana: true, bigotes: true, media: true, puntos: true })}>Todo</button>
+            </div>
+            {LISTA.map(([k, t]) => (
+              <Check key={k} label={t} checked={elementos[k]} onChange={(v) => poner({ [k]: v })} />
+            ))}
+            <p className="ayuda" style={{ margin: '6px 0 0' }}>Los cambios se ven al instante. Hacé clic afuera para cerrar. Pasá el mouse por cada elemento del gráfico para ver qué es y cuánto vale.</p>
+          </Desplegable>
+          {sinElementos && <p className="aviso-sel">No hay nada para dibujar: activá barras, caja, mediana, bigotes, media o puntos.</p>}
           {modo === 'pocillo' && <p className="ayuda">Con una columna por pocillo no hay cajas ni barras de error (cada columna es un solo valor).</p>}
         </Campo>
         {(modo === 'placas' || modo === 'medio') && (

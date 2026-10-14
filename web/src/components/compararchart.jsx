@@ -1,15 +1,14 @@
 import { forwardRef } from 'react'
-import { calcularLayout, estiloTexto } from '../layout.js'
+import { calcularLayout } from '../layout.js'
 import { FUENTE, fmt, fmtTick, medir, ticksBonitos } from '../utils.js'
 import { EjeY, EtiquetaFondo, EtiquetasX, LeyendaX, Titulo, useAncho } from './charts.jsx'
 
 // ---------------------------------------------------------------
-// GRÁFICO DE COMPARACIÓN: barras, cajas, puntos y barras de error, cada elemento se muestra u oculta por separado.
+// GRÁFICO DE COMPARACIÓN: cada elemento se muestra u oculta por separado (barras, barras de error, caja de cuartiles,
+// mediana, bigotes, media, puntos y etiquetas). Al pasar el mouse por cada elemento se explica qué es y cuánto vale.
 // grupos: [{ muestra, etiqueta?, barras: [{ id, placa, color, media, err, pts: [OD], detalle?: [{ v, color, tip }] }] }]
-//   media/err: altura de la barra y su error; pts: valores para la caja (cuartiles) y los puntos;
-//   detalle: (opcional) los mismos puntos con color propio (por ejemplo, el de cada placa dentro de un medio)
 // leyenda: [{ id, nombre, color }]
-// o: { barras, cajas, puntos, barrasError, valores, errores, rotar }
+// o: { barras, barrasError, caja, mediana, bigotes, media, puntos, valores, errores, rotar, errorNombre }
 // ---------------------------------------------------------------
 const cuantil = (v, q) => {
   const a = [...v].sort((x, y) => x - y)
@@ -25,16 +24,17 @@ export const CompararChart = forwardRef(function CompararChart({ grupos, leyenda
   const labels = grupos.map((g) => g.etiqueta || g.muestra)
   const nmax = Math.max(1, ...grupos.map((g) => g.barras.length))
   const conErr = (b) => Number.isFinite(b.err) && b.err > 0
+  const usaPts = o.caja || o.bigotes || o.puntos || o.mediana
 
   // extremos de cada columna (para la escala y para ubicar el valor escrito)
   const cima = (b) => Math.max(
-    o.barras ? b.media + (o.barrasError && conErr(b) ? b.err : 0) : -Infinity,
-    o.cajas || o.puntos ? Math.max(...b.pts) : -Infinity,
-    !o.barras && !o.cajas && !o.puntos ? b.media : -Infinity,
+    b.media,
+    o.barras && o.barrasError && conErr(b) ? b.media + b.err : -Infinity,
+    usaPts ? Math.max(...b.pts) : -Infinity,
   )
   const piso = (b) => Math.min(
     o.barras && o.barrasError && conErr(b) ? b.media - b.err : Infinity,
-    o.cajas || o.puntos ? Math.min(...b.pts) : Infinity,
+    usaPts ? Math.min(...b.pts) : Infinity,
   )
   const todasCimas = grupos.flatMap((g) => g.barras.map(cima)).filter(Number.isFinite)
   const todosPisos = grupos.flatMap((g) => g.barras.map(piso)).filter(Number.isFinite)
@@ -65,6 +65,7 @@ export const CompararChart = forwardRef(function CompararChart({ grupos, leyenda
   const sw = Math.max(Math.min((L.band * 0.84) / nmax, 78), 9)    // ancho de cada columna
   const bw = sw * 0.8
   const yLey = L.top + L.plotH + L.altoEtiquetas + L.altoLeyX + 36
+  const errNom = o.errorNombre || 'error'
 
   return (
     <div ref={wrap} className="chart-wrap" onContextMenu={onContext}>
@@ -78,45 +79,62 @@ export const CompararChart = forwardRef(function CompararChart({ grupos, leyenda
 
         {grupos.map((g, gi) => {
           const x0 = cx(gi) - (g.barras.length * sw) / 2
+          const nom = g.etiqueta || g.muestra
           return (
             <g key={g.muestra}>
               {gi % 2 === 1 && <rect x={cx(gi) - L.band / 2} y={L.top} width={L.band} height={L.plotH} fill="#f6f1e8" fillOpacity="0.6" />}
               {g.barras.map((b, k) => {
                 const mx = x0 + k * sw + sw / 2
-                const caja = o.cajas && b.pts.length >= 3
+                const n = b.pts.length
                 const q1 = cuantil(b.pts, 0.25), md = cuantil(b.pts, 0.5), q3 = cuantil(b.pts, 0.75)
                 const mn = Math.min(...b.pts), mxv = Math.max(...b.pts)
                 const puntos = b.detalle && b.detalle.length ? b.detalle : b.pts.map((v) => ({ v, color: b.color }))
                 const arriba = cima(b)
-                const tip = `${g.etiqueta || g.muestra} · ${b.placa}\nmedia = ${fmt(b.media)}${conErr(b) ? ` ± ${fmt(b.err)}` : ''}${caja ? `\nmediana = ${fmt(md)}\nQ1–Q3 = ${fmt(q1)} – ${fmt(q3)}` : ''}\n${b.pts.length} ${b.pts.length === 1 ? 'valor' : 'valores'}`
+                const cab = `${nom} · ${b.placa}`
+                const V = (x) => fmt(x)
                 return (
                   <g key={b.id}>
-                    <title>{tip}</title>
                     {o.barras && (
                       <rect x={mx - bw / 2} y={y(Math.max(b.media, 0))} width={bw} height={Math.max(Math.abs(y(0) - y(b.media)), 0.5)} rx="2"
-                        fill={b.color} fillOpacity={o.cajas ? 0.3 : 0.92} stroke={b.color} strokeWidth="1" />
+                        fill={b.color} fillOpacity={o.caja ? 0.3 : 0.92} stroke={b.color} strokeWidth="1">
+                        <title>{`${cab}\nBarra: promedio (media) de los ${n} ${n === 1 ? 'valor' : 'valores'} = ${V(b.media)}`}</title>
+                      </rect>
                     )}
                     {o.barras && o.barrasError && conErr(b) && (
                       <g stroke="#222" strokeWidth="1.4">
+                        <title>{`${cab}\nBarra de error: ± ${V(b.err)} (${errNom}).\nVa de ${V(b.media - b.err)} a ${V(b.media + b.err)}: indica cuánto varían los valores alrededor de la media.`}</title>
                         <line x1={mx} x2={mx} y1={y(Math.max(b.media - b.err, eY.min))} y2={y(b.media + b.err)} />
                         <line x1={mx - bw * 0.2} x2={mx + bw * 0.2} y1={y(b.media + b.err)} y2={y(b.media + b.err)} />
                         <line x1={mx - bw * 0.2} x2={mx + bw * 0.2} y1={y(Math.max(b.media - b.err, eY.min))} y2={y(Math.max(b.media - b.err, eY.min))} />
                       </g>
                     )}
-                    {caja && (
-                      <g>
-                        <line x1={mx} x2={mx} y1={y(mn)} y2={y(mxv)} stroke="#444" strokeWidth="1.2" />
-                        <line x1={mx - bw * 0.16} x2={mx + bw * 0.16} y1={y(mn)} y2={y(mn)} stroke="#444" strokeWidth="1.2" />
-                        <line x1={mx - bw * 0.16} x2={mx + bw * 0.16} y1={y(mxv)} y2={y(mxv)} stroke="#444" strokeWidth="1.2" />
-                        <rect x={mx - bw * 0.3} y={y(q3)} width={bw * 0.6} height={Math.max(y(q1) - y(q3), 1)} rx="2" fill="#fff" fillOpacity="0.8" stroke={b.color} strokeWidth="1.6" />
-                        <line x1={mx - bw * 0.3} x2={mx + bw * 0.3} y1={y(md)} y2={y(md)} stroke="#222" strokeWidth="2.2" />
-                        <path d={`M${mx - 5},${y(b.media)} L${mx},${y(b.media) - 5} L${mx + 5},${y(b.media)} L${mx},${y(b.media) + 5} Z`} fill="#fff" stroke="#222" strokeWidth="1.2" />
+                    {o.bigotes && n >= 2 && (
+                      <g stroke="#444" strokeWidth="1.2">
+                        <title>{`${cab}\nBigotes: del valor mínimo (${V(mn)}) al máximo (${V(mxv)}).\nMuestran todo el rango de los ${n} valores.`}</title>
+                        <line x1={mx} x2={mx} y1={y(mn)} y2={y(mxv)} />
+                        <line x1={mx - bw * 0.16} x2={mx + bw * 0.16} y1={y(mn)} y2={y(mn)} />
+                        <line x1={mx - bw * 0.16} x2={mx + bw * 0.16} y1={y(mxv)} y2={y(mxv)} />
                       </g>
+                    )}
+                    {o.caja && n >= 3 && (
+                      <rect x={mx - bw * 0.3} y={y(q3)} width={bw * 0.6} height={Math.max(y(q1) - y(q3), 1)} rx="2" fill="#fff" fillOpacity="0.8" stroke={b.color} strokeWidth="1.6">
+                        <title>{`${cab}\nCaja (cuartiles): Q1 = ${V(q1)} (25 % de los valores por debajo) y Q3 = ${V(q3)} (75 % por debajo).\nEl 50 % central de los valores está entre ${V(q1)} y ${V(q3)} (ancho = ${V(q3 - q1)}).`}</title>
+                      </rect>
+                    )}
+                    {o.mediana && (
+                      <line x1={mx - bw * 0.3} x2={mx + bw * 0.3} y1={y(md)} y2={y(md)} stroke="#222" strokeWidth="2.4">
+                        <title>{`${cab}\nMediana = ${V(md)}: la mitad de los valores está por debajo y la otra mitad por encima. Casi no se afecta por valores extremos.`}</title>
+                      </line>
+                    )}
+                    {o.media && (
+                      <path d={`M${mx - 5},${y(b.media)} L${mx},${y(b.media) - 5} L${mx + 5},${y(b.media)} L${mx},${y(b.media) + 5} Z`} fill="#fff" stroke="#222" strokeWidth="1.2">
+                        <title>{`${cab}\nMedia (rombo) = ${V(b.media)}: el promedio de los valores.`}</title>
+                      </path>
                     )}
                     {o.puntos && puntos.map((p, j) => (
                       <circle key={j} cx={mx + (puntos.length > 1 ? (((j * 0.6180339) % 1) - 0.5) * bw * 0.56 : 0)} cy={y(p.v)} r="3.6"
                         fill={p.color} fillOpacity="0.92" stroke="#fff" strokeWidth="1">
-                        <title>{p.tip || `${b.placa}: ${fmt(p.v)}`}</title>
+                        <title>{`${p.tip || `${b.placa}: ${V(p.v)}`}\n(cada punto es un valor medido)`}</title>
                       </circle>
                     ))}
                     {o.valores && Number.isFinite(arriba) && (

@@ -5,7 +5,7 @@ import { PlacaTab, AnalisisTab } from './components/tabs.jsx'
 import { ArchivoTab } from './components/archivo.jsx'
 import { ExcluirTab, GraficoTab, DatosTab } from './components/tabs2.jsx'
 import { CompararTab } from './components/comparar.jsx'
-import { Modal } from './components/ui.jsx'
+import { MenuContextual, Modal, useMenuContextual } from './components/ui.jsx'
 import { estiloDefecto, normalizarEstilo, paletaMuestras } from './utils.js'
 
 const CLAVE = 'biofilm-react-v3'
@@ -27,7 +27,7 @@ const optsDef = () => ({
     blancos: true,                  // mostrar también los blancos
     testG: 'ninguno', controlG: '',
   },
-  archivo: { layoutBase: '' },      // placa cuyo layout se copia a las placas nuevas que se carguen
+  archivo: { layoutBase: '', verOcultas: false },   // layoutBase: placa cuyo layout se copia a las nuevas; verOcultas: mostrar las placas ocultas
 })
 const deteccionDef = () => ({ metodo: 'q', usar: false, conf: '95', cvMax: 20 })
 // sesiones guardadas con métodos que ya no existen (Hampel, Dixon general) pasan al test Q
@@ -91,6 +91,8 @@ export default function App() {
   const gi = pendiente ? {} : g
   const [tab, setTab] = useState(gi.tab || 'archivo')
   const [avisoChrome, setAvisoChrome] = useState(() => !esChrome())
+  const [menu, abrirMenu, cerrarMenu] = useMenuContextual()
+  const [menuPlaca, setMenuPlaca] = useState(null)
   const [placas, setPlacas] = useState(() => placasIniciales(gi))
   const [activaId, setActivaId] = useState(() => gi.activaId || null)
   const [muestras, setMuestras] = useState(gi.muestras || MUESTRAS_DEF)
@@ -324,6 +326,18 @@ export default function App() {
     avisar(`Layout de «${o.nombre}» copiado a «${d.nombre}» (${cfg.length} pocillos).`)
   }
 
+  // Una placa oculta queda fuera de los cálculos (comparación, informe); se ve con «Ver placas ocultas» y se puede volver a mostrar
+  const ocultarPlaca = (id, v) => {
+    actualizar(id, { oculta: v })
+    if (v) {
+      if (activaId === id) {
+        const otra = placas.find((p) => p.id !== id && !p.oculta)
+        if (otra) setActivaId(otra.id)
+      }
+      avisar('Placa oculta: queda fuera de los cálculos. Se ve con «Ver placas ocultas».')
+    }
+  }
+
   const renombrarPlaca = (id, nombre) => {
     if (!nombre) return avisar('El nombre no puede estar vacío.', 'error')
     if (placas.some((p) => p.id !== id && p.nombre.toLowerCase() === nombre.toLowerCase())) return avisar(`Ya hay una placa llamada «${nombre}».`, 'error')
@@ -497,31 +511,49 @@ export default function App() {
         )}
         {!motor && <div className="banner">No se pudo conectar con el motor de cálculo (R). Abrí la aplicación con <b>abrir_biofilm_web.bat</b>.</div>}
         <div className="barra-placas">
-          {placas.map((p) => (
+          {placas.filter((p) => !p.oculta || opts.archivo.verOcultas).map((p) => (
             <div key={p.id} role="tab" tabIndex={0} aria-selected={p.id === activa?.id}
-              className={`chip-placa ${p.id === activa?.id ? 'activa' : ''} ${arrastrandoSobre === p.id ? 'sobre' : ''}`}
+              className={`chip-placa ${p.id === activa?.id ? 'activa' : ''} ${arrastrandoSobre === p.id ? 'sobre' : ''} ${p.oculta ? 'oculta' : ''}`}
+              onContextMenu={(e) => { setMenuPlaca(p.id); abrirMenu(e) }}
               draggable
               onDragStart={(e) => { arrastrada.current = p.id; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', p.id) }}
               onDragOver={(e) => { if (arrastrada.current) { e.preventDefault(); setArrastrandoSobre(p.id) } }}
               onDragLeave={() => setArrastrandoSobre((v) => (v === p.id ? null : v))}
               onDrop={(e) => { e.preventDefault(); if (arrastrada.current) reordenarPlacas(arrastrada.current, p.id); arrastrada.current = null; setArrastrandoSobre(null) }}
               onDragEnd={() => { arrastrada.current = null; setArrastrandoSobre(null) }}
-              onClick={() => setActivaId(p.id)} title="Clic para ver esta placa · arrastrá para cambiar el orden · doble clic para renombrar"
+              onClick={() => setActivaId(p.id)} title="Clic para ver esta placa · arrastrá para cambiar el orden · doble clic para renombrar · clic derecho: ocultar, renombrar o quitar"
               onDoubleClick={() => { const n = window.prompt('Nombre de la placa', p.nombre); if (n !== null) renombrarPlaca(p.id, n.trim()) }}>
               <i className="punto-placa" style={{ background: colores[p.id] }} />
               <span className="nombre-placa">{p.nombre}</span>
               {p.medio && <small className="medio-placa">{p.medio}</small>}
               {analisisMap[p.id] && Number.isFinite(analisisMap[p.id].odc?.odc) && <small>ODc {analisisMap[p.id].odc.odc.toFixed(3)}</small>}
               {!p.placa && <small className="sin-datos-placa">sin datos</small>}
+              {p.oculta && <small className="sin-datos-placa">oculta</small>}
               <button className="x-placa" aria-label={`Quitar ${p.nombre}`} onClick={(e) => { e.stopPropagation(); quitarPlaca(p.id) }}>×</button>
             </div>
           ))}
+          {placas.some((p) => p.oculta) && (
+            <button className={`agregar-placa ver-ocultas ${opts.archivo.verOcultas ? 'on' : ''}`}
+              onClick={() => setOpts((o) => ({ ...o, archivo: { ...o.archivo, verOcultas: !o.archivo.verOcultas } }))}
+              title="Las placas ocultas quedan fuera de los cálculos, la comparación y el informe">
+              {opts.archivo.verOcultas ? 'Esconder placas ocultas' : `Ver placas ocultas (${placas.filter((p) => p.oculta).length})`}
+            </button>
+          )}
           <button className="agregar-placa" onClick={() => inputPlacas.current.click()}>+ Agregar placa</button>
           <button className="agregar-placa" onClick={nuevaPlacaVacia} title="Crear una placa sin Excel para dejar lista su configuración, nombre y medio">+ Placa sin Excel</button>
           <input ref={inputPlacas} type="file" multiple hidden accept={ACEPTA_LIBRO}
             onChange={(e) => { agregarPlacas(e.target.files); e.target.value = '' }} />
         </div>
         <Vista s={s} />
+        <MenuContextual menu={menu} items={(() => {
+          const p = placas.find((x) => x.id === menuPlaca)
+          if (!p) return []
+          return [
+            [p.oculta ? 'Mostrar placa (volver a los cálculos)' : 'Ocultar placa (queda fuera de los cálculos)', () => { cerrarMenu(); ocultarPlaca(p.id, !p.oculta) }],
+            ['Renombrar…', () => { cerrarMenu(); const n = window.prompt('Nombre de la placa', p.nombre); if (n !== null) renombrarPlaca(p.id, n.trim()) }],
+            ['Quitar placa…', () => { cerrarMenu(); quitarPlaca(p.id) }],
+          ]
+        })()} />
       </main>
       {pendiente && (
         <Modal titulo="Encontré trabajo anterior" ancho={540}

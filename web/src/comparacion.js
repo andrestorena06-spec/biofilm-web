@@ -20,7 +20,7 @@ export function armarComparacion(s) {
   const o = s.opts.comparar
   const modo = ['placas', 'medio', 'pocillo'].includes(o.modo) ? o.modo : 'placas'
   const verBlancos = o.blancos !== false
-  const conAnalisis = s.placas.filter((p) => s.analisisMap[p.id]?.resumen?.length)
+  const conAnalisis = s.placas.filter((p) => !p.oculta && s.analisisMap[p.id]?.resumen?.length)
   const sel0 = o.placasSel ? conAnalisis.filter((p) => o.placasSel.includes(p.id)) : conAnalisis
   // las placas se ordenan por medio de cultivo (las del mismo medio quedan juntas)
   const ordenMedios = [...new Set(s.placas.map((p) => p.medio || ''))].filter(Boolean)
