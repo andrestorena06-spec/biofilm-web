@@ -83,9 +83,9 @@ export function ArchivoTab({ s }) {
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => { e.preventDefault(); abrirArchivos(e.dataTransfer.files) }}>
           <strong>{cargando ? 'Leyendo…' : 'Soltá uno o varios Excel acá, o hacé clic para elegirlos'}</strong>
-          <span>Cada archivo (o cada hoja con una placa) se agrega como una placa distinta · .xlsx · .csv · .txt</span>
+          <span>Cada archivo (o cada hoja con una placa) se agrega como una placa distinta · solo Excel en formato nuevo (.xlsx)</span>
         </div>
-        <input ref={inputRef} type="file" multiple hidden accept=".xlsx,.xls,.csv,.txt"
+        <input ref={inputRef} type="file" multiple hidden accept=".xlsx"
           onChange={(e) => { abrirArchivos(e.target.files, destinoRef.current); e.target.value = ''; destinoRef.current = null }} />
 
         {s.placas.length > 0 && (

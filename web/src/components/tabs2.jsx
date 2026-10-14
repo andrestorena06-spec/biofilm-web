@@ -4,13 +4,14 @@ import { Campo, Check, EstiloDialog, MenuContextual, Num, Panel, Select, useMenu
 import { ExportDialog } from './exportar.jsx'
 import { Vacio } from './tabs.jsx'
 import { excelDe } from '../api.js'
-import { Q_TABLA, DIXON_TABLA } from '../criticos.js'
+import { Q_TABLA } from '../criticos.js'
+import { criticoGrubbs, normalizarMetodo } from '../motor.js'
 import { descargarBlob, estiloDefecto, fmt, tCuantil } from '../utils.js'
 
-const METODOS = [['hampel', 'Filtro de Hampel (mediana y MAD)'], ['q', 'Test Q de Dixon (n de 3 a 10)'], ['dixon', 'Test de Dixon general (n de 3 a 30)']]
+const METODOS = [['q', 'Test Q de Dixon (n de 3 a 10)'], ['grubbs', 'Test de Grubbs (n ≥ 3)'], ['cv', 'Coeficiente de variación (%RSD)']]
 // Tamaño (en unidades de figura) del gráfico que se ve ahora en pantalla
 const tamDe = (svg) => ({ w: svg.viewBox.baseVal.width, h: svg.viewBox.baseVal.height })
-const nombreMetodo ={ hampel: 'Hampel', q: 'Test Q', dixon: 'Test de Dixon' }
+const nombreMetodo = { q: 'Test Q de Dixon', grubbs: 'Test de Grubbs', cv: 'Coeficiente de variación (%RSD)' }
 
 // ===============================================================
 // EXCLUIR PUNTOS
@@ -22,7 +23,7 @@ export function ExcluirTab({ s }) {
   const [exp, setExp] = useState(false)
   const o = s.opts.excluir
   const setO = (k, v) => s.setOpts({ ...s.opts, excluir: { ...o, [k]: v } })
-  const d = s.deteccion
+  const d = { ...s.deteccion, metodo: normalizarMetodo(s.deteccion.metodo) }
   const setD = (k, v) => s.setDeteccion({ ...d, [k]: v })
 
   if (!s.analisis?.estado?.length) return <Vacio texto="Configurá los pocillos para poder excluir puntos." />
@@ -42,18 +43,14 @@ export function ExcluirTab({ s }) {
           <Select value={o.error} onChange={(v) => setO('error', v)}
             opciones={[['sd', 'Desviación estándar'], ['sem', 'Error estándar (SEM)'], ['ic95', 'IC 95 %']]} />
         </Campo>
-        {d.metodo === 'hampel' && <Check label="Mostrar banda de Hampel (mediana ± límite)" checked={o.banda} onChange={(v) => setO('banda', v)} />}
         <Campo label="Rotación de etiquetas (°)"><Num value={o.rotar} min={0} max={90} step={15} onChange={(v) => setO('rotar', v === '' ? 0 : v)} /></Campo>
 
         <h3>Detección de valores atípicos</h3>
         <Campo label="Método">
           <Select value={d.metodo} onChange={(v) => setD('metodo', v)} opciones={METODOS} />
         </Campo>
-        {d.metodo === 'hampel' ? (
-          <>
-            <Campo label="Desviaciones (n × 1,4826 × MAD)"><Num value={d.nsig} min={1} step={0.5} onChange={(v) => setD('nsig', v)} /></Campo>
-            <Campo label="Diferencia mínima (OD)"><Num value={d.min} min={0} step={0.005} onChange={(v) => setD('min', v)} /></Campo>
-          </>
+        {d.metodo === 'cv' ? (
+          <Campo label="CV máximo aceptado (%)"><Num value={d.cvMax ?? 20} min={1} step={1} onChange={(v) => setD('cvMax', v)} /></Campo>
         ) : (
           <Campo label="Nivel de confianza">
             <Select value={d.conf} onChange={(v) => setD('conf', v)} opciones={[['90', '90 %'], ['95', '95 %'], ['99', '99 %']]} />
@@ -61,9 +58,9 @@ export function ExcluirTab({ s }) {
         )}
         <Check label="Excluir automáticamente los sospechosos" checked={d.usar} onChange={(v) => setD('usar', v)} />
         <p className="ayuda">
-          {d.metodo === 'hampel' ? 'Necesita al menos 3 pocillos por muestra.'
-            : d.metodo === 'q' ? 'Detecta como máximo un valor atípico por muestra, con 3 a 10 pocillos.'
-              : 'Detecta como máximo un valor atípico por muestra, con 3 a 30 pocillos. La razón usada depende de n.'}
+          {d.metodo === 'q' ? 'Detecta como máximo un valor atípico por muestra, con 3 a 10 pocillos.'
+            : d.metodo === 'grubbs' ? 'Detecta como máximo un valor atípico por muestra, con 3 o más pocillos. Con 3 réplicas casi nunca puede declarar un atípico (ver Método).'
+              : 'Si el CV de la muestra supera el límite, marca el pocillo más alejado de la media (uno por muestra, con 3 o más pocillos).'}
           {' '}El detalle del cálculo está en Datos › Método.
         </p>
         <button className="ancho" onClick={() => s.restablecerExclusiones()}>Restablecer exclusiones</button>
@@ -383,13 +380,13 @@ export function DatosTab({ s }) {
 // MÉTODO (descripción de los cálculos)
 // ===============================================================
 function MetodoDetalle({ d, odc }) {
-  const nsig = Number(d.nsig) || 3
-  const mind = Number(d.min) || 0.02
-  const activo = nombreMetodo[d.metodo]
+  const metodo = normalizarMetodo(d.metodo)
+  const cvMax = Number(d.cvMax) || 20
+  const activo = nombreMetodo[metodo]
   return (
     <section className="tarjeta metodo">
       <h2>Método</h2>
-      <p className="ayuda">Detección activa: <b>{activo}</b>{d.metodo === 'hampel' ? ` (n = ${nsig}, diferencia mínima = ${mind} OD)` : ` (confianza ${d.conf} %)`}
+      <p className="ayuda">Detección activa: <b>{activo}</b>{metodo === 'cv' ? ` (CV máximo ${cvMax} %)` : ` (confianza ${d.conf} %)`}
         {d.usar ? ', con exclusión automática.' : ', solo marca los sospechosos.'}</p>
 
       <h3>1. Punto de corte y clasificación</h3>
@@ -418,16 +415,8 @@ function MetodoDetalle({ d, odc }) {
         </tbody></table></div>
       <p className="ayuda">Ejemplo: con 3 réplicas, IC 95 % = 4,303 × SEM = 4,303 × s / √3 ≈ 2,484 × s. Con 30 réplicas el factor baja a 2,045 × SEM.</p>
 
-      <h3>3. Filtro de Hampel (mediana y MAD)</h3>
-      <p>Se aplica por muestra, sobre sus pocillos no excluidos a mano, y necesita al menos 3 pocillos.</p>
-      <ol>
-        <li>Mediana del grupo: <code>med = mediana(x₁ … xₙ)</code>.</li>
-        <li><b>MAD</b> (desviación absoluta mediana): <code>MAD = mediana(|xᵢ − med|)</code>. Es una medida de dispersión robusta: un valor extremo casi no la modifica.</li>
-        <li>Escala robusta: <code>s = 1,4826 × MAD</code>. El factor 1,4826 = 1 / Φ⁻¹(0,75) hace que s estime la desviación estándar si los datos son normales.</li>
-        <li>Límite: <code>L = máx( n × s ; diferencia mínima )</code>. La diferencia mínima evita marcar desvíos minúsculos cuando las réplicas son casi idénticas (MAD ≈ 0).</li>
-        <li>Un pocillo es <b>sospechoso</b> si <code>|xᵢ − med| &gt; L</code>. Puede haber más de uno por muestra.</li>
-      </ol>
-      <p>Parámetros actuales: n = {nsig}, diferencia mínima = {mind} OD. La banda gris del gráfico es <code>med ± L</code>.</p>
+      <h3>3. Valores atípicos: cuándo se aplica cada criterio</h3>
+      <p>Los tres criterios se aplican por muestra, sobre sus pocillos no excluidos a mano, necesitan al menos 3 pocillos y marcan como máximo <b>un</b> pocillo sospechoso por muestra (el más extremo). Con 3 réplicas, quitar un valor deja solo 2: hacelo solo si hay un motivo claro.</p>
 
       <h3>4. Test Q de Dixon</h3>
       <p>Prueba si <b>un</b> valor extremo es atípico en una muestra de n = 3 a 10 pocillos. Se ordenan los valores <code>x₍₁₎ ≤ … ≤ x₍ₙ₎</code> y se calcula la razón de huecos (r10):</p>
@@ -435,28 +424,31 @@ function MetodoDetalle({ d, odc }) {
         <li>extremo inferior: <code>Q = (x₍₂₎ − x₍₁₎) / (x₍ₙ₎ − x₍₁₎)</code></li>
         <li>extremo superior: <code>Q = (x₍ₙ₎ − x₍ₙ₋₁₎) / (x₍ₙ₎ − x₍₁₎)</code></li>
       </ul>
-      <p>Se toma el mayor de los dos Q (el extremo más aislado) y se compara con el valor crítico <code>Q crít (n, confianza)</code> de la tabla. Si <code>Q &gt; Q crít</code>, ese valor se declara atípico. Se evalúa una sola vez por muestra (como máximo un atípico). Es una prueba bilateral que supone distribución normal; con pocas réplicas tiene poca potencia.</p>
+      <p>Se toma el mayor de los dos Q (el extremo más aislado) y se compara con el valor crítico <code>Q crít (n, confianza)</code> de la tabla. Si <code>Q &gt; Q crít</code>, ese valor se declara atípico. Es una prueba bilateral que supone distribución normal; con pocas réplicas tiene poca potencia.</p>
       <div className="tabla-scroll chica"><table className="tabla"><thead><tr><th>n</th>{Q_TABLA.n.map((n) => <th key={n}>{n}</th>)}</tr></thead>
         <tbody>{['90', '95', '99'].map((c) => <tr key={c}><td><b>{c} %</b></td>{Q_TABLA[c].map((v, i) => <td key={i}>{v.toFixed(3)}</td>)}</tr>)}</tbody></table></div>
       <p className="ayuda">Valores críticos de Q (bilateral) según Rorabacher (1991).</p>
 
-      <h3>5. Test de Dixon general</h3>
-      <p>Es la familia completa de razones de Dixon (1951): para que la prueba conserve potencia cuando n crece, se usa una razón que ignora el valor adyacente al extremo. La razón depende de n:</p>
+      <h3>5. Test de Grubbs</h3>
+      <p>Compara el valor más alejado de la media con la dispersión del grupo (supone distribución normal; bilateral):</p>
       <ul>
-        <li><b>r10</b> (n = 3 a 7): <code>(x₍₂₎ − x₍₁₎) / (x₍ₙ₎ − x₍₁₎)</code> — equivale al test Q</li>
-        <li><b>r11</b> (n = 8 a 10): <code>(x₍₂₎ − x₍₁₎) / (x₍ₙ₋₁₎ − x₍₁₎)</code></li>
-        <li><b>r21</b> (n = 11 a 13): <code>(x₍₃₎ − x₍₁₎) / (x₍ₙ₋₁₎ − x₍₁₎)</code></li>
-        <li><b>r22</b> (n = 14 a 30): <code>(x₍₃₎ − x₍₁₎) / (x₍ₙ₋₂₎ − x₍₁₎)</code></li>
+        <li>Estadístico: <code>G = máx |xᵢ − x̄| / s</code>, con <code>s</code> la desviación estándar muestral (n − 1).</li>
+        <li>Valor crítico: <code>G crít = ((n − 1) / √n) × √( t² / (n − 2 + t²) )</code>, donde <code>t = t(1 − α / (2n); n − 2)</code> es el cuantil de la t de Student y <code>α = 1 − confianza</code>.</li>
+        <li>Si <code>G &gt; G crít</code>, el valor más alejado es atípico.</li>
       </ul>
-      <p>Para el extremo superior se aplica la misma fórmula sobre los datos reflejados. Se toma la mayor de las dos razones y se compara con su valor crítico. <b>Los valores críticos de esta tabla se obtuvieron por simulación de Monte Carlo</b> (400 000 muestras normales por cada n, semilla fija; razón máxima de los dos extremos, percentil 90, 95 y 99 %). Para validar el procedimiento, la misma simulación con la razón r10 reproduce la tabla de Q de arriba para n = 3 a 10 con una diferencia máxima de 0,005. Con n = 8 a 10 los valores de Dixon difieren de los de Q porque usan r11 en lugar de r10.</p>
-      <div className="tabla-scroll chica"><table className="tabla"><thead><tr><th>n</th><th>Razón</th><th>90 %</th><th>95 %</th><th>99 %</th></tr></thead>
-        <tbody>{DIXON_TABLA.map((f) => <tr key={f[0]}><td>{f[0]}</td><td>{f[1]}</td><td>{f[2].toFixed(3)}</td><td>{f[3].toFixed(3)}</td><td>{f[4].toFixed(3)}</td></tr>)}</tbody></table></div>
+      <p>Con n = 3, G nunca puede superar <code>(n − 1)/√n = 1,155</code> y el crítico al 95 % es 1,153: el test casi nunca declara un atípico con 3 réplicas. Es más útil con 4 o más pocillos por muestra.</p>
+      <div className="tabla-scroll chica"><table className="tabla"><thead><tr><th>n</th>{[3, 4, 5, 6, 7, 8, 9, 10, 12, 15, 20].map((n) => <th key={n}>{n}</th>)}</tr></thead>
+        <tbody>{['90', '95', '99'].map((c) => <tr key={c}><td><b>{c} %</b></td>{[3, 4, 5, 6, 7, 8, 9, 10, 12, 15, 20].map((n) => <td key={n}>{criticoGrubbs(n, c).toFixed(3)}</td>)}</tr>)}</tbody></table></div>
+      <p className="ayuda">Valores críticos de G calculados con la fórmula de arriba (coinciden con las tablas publicadas de Grubbs, 1969).</p>
 
-      <h3>6. Qué pasa con los sospechosos</h3>
+      <h3>6. Coeficiente de variación (%RSD)</h3>
+      <p>Mide la dispersión de las réplicas en relación con su media: <code>CV = 100 × s / x̄</code> (en %). No es un test estadístico sino un criterio de calidad: si el CV de una muestra supera el límite elegido (actual: {cvMax} %), se marca como sospechoso el pocillo más alejado de la media, que es el que más aporta a la dispersión. En el detalle se informa también el CV que quedaría sin ese pocillo. Para OD de cristal violeta se suele aceptar un CV de hasta 15 a 20 % entre réplicas técnicas.</p>
+
+      <h3>7. Qué pasa con los sospechosos</h3>
       <p>Sea cual sea el método, un pocillo sospechoso solo se <b>excluye automáticamente</b> si activás esa opción. Siempre podés forzar el estado de cada pocillo con un clic en el gráfico o en el mapa de la placa: lo que se decide a mano tiene prioridad sobre el test. Un pocillo excluido a mano no entra en el cálculo de los tests ni en las medias, y si era un blanco deja de contarse en el ODc.</p>
       <p className="ayuda">Un test estadístico no distingue un error experimental de una variación biológica real: revisá cada sospechoso antes de excluirlo y no elimines datos solo porque no te gusta el resultado.</p>
 
-      <h3>7. Comparación entre placas</h3>
+      <h3>8. Comparación entre placas</h3>
       <p>La pestaña Comparar muestra, para cada muestra, <b>una barra por placa</b>: la altura es la OD media de las réplicas aceptadas de esa muestra en esa placa, y el color indica la placa. No hay líneas de ODc ni clasificación: es una comparación directa de OD.</p>
 
       <h4>Qué cuenta como réplica</h4>

@@ -311,13 +311,13 @@ export function AnalisisTab({ s }) {
         <Modal titulo={dp ? `Pocillo ${det} – ${dp.Muestra} (réplica ${dp.Replica})` : `Pocillo ${det}`} onClose={() => setDet(null)}
           pie={<><button onClick={() => setDet(null)}>Cerrar</button>
             {dp && <button className="primario" onClick={() => { s.alternarPocillo(det); setDet(null) }}>
-              {dp.Usado ? 'Excluir este pocillo' : dp.Manual ? 'Volver a incluir' : 'Conservar pese a Hampel'}</button>}</>}>
+              {dp.Usado ? 'Excluir este pocillo' : dp.Manual ? 'Volver a incluir' : 'Conservar pese al test'}</button>}</>}>
           <dl className="datos">
             <dt>OD</dt><dd>{fmt(datos[det])}</dd>
             <dt>Clasificación</dt><dd>{!dp ? 'Sin muestra asignada' : dp.EsBlanco ? 'Blanco (no se clasifica)' : finito ? clasif(datos[det]) : 'Sin ODc: faltan blancos'}</dd>
             {dp && <><dt>Estado</dt><dd>{dp.Usado ? 'Aceptado' : 'Excluido'}</dd></>}
           </dl>
-          {dp && <p>{dp.Manual ? 'Excluido manualmente.' : dp.Motivo || 'Aceptado: dentro del límite de Hampel o con menos de 3 pocillos en su muestra.'}</p>}
+          {dp && <p>{dp.Manual ? 'Excluido manualmente.' : dp.Motivo || 'Aceptado: no fue marcado por el criterio de valores atípicos (o su muestra tiene menos de 3 pocillos).'}</p>}
         </Modal>
       )}
     </div>

@@ -258,7 +258,7 @@ export const ExcluirChart = forwardRef(function ExcluirChart({ estado, orden, o,
   const res = porMuestra.map((g) => resumenGrupo(g, o.error))
   const textoValor = (r) => (o.errores && r.err !== null && Number.isFinite(r.err) ? `${fmt(r.m)}\n± ${fmt(r.err)}` : fmt(r.m))
 
-  const valores = estado.flatMap((e) => [e.OD, ...(o.banda ? [e.Mediana + e.Limite, e.Mediana - e.Limite] : [])]).filter(Number.isFinite)
+  const valores = estado.map((e) => e.OD).filter(Number.isFinite)
   res.forEach((r) => { if (r && Number.isFinite(r.err)) valores.push(r.m + r.err, r.m - r.err) })
   let lo = Math.min(0, ...valores)
   let hi = Math.max(...valores, 0.1)
@@ -289,16 +289,6 @@ export const ExcluirChart = forwardRef(function ExcluirChart({ estado, orden, o,
         <Titulo W={W} est={est} />
         <EjeY ticks={eY.ticks} paso={eY.paso} y={y} left={L.left} plotW={L.plotW} est={est} titulo={est.leyendaY.texto || eje} />
         <line x1={L.left} x2={L.left + L.plotW} y1={y(0)} y2={y(0)} stroke="#444" />
-
-        {o.banda && porMuestra.map((g, i) => {
-          const b = g.find((e) => Number.isFinite(e.Mediana) && Number.isFinite(e.Limite))
-          return b ? (
-            <g key={i}>
-              <rect x={cx(i) - L.band * 0.4} y={y(b.Mediana + b.Limite)} width={L.band * 0.8}
-                height={Math.max(y(b.Mediana - b.Limite) - y(b.Mediana + b.Limite), 1)} fill="#9aa5b1" fillOpacity="0.28" />
-            </g>
-          ) : null
-        })}
 
         {res.map((r, i) => r && (o.errores || o.medias) ? (
           <g key={'m' + i} stroke="#111" strokeWidth="1.4">
@@ -332,8 +322,7 @@ export const ExcluirChart = forwardRef(function ExcluirChart({ estado, orden, o,
         {o.medias && res.map((r, i) => {
           if (!r) return null
           const g = porMuestra[i]
-          const top = Math.max(...(o.puntos ? g.map((e) => e.OD) : [r.m]), r.m + (o.errores && Number.isFinite(r.err) ? r.err : 0),
-            ...(o.banda ? g.map((e) => (Number.isFinite(e.Mediana) && Number.isFinite(e.Limite) ? e.Mediana + e.Limite : -Infinity)) : []))
+          const top = Math.max(...(o.puntos ? g.map((e) => e.OD) : [r.m]), r.m + (o.errores && Number.isFinite(r.err) ? r.err : 0))
           return <EtiquetaFondo key={i} x={cx(i)} y={y(top) - 14} est={est.valores} texto={textoValor(r)} />
         })}
 

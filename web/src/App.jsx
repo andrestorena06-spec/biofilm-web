@@ -11,7 +11,7 @@ const CLAVE = 'biofilm-react-v3'
 const MUESTRAS_DEF = ['L100A1', 'L100A1 Rug', 'L100A1 SCV', 'L101B2', 'L101B2 Rug', 'L201', 'L201 Rug', 'BHI', 'TSBye']
 
 const optsDef = () => ({
-  excluir: { puntos: true, medias: true, errores: false, error: 'sd', banda: true, rotar: 45 },
+  excluir: { puntos: true, medias: true, errores: false, error: 'sd', rotar: 45 },
   barras: {
     error: 'ic95', orden: 'lista', color: 'clase', puntos: true, medias: true, errores: true,
     lineas: true, valoresClase: false, rotar: 45, muestrasSel: null,
@@ -21,7 +21,9 @@ const optsDef = () => ({
     placasSel: null, ocultos: [],   // ocultos: "idPlaca|muestra" que no se muestran
   },
 })
-const deteccionDef = () => ({ metodo: 'hampel', usar: false, nsig: 3, min: 0.02, conf: '95' })
+const deteccionDef = () => ({ metodo: 'q', usar: false, conf: '95', cvMax: 20 })
+// sesiones guardadas con métodos que ya no existen (Hampel, Dixon general) pasan al test Q
+const normDet = (d) => { const x = { ...deteccionDef(), ...d }; if (!['q', 'grubbs', 'cv'].includes(x.metodo)) x.metodo = 'q'; delete x.nsig; delete x.min; return x }
 
 const nuevoId = () => Math.random().toString(36).slice(2, 10)
 const placaVacia = (nombre) => ({
@@ -82,7 +84,7 @@ export default function App() {
   const [placas, setPlacas] = useState(() => placasIniciales(gi))
   const [activaId, setActivaId] = useState(() => gi.activaId || null)
   const [muestras, setMuestras] = useState(gi.muestras || MUESTRAS_DEF)
-  const [deteccion, setDeteccion] = useState(() => ({ ...deteccionDef(), ...(gi.hampel || {}), ...(gi.deteccion || {}) }))
+  const [deteccion, setDeteccion] = useState(() => normDet(gi.deteccion || {}))
   const [opts, setOpts] = useState(() => optsDe(gi))
   const [estilos, setEstilos] = useState(() => estilosDe(gi))
   const [analisisMap, setAnalisisMap] = useState({})
@@ -111,7 +113,7 @@ export default function App() {
     setPlacas(placasIniciales(g))
     setActivaId(g.activaId || null)
     setMuestras(g.muestras || MUESTRAS_DEF)
-    setDeteccion({ ...deteccionDef(), ...(g.hampel || {}), ...(g.deteccion || {}) })
+    setDeteccion(normDet(g.deteccion || {}))
     setOpts(optsDe(g))
     setEstilos(estilosDe(g))
     setPendiente(false)
@@ -152,7 +154,7 @@ export default function App() {
         versiones.current[p.id] = v
         analizar({
           datos: p.placa.datos, config: p.config, excl_manual: p.exclManual, excl_forzado: p.exclForzado,
-          deteccion: { metodo: deteccion.metodo, usar: deteccion.usar, nsig: Number(deteccion.nsig) || 3, min: Number(deteccion.min) || 0.02, conf: deteccion.conf },
+          deteccion: { metodo: deteccion.metodo, usar: deteccion.usar, conf: deteccion.conf, cvMax: Number(deteccion.cvMax) || 20 },
           blancos_usados: p.blancosUsados,
         }).then((r) => {
           if (versiones.current[p.id] !== v) return
@@ -350,7 +352,7 @@ export default function App() {
       setPlacas(placasIniciales({ placas: x.placas }))
       setActivaId(x.activaId || x.placas[0]?.id || null)
       if (x.muestras) setMuestras(x.muestras)
-      setDeteccion({ ...deteccionDef(), ...(x.hampel || {}), ...(x.deteccion || {}) })
+      setDeteccion(normDet(x.deteccion || {}))
       if (x.opts) setOpts({ excluir: { ...optsDef().excluir, ...x.opts.excluir }, barras: { ...optsDef().barras, ...x.opts.barras }, comparar: { ...optsDef().comparar, ...x.opts.comparar } })
       if (x.estilos) setEstilos({ barras: normalizarEstilo(x.estilos.barras), excluir: normalizarEstilo(x.estilos.excluir), comparar: normalizarEstilo(x.estilos.comparar) })
       claves.current = {}
@@ -363,7 +365,7 @@ export default function App() {
     if (destino) actualizar(destino, cambios)
     else { const p = { ...placaVacia('Placa 1'), ...cambios }; setPlacas([p]); setActivaId(p.id) }
     if (x.muestras) setMuestras(x.muestras)
-    setDeteccion({ ...deteccionDef(), ...(x.hampel || {}), ...(x.deteccion || {}) })
+    setDeteccion(normDet(x.deteccion || {}))
     if (x.opts) setOpts({ excluir: { ...optsDef().excluir, ...x.opts.excluir }, barras: { ...optsDef().barras, ...x.opts.barras }, comparar: optsDef().comparar })
     if (x.estilos) setEstilos((e) => ({ ...e, barras: normalizarEstilo(x.estilos.barras), excluir: normalizarEstilo(x.estilos.excluir) }))
     avisar('Sesión antigua: no traía los datos del Excel; cargá el archivo de la placa.', 'error')
@@ -440,7 +442,7 @@ export default function App() {
             </div>
           ))}
           <button className="agregar-placa" onClick={() => inputPlacas.current.click()}>+ Agregar placa</button>
-          <input ref={inputPlacas} type="file" multiple hidden accept=".xlsx,.xls,.csv,.txt"
+          <input ref={inputPlacas} type="file" multiple hidden accept=".xlsx"
             onChange={(e) => { agregarPlacas(e.target.files); e.target.value = '' }} />
         </div>
         <Vista s={s} />

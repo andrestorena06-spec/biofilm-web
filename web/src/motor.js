@@ -1,10 +1,10 @@
 // ============================================================
 // Motor de cálculo en JavaScript (equivalente al de R en api/funciones.R).
 // Permite usar la aplicación completa en el navegador, sin servidor.
-// Lectura de la placa, filtro de Hampel, test Q y de Dixon, ODc y clasificación
+// Lectura de la placa, valores atípicos (test Q de Dixon, Grubbs, CV), ODc y clasificación
 // (Stepanović et al., 2000).
 // ============================================================
-import { Q_TABLA, DIXON_TABLA } from './criticos.js'
+import { Q_TABLA } from './criticos.js'
 import { tCuantil } from './utils.js'
 
 const LETRAS = 'ABCDEFGH'.split('')
@@ -84,18 +84,15 @@ async function hojasExcel(file) {
   return cacheHojas.get(file)
 }
 
-const esCSV = (nombre) => ['csv', 'txt', 'tsv'].includes(nombre.split('.').pop().toLowerCase())
+const esXlsx = (nombre) => /\.xlsx$/i.test(nombre)
 
 export async function hojasDe(file) {
-  if (esCSV(file.name)) return { hojas: ['csv'] }
-  if (file.name.toLowerCase().endsWith('.xls')) {
-    throw new Error('Los archivos .xls antiguos no se pueden leer en el navegador. Guardalo como .xlsx o .csv y probá de nuevo.')
-  }
+  if (!esXlsx(file.name)) throw new Error('Solo se aceptan archivos Excel en formato nuevo (.xlsx). Si tenés un .xls, .csv o .txt, abrilo en Excel y guardalo como «Libro de Excel (.xlsx)».')
   return { hojas: (await hojasExcel(file)).map((h) => h.sheet) }
 }
 
 export async function leerCrudo(file, hoja) {
-  if (esCSV(file.name)) return parsearCSV(await decodificar(file))
+  if (!esXlsx(file.name)) throw new Error('Solo se aceptan archivos Excel en formato nuevo (.xlsx). Si tenés un .xls, .csv o .txt, abrilo en Excel y guardalo como «Libro de Excel (.xlsx)».')
   const hojas = await hojasExcel(file)
   const h = hojas.find((x) => x.sheet === hoja) || hojas[0]
   const ancho = Math.max(...h.data.map((f) => f.length), 1)
@@ -149,56 +146,68 @@ export async function leerPlaca(file, hoja) {
 }
 
 // ---------- detección de valores atípicos ----------
-function hampelGrupo(x, nsig, minDif) {
+// Los tres métodos evalúan un pocillo por muestra (el más alejado) y necesitan al menos 3 pocillos.
+export const METODOS_ATIPICOS = ['q', 'grubbs', 'cv']
+export const normalizarMetodo = (m) => (METODOS_ATIPICOS.includes(m) ? m : 'q')   // sesiones viejas: hampel / dixon -> Q
+
+// Test Q de Dixon (razón r10, n = 3 a 10)
+export function detectarQ(x, conf = '95') {
   const n = x.length
-  const res = { Mediana: Array(n).fill(null), Limite: Array(n).fill(null), Sospechoso: Array(n).fill(false) }
-  const ok = x.map(finito)
-  if (ok.filter(Boolean).length < 3) return res
-  const med = mediana(x)
-  const s = 1.4826 * mediana(x.map((v) => Math.abs(v - med)))
-  const lim = Math.max(nsig * s, minDif)
-  for (let i = 0; i < n; i++) {
-    res.Mediana[i] = med
-    res.Limite[i] = lim
-    res.Sospechoso[i] = ok[i] && Math.abs(x[i] - med) > lim
-  }
+  const res = { idx: null, stat: null, crit: null, n, lado: '' }
+  if (n < 3 || n > 10 || x.some((v) => !finito(v))) return res
+  const o = x.map((_, i) => i).sort((a, b) => x[a] - x[b])
+  const s = o.map((i) => x[i])
+  const rango = s[n - 1] - s[0]
+  if (!(rango > 0)) return res
+  const qBajo = (s[1] - s[0]) / rango
+  const qAlto = (s[n - 1] - s[n - 2]) / rango
+  res.stat = Math.max(qBajo, qAlto)
+  res.crit = Q_TABLA[conf][n - 3]
+  res.lado = qAlto > qBajo ? 'superior' : 'inferior'
+  if (res.stat > res.crit) res.idx = qAlto > qBajo ? o[n - 1] : o[0]
   return res
 }
 
-const varianteDixon = (n) => (n <= 7 ? 'r10' : n <= 10 ? 'r11' : n <= 13 ? 'r21' : 'r22')
-function razonDixon(s, v) {
-  const n = s.length
-  const r = {
-    r10: (s[1] - s[0]) / (s[n - 1] - s[0]),
-    r11: (s[1] - s[0]) / (s[n - 2] - s[0]),
-    r21: (s[2] - s[0]) / (s[n - 2] - s[0]),
-    r22: (s[2] - s[0]) / (s[n - 3] - s[0]),
-  }[v]
-  return finito(r) ? r : 0
+// Valor crítico de Grubbs (bilateral): G = (n − 1)/√n · √(t² / (n − 2 + t²)), t = t(1 − α/(2n); n − 2)
+export function criticoGrubbs(n, conf = '95') {
+  if (n < 3) return null
+  const alfa = 1 - Number(conf) / 100
+  const t = tCuantil(1 - alfa / (2 * n), n - 2)
+  return ((n - 1) / Math.sqrt(n)) * Math.sqrt((t * t) / (n - 2 + t * t))
 }
 
-export function detectarDixon(x, conf = '95', metodo = 'q') {
+// Test de Grubbs: G = máx |xᵢ − x̄| / s
+export function detectarGrubbs(x, conf = '95') {
   const n = x.length
-  const res = { idx: null, stat: null, crit: null, variante: '', n, lado: '' }
+  const res = { idx: null, stat: null, crit: null, n, lado: '' }
   if (n < 3 || x.some((v) => !finito(v))) return res
-  let v, crit
-  if (metodo === 'q') {
-    if (n > 10) return res
-    v = 'r10'; crit = Q_TABLA[conf][n - 3]
-  } else {
-    if (n > 30) return res
-    v = varianteDixon(n); crit = DIXON_TABLA[n - 3][{ 90: 2, 95: 3, 99: 4 }[conf]]
-  }
-  const o = x.map((_, i) => i).sort((a, b) => x[a] - x[b])
-  const s = o.map((i) => x[i])
-  if (s[n - 1] === s[0]) return res
-  const rBajo = razonDixon(s, v)
-  const rAlto = razonDixon(s.map((z) => -z).reverse(), v)
-  res.stat = Math.max(rBajo, rAlto)
-  res.crit = crit
-  res.variante = v
-  res.lado = rAlto > rBajo ? 'superior' : 'inferior'
-  if (res.stat > crit) res.idx = rAlto > rBajo ? o[n - 1] : o[0]
+  const m = media(x), s = desvio(x)
+  if (!(s > 0)) return res
+  let k = 0
+  x.forEach((v, i) => { if (Math.abs(v - m) > Math.abs(x[k] - m)) k = i })
+  res.stat = Math.abs(x[k] - m) / s
+  res.crit = criticoGrubbs(n, conf)
+  res.lado = x[k] > m ? 'superior' : 'inferior'
+  if (res.stat > res.crit) res.idx = k
+  return res
+}
+
+// Coeficiente de variación (%RSD = 100 · s / x̄): si supera el límite, es sospechoso el pocillo
+// más alejado de la media (el que más aporta a la dispersión)
+export function detectarCV(x, limite = 20) {
+  const n = x.length
+  const res = { idx: null, stat: null, crit: limite, n, lado: '', cvSin: null }
+  if (n < 3 || x.some((v) => !finito(v))) return res
+  const m = media(x)
+  if (!(m !== 0)) return res
+  const cv = (100 * desvio(x)) / Math.abs(m)
+  let k = 0
+  x.forEach((v, i) => { if (Math.abs(v - m) > Math.abs(x[k] - m)) k = i })
+  const resto = x.filter((_, i) => i !== k)
+  res.stat = cv
+  res.cvSin = (100 * desvio(resto)) / Math.abs(media(resto))
+  res.lado = x[k] > m ? 'superior' : 'inferior'
+  if (cv > limite) res.idx = k
   return res
 }
 
@@ -212,35 +221,30 @@ export function estadoPocillos(datos, cfg, exclManual, exclForzado, det) {
   })).sort((a, b) => orden[a.Pocillo] - orden[b.Pocillo])
   if (!e.length) return null
 
-  const metodo = det?.metodo || 'hampel'
-  const nsig = finito(Number(det?.nsig)) ? Number(det.nsig) : 3
-  const minDif = finito(Number(det?.min)) ? Number(det.min) : 0.02
+  const metodo = normalizarMetodo(det?.metodo)
   const conf = String(det?.conf || '95')
+  const cvMax = finito(Number(det?.cvMax)) && Number(det.cvMax) > 0 ? Number(det.cvMax) : 20
   const manual = new Set(exclManual || [])
   const forzado = new Set(exclForzado || [])
   const detalle = e.map(() => '')
   e.forEach((r) => {
     r.Manual = manual.has(r.Pocillo)
-    r.Mediana = null; r.Limite = null; r.Estadistico = null; r.Critico = null; r.Sospechoso = false
+    r.Estadistico = null; r.Critico = null; r.Sospechoso = false
   })
   for (const g of [...new Set(e.map((r) => r.Muestra))]) {
     const idx = e.map((r, i) => (r.Muestra === g && !r.Manual ? i : -1)).filter((i) => i >= 0)
     if (idx.length < 3) continue
     const x = idx.map((i) => e[i].OD)
-    if (metodo === 'hampel') {
-      const h = hampelGrupo(x, nsig, minDif)
-      idx.forEach((i, k) => {
-        e[i].Mediana = h.Mediana[k]; e[i].Limite = h.Limite[k]; e[i].Sospechoso = h.Sospechoso[k]
-        detalle[i] = `Hampel: |OD − mediana| = ${fmtOd(Math.abs(e[i].OD - h.Mediana[k]))} > límite ${fmtOd(h.Limite[k])}`
-      })
-    } else {
-      const d = detectarDixon(x, conf, metodo)
-      idx.forEach((i) => { e[i].Estadistico = d.stat; e[i].Critico = d.crit })
-      if (d.idx !== null) {
-        const i = idx[d.idx]
-        e[i].Sospechoso = true
-        detalle[i] = `${metodo === 'q' ? 'Test Q' : 'Test de Dixon'} (${d.variante}, extremo ${d.lado}): ${metodo === 'q' ? 'Q' : 'r'} = ${d.stat.toFixed(3)} > crítico ${d.crit.toFixed(3)} (n = ${d.n}, confianza ${conf} %)`
-      }
+    const d = metodo === 'grubbs' ? detectarGrubbs(x, conf) : metodo === 'cv' ? detectarCV(x, cvMax) : detectarQ(x, conf)
+    idx.forEach((i) => { e[i].Estadistico = d.stat; e[i].Critico = d.crit })
+    if (d.idx !== null) {
+      const i = idx[d.idx]
+      e[i].Sospechoso = true
+      detalle[i] = metodo === 'grubbs'
+        ? `Test de Grubbs (extremo ${d.lado}): G = ${d.stat.toFixed(3)} > crítico ${d.crit.toFixed(3)} (n = ${d.n}, confianza ${conf} %)`
+        : metodo === 'cv'
+          ? `CV de la muestra = ${d.stat.toFixed(1)} % > límite ${cvMax} % (pocillo más alejado de la media; sin él, CV = ${d.cvSin.toFixed(1)} %)`
+          : `Test Q de Dixon (extremo ${d.lado}): Q = ${d.stat.toFixed(3)} > crítico ${d.crit.toFixed(3)} (n = ${d.n}, confianza ${conf} %)`
     }
   }
   e.forEach((r, i) => {
