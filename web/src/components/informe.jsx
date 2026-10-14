@@ -1,8 +1,8 @@
 import { renderToStaticMarkup } from 'react-dom/server'
-import { BarChart, ExcluirChart, GroupedBarChart } from './charts.jsx'
-import { DispersionChart } from './dispersion.jsx'
-import { resumenGrupo as resumenG } from '../estadistica.js'
-import { fmt, paletaMuestras } from '../utils.js'
+import { BarChart, ExcluirChart } from './charts.jsx'
+import { CompararChart } from './compararchart.jsx'
+import { armarComparacion } from '../comparacion.js'
+import { fmt } from '../utils.js'
 import { resumenBlancos } from '../blancos.js'
 
 const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
@@ -54,60 +54,23 @@ export function abrirInforme(s) {
     </section>`
   })
 
-  // comparaciÃ³n entre placas (la misma vista que en Â«CompararÂ»: una barra por placa o por medio de cultivo, o dispersiÃ³n)
+  // comparaciÃ³n entre placas: la misma que se ve en Â«CompararÂ» (columnas por placa, por medio o por pocillo; barras, cajas y puntos)
   let comparacion = ''
   if (conAn.length > 1) {
     const oc = s.opts.comparar
-    const verBl = oc.blancos !== false
-    const modo = oc.modo === 'medio' ? 'medio' : 'placas'
-    const vista = oc.vista === 'dispersion' ? 'dispersion' : 'barras'
-    const sel0 = oc.placasSel ? conAn.filter((p) => oc.placasSel.includes(p.id)) : conAn
-    const orden = [...new Set(s.placas.map((p) => p.medio || ''))].filter(Boolean)
-    const sel = [...sel0].sort((x, y) => (x.medio ? orden.indexOf(x.medio) : 999) - (y.medio ? orden.indexOf(y.medio) : 999))
-    const ocultos = new Set(oc.ocultos || [])
-    const filasDe = (p) => [...s.analisisMap[p.id].resumen, ...(verBl ? resumenBlancos(s.analisisMap[p.id].estado) : [])]
-    const nb = [...new Set(sel.flatMap((p) => s.analisisMap[p.id].resumen.map((r) => r.Muestra)))]
-    const bl = verBl ? [...new Set(sel.flatMap((p) => resumenBlancos(s.analisisMap[p.id].estado).map((r) => r.Muestra)))].filter((m) => !nb.includes(m)) : []
-    const muestras = [...nb, ...bl]
-    const medios = [...new Set(sel.map((p) => p.medio).filter(Boolean))]
-    const colMedio = paletaMuestras(medios)
-    const colBase = paletaMuestras(s.placas.map((p) => p.id))
-    const aclarar = (col, f) => { const m = /hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/.exec(col); return m ? `hsl(${m[1]}, ${m[2]}%, ${(Number(m[3]) + (88 - Number(m[3])) * f).toFixed(0)}%)` : col }
-    const colP = {}
-    medios.forEach((md) => { const ps = sel.filter((p) => p.medio === md); ps.forEach((p, i) => { colP[p.id] = aclarar(colMedio[md], ps.length > 1 ? (0.5 * i) / (ps.length - 1) : 0) }) })
-    sel.forEach((p) => { if (!colP[p.id]) colP[p.id] = colBase[p.id] })
-    const errDe = (rg) => (oc.error === 'ic95' ? rg.ic95 : oc.error === 'sd' ? rg.sd : oc.error === 'sem' ? rg.sem : null)
-    const ptsDe = (p, m) => s.analisisMap[p.id].estado.filter((e) => e.Muestra === m && e.Usado).map((e) => e.OD)
-    const porPlaca = (m) => sel.flatMap((p) => {
-      if (ocultos.has(`${p.id}|${m}`)) return []
-      const r = filasDe(p).find((x) => x.Muestra === m)
-      if (!r || !Number.isFinite(r.Media)) return []
-      const er = oc.error === 'ic95' ? r.IC95 : oc.error === 'sd' ? r.SD : oc.error === 'sem' ? r.SEM : null
-      return [{ id: p.id + '|' + m, placa: p.nombre + (p.medio ? ' Â· ' + p.medio : ''), color: colP[p.id], media: r.Media, err: Number.isFinite(er) ? er : null, pts: ptsDe(p, m) }]
-    })
-    const porMedio = (m) => medios.flatMap((md) => {
-      const vals = sel.filter((p) => p.medio === md && !ocultos.has(`${p.id}|${m}`)).map((p) => filasDe(p).find((r) => r.Muestra === m)).filter((r) => r && Number.isFinite(r.Media)).map((r) => r.Media)
-      if (!vals.length) return []
-      const rg = resumenG(vals)
-      const er = errDe(rg)
-      return [{ id: md + '|' + m, placa: `${md} (n = ${vals.length})`, color: colMedio[md], media: rg.media, err: Number.isFinite(er) ? er : null, pts: vals }]
-    })
-    const grupos = muestras.map((m) => ({
-      muestra: m, etiqueta: bl.includes(m) ? `${m} (blanco)` : m,
-      barras: vista === 'barras' && modo === 'medio' ? porMedio(m) : porPlaca(m),
-    })).filter((g) => g.barras.length)
-    const leyenda = vista === 'barras' && modo === 'medio'
-      ? medios.map((md) => ({ id: md, nombre: md, color: colMedio[md] }))
-      : sel.map((p) => ({ id: p.id, nombre: p.nombre + (p.medio ? ' Â· ' + p.medio : ''), color: colP[p.id] }))
-    if (grupos.length) {
-      const o4 = { valores: oc.valores, errores: oc.errores, puntos: oc.puntos, rotar: oc.rotar }
-      const fig = vista === 'dispersion'
-        ? svgStr(<DispersionChart grupos={grupos} leyenda={leyenda} o={o4} est={s.estilos.comparar} eje={ejeDe(sel[0])} tam={{ w: 900, h: 540 }} />)
-        : svgStr(<GroupedBarChart grupos={grupos} placas={leyenda} o={o4} est={s.estilos.comparar} eje={ejeDe(sel[0])} tam={{ w: 900, h: 540 }}
-          nota={modo === 'medio' ? 'Barras: promedio de las placas de cada medio; error entre placas' : 'Barras: OD media de las rÃ©plicas aceptadas de cada placa'} />)
-      const filasT = grupos.flatMap((g) => g.barras.map((b) => ({ Muestra: g.etiqueta, [vista === 'barras' && modo === 'medio' ? 'Medio' : 'Placa']: b.placa, OD_media: r4(b.media), Error: b.err === null || b.err === undefined ? '' : r4(b.err), N: b.pts.length })))
-      comparacion = `<section class="placa salto"><h2>ComparaciÃ³n entre placas${vista === 'dispersion' ? ' (dispersiÃ³n de los pocillos)' : modo === 'medio' ? ' por medio de cultivo' : ''}</h2>
-        <p class="meta">${sel.map((p) => `<b>${esc(p.nombre)}</b>${p.medio ? ' (' + esc(p.medio) + ')' : ''}`).join(' Â· ')}</p>
+    const D = armarComparacion(s)
+    const el = {
+      barras: oc.barras !== false, cajas: !!oc.cajas, puntos: oc.puntos !== false, barrasError: oc.barrasError !== false,
+      valores: oc.valores !== false, errores: !!oc.errores, rotar: oc.rotar ?? 45,
+    }
+    if (D.grupos.length && (el.barras || el.cajas || el.puntos)) {
+      const fig = svgStr(<CompararChart grupos={D.grupos} leyenda={D.leyenda} o={el} est={s.estilos.comparar} eje={ejeDe(D.placasSel[0])} tam={{ w: 900, h: 560 }} nota={D.nota} />)
+      const filasT = D.grupos.flatMap((g) => g.barras.map((b) => ({
+        Muestra: g.etiqueta, [D.modo === 'medio' ? 'Medio' : D.modo === 'pocillo' ? 'Pocillo' : 'Placa']: b.placa,
+        OD_media: r4(b.media), Error: b.err === null || b.err === undefined ? '' : r4(b.err), N: (b.vp || b.pts).length,
+      })))
+      comparacion = `<section class="placa salto"><h2>ComparaciÃ³n entre placas${D.modo === 'medio' ? ' por medio de cultivo' : D.modo === 'pocillo' ? ' (pocillo por pocillo)' : ''}</h2>
+        <p class="meta">${D.placasSel.map((p) => `<b>${esc(p.nombre)}</b>${p.medio ? ' (' + esc(p.medio) + ')' : ''}`).join(' Â· ')}</p>
         <div class="fig">${fig}</div>${tabla(Object.keys(filasT[0]), filasT)}</section>`
     }
   }

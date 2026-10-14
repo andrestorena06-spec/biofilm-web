@@ -1,23 +1,14 @@
 import { useMemo, useRef, useState } from 'react'
-import { GroupedBarChart } from './charts.jsx'
-import { DispersionChart } from './dispersion.jsx'
+import { CompararChart } from './compararchart.jsx'
 import { ExportDialog } from './exportar.jsx'
 import { Vacio } from './tabs.jsx'
 import { Campo, Check, EstiloDialog, MenuContextual, Num, Panel, Select, useMenuContextual } from './ui.jsx'
 import { anova1, holm, marcaSig, resumenGrupo, welch } from '../estadistica.js'
-import { resumenBlancos } from '../blancos.js'
-import { estiloDefecto, fmt, paletaMuestras } from '../utils.js'
+import { armarComparacion } from '../comparacion.js'
+import { estiloDefecto, fmt } from '../utils.js'
 
 const tamDe = (svg) => ({ w: svg.viewBox.baseVal.width, h: svg.viewBox.baseVal.height })
-const ERR_TXT = { ic95: 'IC 95 %', sd: 'desviación estándar', sem: 'error estándar', ninguno: '' }
 const pTxt = (p) => (p === null || p === undefined || !Number.isFinite(p) ? '–' : p < 0.0001 ? '< 0,0001' : p.toFixed(4).replace('.', ','))
-
-// aclara un color hsl(h, s%, l%) (f de 0 a 1): los tonos de una familia, uno por placa
-export const aclarar = (col, f) => {
-  const m = /hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/.exec(col)
-  if (!m) return col
-  return `hsl(${m[1]}, ${m[2]}%, ${(Number(m[3]) + (88 - Number(m[3])) * f).toFixed(0)}%)`
-}
 
 export function CompararTab({ s }) {
   const svg = useRef()
@@ -26,93 +17,18 @@ export function CompararTab({ s }) {
   const [exp, setExp] = useState(false)
   const o = s.opts.comparar
   const setO = (k, v) => s.setOpts({ ...s.opts, comparar: { ...o, [k]: v } })
-  const modo = o.modo === 'medio' ? 'medio' : 'placas'
-  const vista = o.vista === 'dispersion' ? 'dispersion' : 'barras'
-  const verBlancos = o.blancos !== false
+  const setVarios = (cambios) => s.setOpts({ ...s.opts, comparar: { ...o, ...cambios } })
 
-  const conAnalisis = s.placas.filter((p) => s.analisisMap[p.id]?.resumen?.length)
-  const placasSel0 = o.placasSel ? conAnalisis.filter((p) => o.placasSel.includes(p.id)) : conAnalisis
-  // las placas se ordenan por medio de cultivo (las del mismo medio quedan juntas)
-  const placasSel = useMemo(() => {
-    const orden = [...new Set(s.placas.map((p) => p.medio || ''))].filter(Boolean)
-    return [...placasSel0].sort((a, b) => {
-      const ia = a.medio ? orden.indexOf(a.medio) : 999, ib = b.medio ? orden.indexOf(b.medio) : 999
-      return ia - ib
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [placasSel0.map((p) => p.id + p.medio).join('|'), s.placas])
-  const mediosPres = useMemo(() => [...new Set(placasSel.map((p) => p.medio).filter(Boolean))], [placasSel])
-  const coloresMedio = useMemo(() => paletaMuestras(mediosPres), [mediosPres])
-  const colorBase = useMemo(() => paletaMuestras(s.placas.map((p) => p.id)), [s.placas])
-  // color de cada placa: familia de tonos del medio si lo tiene; si no, un color propio
-  const colores = useMemo(() => {
-    const out = {}
-    mediosPres.forEach((md) => {
-      const ps = placasSel.filter((p) => p.medio === md)
-      ps.forEach((p, i) => { out[p.id] = aclarar(coloresMedio[md], ps.length > 1 ? (0.5 * i) / (ps.length - 1) : 0) })
-    })
-    placasSel.forEach((p) => { if (!out[p.id]) out[p.id] = colorBase[p.id] })
-    return out
-  }, [placasSel, mediosPres, coloresMedio, colorBase])
-
-  const ocultos = useMemo(() => new Set(o.ocultos || []), [o.ocultos])
-  const clave = (id, m) => `${id}|${m}`
-  const blancosDe = (p) => (verBlancos ? resumenBlancos(s.analisisMap[p.id].estado) : [])
-  const filasDe = (p) => [...s.analisisMap[p.id].resumen, ...blancosDe(p)]
-
-  // muestras presentes en las placas elegidas (en el orden de la lista de muestras; los blancos al final)
-  const { muestras, esBlanco } = useMemo(() => {
-    const nb = [...new Set(placasSel.flatMap((p) => s.analisisMap[p.id].resumen.map((r) => r.Muestra)))]
-    const bl = verBlancos ? [...new Set(placasSel.flatMap((p) => resumenBlancos(s.analisisMap[p.id].estado).map((r) => r.Muestra)))].filter((m) => !nb.includes(m)) : []
-    return {
-      muestras: [...s.muestras.filter((m) => nb.includes(m)), ...nb.filter((m) => !s.muestras.includes(m)), ...bl],
-      esBlanco: new Set(bl),
-    }
-  }, [placasSel, s.muestras, s.analisisMap, verBlancos])
-  const etiqueta = (m) => (esBlanco.has(m) ? `${m} (blanco)` : m)
-  const tieneMuestra = (p, m) => filasDe(p).some((r) => r.Muestra === m)
-  const ptsDe = (p, m) => s.analisisMap[p.id].estado.filter((e) => e.Muestra === m && e.Usado).map((e) => e.OD)
-  const errDe = (r) => (o.error === 'ic95' ? r.IC95 : o.error === 'sd' ? r.SD : o.error === 'sem' ? r.SEM : null)
-
-  // barras: una por placa para cada muestra, o una por medio de cultivo (promedio de sus placas; cada placa aporta un valor)
-  const grupos = useMemo(() => muestras.map((m) => ({
-    muestra: m, etiqueta: etiqueta(m),
-    barras: modo === 'medio' ? mediosPres.flatMap((md) => {
-      const vals = []
-      placasSel.filter((p) => p.medio === md).forEach((p) => {
-        if (ocultos.has(clave(p.id, m))) return
-        const r = filasDe(p).find((x) => x.Muestra === m)
-        if (r && Number.isFinite(r.Media)) vals.push(r.Media)
-      })
-      if (!vals.length) return []
-      const rg = resumenGrupo(vals)
-      const err = o.error === 'ic95' ? rg.ic95 : o.error === 'sd' ? rg.sd : o.error === 'sem' ? rg.sem : null
-      return [{ id: md + '|' + m, placa: `${md} (n = ${vals.length} ${vals.length === 1 ? 'placa' : 'placas'})`, color: coloresMedio[md],
-        media: rg.media, err: Number.isFinite(err) ? err : null, pts: vals }]
-    }) : placasSel.flatMap((p) => {
-      if (ocultos.has(clave(p.id, m))) return []
-      const r = filasDe(p).find((x) => x.Muestra === m)
-      if (!r || !Number.isFinite(r.Media)) return []
-      const err = errDe(r)
-      return [{ id: p.id + '|' + m, placa: p.nombre + (p.medio ? ` · ${p.medio}` : ''), color: colores[p.id], media: r.Media, err: Number.isFinite(err) ? err : null, pts: ptsDe(p, m) }]
-    }),
-  })).filter((g) => g.barras.length),
+  // todos los datos del gráfico salen de un solo lugar; la vista (barras / cajas / puntos) no cambia nada de esto
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [muestras, placasSel, ocultos, o.error, colores, s.analisisMap, modo, mediosPres, coloresMedio, verBlancos])
+  const D = useMemo(() => armarComparacion(s), [s.placas, s.analisisMap, s.muestras, o])
+  const { modo, conAnalisis, placasSel, mediosPres, colores, colorBase, ocultos, clave, muestras, etiqueta, tieneMuestra, grupos, leyenda, nota, sinMedio } = D
 
-  // vista de dispersión: siempre una columna por placa (ordenadas por medio) con los pocillos como puntos
-  const gruposDisp = useMemo(() => muestras.map((m) => ({
-    muestra: m, etiqueta: etiqueta(m),
-    barras: placasSel.flatMap((p) => {
-      if (ocultos.has(clave(p.id, m))) return []
-      const r = filasDe(p).find((x) => x.Muestra === m)
-      const pts = ptsDe(p, m)
-      if (!r || !pts.length) return []
-      return [{ id: p.id + '|' + m, placa: p.nombre + (p.medio ? ` · ${p.medio}` : ''), color: colores[p.id], media: r.Media, pts }]
-    }),
-  })).filter((g) => g.barras.length),
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  [muestras, placasSel, ocultos, colores, s.analisisMap, verBlancos])
+  const elementos = {
+    barras: o.barras !== false, cajas: !!o.cajas, puntos: o.puntos !== false, barrasError: o.barrasError !== false,
+    valores: o.valores !== false, errores: !!o.errores, rotar: o.rotar ?? 45,
+  }
+  const sinElementos = !elementos.barras && !elementos.cajas && !elementos.puntos
 
   if (!conAnalisis.length) {
     return <Vacio texto="Cargá al menos dos placas (botón «+ Agregar placa»), configurá sus pocillos y volvé acá para compararlas." />
@@ -130,12 +46,12 @@ export function CompararTab({ s }) {
     const aj = holm(res.map((r) => (r ? r.p : NaN)))
     filasTest = grupos.map((g) => {
       const r = resumenGrupo(valoresDe(g.muestra))
-      if (g.muestra === control) return { m: g.muestra, n: r.n, media: r.media, sd: r.sd, dif: null, p: null, pa: null, texto: 'control' }
+      if (g.muestra === control) return { m: g.etiqueta, n: r.n, media: r.media, sd: r.sd, dif: null, p: null, pa: null, texto: 'control' }
       const i = otros.findIndex((x) => x.muestra === g.muestra)
       const w = res[i]
       const pa = aj[i]
       return {
-        m: g.muestra, n: r.n, media: r.media, sd: r.sd, dif: w ? w.dif : null, p: w ? w.p : null, pa,
+        m: g.etiqueta, n: r.n, media: r.media, sd: r.sd, dif: w ? w.dif : null, p: w ? w.p : null, pa,
         texto: !w ? 'No se puede calcular (hacen falta 2 o más placas en la muestra y en el control)'
           : pa < 0.05 ? `Distinta del control (${marcaSig(pa)})` : 'Sin diferencia clara con el control',
       }
@@ -153,29 +69,17 @@ export function CompararTab({ s }) {
       const c = g.barras.find((b) => b.id.startsWith(controlG + '|'))
       g.barras.forEach((b) => { if (!b.id.startsWith(controlG + '|')) comps.push({ muestra: g.etiqueta, b, c }) })
     })
-    const resG = comps.map((x) => (x.c ? welch(x.b.pts, x.c.pts) : null))
+    const resG = comps.map((x) => (x.c ? welch(x.b.vp, x.c.vp) : null))
     const ajG = holm(resG.map((r) => (r ? r.p : NaN)))
     filasG = comps.map((x, i) => ({
       m: x.muestra, grupo: x.b.placa, media: x.b.media, ctrl: x.c ? x.c.media : null, dif: resG[i] ? resG[i].dif : null, p: resG[i] ? resG[i].p : null, pa: ajG[i],
       texto: !resG[i] ? 'No se puede calcular (hacen falta 2 o más placas en cada medio)' : ajG[i] < 0.05 ? `Distinto del medio control (${marcaSig(ajG[i])})` : 'Sin diferencia clara con el medio control',
     }))
   }
-  const sinMedio = placasSel.filter((p) => !p.medio)
-  const nota = vista === 'dispersion'
-    ? 'Cada punto es un pocillo aceptado · caja: cuartiles y mediana · rombo negro: media'
-    : modo === 'medio'
-      ? `Barras: promedio de las placas de cada medio (cada placa = un valor)${ERR_TXT[o.error] ? `; error: ${ERR_TXT[o.error]} entre placas` : ''}`
-      : `Barras: OD media de las réplicas aceptadas de cada placa${ERR_TXT[o.error] ? `; error: ${ERR_TXT[o.error]} entre pocillos de la placa` : ''}`
-  const leyenda = vista === 'barras' && modo === 'medio'
-    ? mediosPres.filter((md) => grupos.some((g) => g.barras.some((b) => b.id.startsWith(md + '|')))).map((md) => ({ id: md, nombre: md, color: coloresMedio[md] }))
-    : placasSel.map((p) => ({ id: p.id, nombre: p.nombre + (p.medio ? ` · ${p.medio}` : ''), color: colores[p.id] }))
-  const oGraf = { valores: o.valores, errores: o.errores, puntos: o.puntos, rotar: o.rotar }
-  const datosGrafico = vista === 'dispersion' ? gruposDisp : grupos
-  const nBarras = datosGrafico.reduce((a, g) => a + g.barras.length, 0)
-
-  const grafico = (ref, tam, ctx) => (vista === 'dispersion'
-    ? <DispersionChart ref={ref} grupos={gruposDisp} leyenda={leyenda} o={oGraf} est={s.estilos.comparar} eje={s.ejeOD} onContext={ctx} tam={tam} nota={nota} />
-    : <GroupedBarChart ref={ref} grupos={grupos} placas={leyenda} o={oGraf} est={s.estilos.comparar} eje={s.ejeOD} onContext={ctx} tam={tam} nota={nota} />)
+  const nCols = grupos.reduce((a, g) => a + g.barras.length, 0)
+  const grafico = (ref, tam, ctx) => (
+    <CompararChart ref={ref} grupos={grupos} leyenda={leyenda} o={elementos} est={s.estilos.comparar} eje={s.ejeOD} onContext={ctx} tam={tam} nota={nota} />
+  )
 
   const cambiarCelda = (id, m, v) => {
     const k = clave(id, m)
@@ -192,26 +96,51 @@ export function CompararTab({ s }) {
     const sin = (o.ocultos || []).filter((x) => !ks.includes(x))
     setO('ocultos', v ? sin : [...sin, ...ks])
   }
+  const preset = elementos.barras && elementos.cajas ? 'ambas' : elementos.cajas ? 'cajas' : elementos.barras ? 'barras' : ''
 
   return (
     <div className="con-lateral">
       <Panel titulo="Comparar placas">
         <p className="ayuda">El medio de cultivo de cada placa se elige en la pestaña «Placa»; las placas con el mismo medio quedan juntas y del mismo color.</p>
-        <Campo label="Vista">
-          <div className="seg">
-            <button className={vista === 'barras' ? 'on' : ''} onClick={() => setO('vista', 'barras')}>Barras</button>
-            <button className={vista === 'dispersion' ? 'on' : ''} onClick={() => setO('vista', 'dispersion')}>Dispersión (puntos y cajas)</button>
-          </div>
+        <Campo label="Cómo comparar">
+          <Select value={modo} onChange={(v) => setO('modo', v)}
+            opciones={[['placas', 'Una columna por placa'], ['medio', 'Una columna por medio de cultivo (promedio de sus placas)'], ['pocillo', 'Una columna por pocillo']]} />
         </Campo>
-        {vista === 'barras' && (
-          <Campo label="Cómo comparar">
-            <Select value={modo} onChange={(v) => setO('modo', v)}
-              opciones={[['placas', 'Una barra por placa'], ['medio', 'Una barra por medio de cultivo (promedio de sus placas)']]} />
-          </Campo>
-        )}
-        {vista === 'barras' && modo === 'medio' && sinMedio.length > 0 && (
+        {modo === 'medio' && sinMedio.length > 0 && (
           <p className="aviso-sel">Placas sin medio indicado (no se muestran): {sinMedio.map((p) => p.nombre).join(', ')}. Elegí su medio en la pestaña «Placa».</p>
         )}
+        {modo === 'medio' && (
+          <Campo label="Puntos y cajas de cada medio">
+            <Select value={o.puntosMedio || 'pocillos'} onChange={(v) => setO('puntosMedio', v)}
+              opciones={[['pocillos', 'Todos los pocillos de sus placas'], ['placas', 'Un punto por placa (su promedio)']]} />
+          </Campo>
+        )}
+
+        <Campo label="Qué mostrar en el gráfico">
+          <div className="seg">
+            <button className={preset === 'barras' ? 'on' : ''} onClick={() => setVarios({ barras: true, cajas: false })}>Barras</button>
+            <button className={preset === 'cajas' ? 'on' : ''} onClick={() => setVarios({ barras: false, cajas: true })}>Cajas</button>
+            <button className={preset === 'ambas' ? 'on' : ''} onClick={() => setVarios({ barras: true, cajas: true })}>Ambas</button>
+          </div>
+          <div className="lista-check" style={{ marginTop: 6 }}>
+            <Check label="Barras (promedio)" checked={elementos.barras} onChange={(v) => setO('barras', v)} />
+            <Check label="Cajas (cuartiles, mediana y media ◇)" checked={elementos.cajas} onChange={(v) => setO('cajas', v)} />
+            <Check label={modo === 'medio' && o.puntosMedio === 'placas' ? 'Puntos (uno por placa)' : 'Puntos (pocillos)'} checked={elementos.puntos} onChange={(v) => setO('puntos', v)} />
+            <Check label="Barras de error" checked={elementos.barrasError} onChange={(v) => setO('barrasError', v)} />
+            <Check label="Etiquetas con el valor de cada columna" checked={elementos.valores} onChange={(v) => setO('valores', v)} />
+            {elementos.valores && <Check label="Incluir el error en la etiqueta" checked={elementos.errores} onChange={(v) => setO('errores', v)} />}
+          </div>
+          {sinElementos && <p className="aviso-sel">No hay nada para dibujar: activá barras, cajas o puntos.</p>}
+          {modo === 'pocillo' && <p className="ayuda">Con una columna por pocillo no hay cajas ni barras de error (cada columna es un solo valor).</p>}
+        </Campo>
+        {(modo === 'placas' || modo === 'medio') && (
+          <Campo label="Tipo de error">
+            <Select value={o.error} onChange={(v) => setO('error', v)}
+              opciones={[['sd', 'Desviación estándar'], ['sem', 'Error estándar (SEM)'], ['ic95', 'IC 95 %'], ['ninguno', 'Ninguno']]} />
+          </Campo>
+        )}
+        <Campo label="Rotación de etiquetas (°)"><Num value={o.rotar} min={0} max={90} step={15} onChange={(v) => setO('rotar', v === '' ? 0 : v)} /></Campo>
+
         <Campo label="Placas a ver">
           <div className="fila-ctrl" style={{ margin: '0 0 4px' }}>
             <button className="chico" onClick={() => setO('placasSel', conAnalisis.map((p) => p.id))}>Todas</button>
@@ -225,7 +154,7 @@ export function CompararTab({ s }) {
             ))}
           </div>
         </Campo>
-        <Check label="Mostrar también los blancos" checked={verBlancos} onChange={(v) => setO('blancos', v)} />
+        <Check label="Mostrar también los blancos" checked={D.verBlancos} onChange={(v) => setO('blancos', v)} />
 
         <Campo label="Muestras a mostrar de cada placa">
           <div className="fila-ctrl" style={{ margin: '0 0 4px' }}>
@@ -263,21 +192,8 @@ export function CompararTab({ s }) {
           </div>
           <p className="ayuda">Cada columna es una placa (mismo color que en el gráfico). Destildá una celda para ocultar esa muestra solo en esa placa, o la casilla de la izquierda para ocultarla en todas.</p>
         </Campo>
-
-        {vista === 'barras' && (
-          <>
-            <Campo label="Barras de error">
-              <Select value={o.error} onChange={(v) => setO('error', v)}
-                opciones={[['sd', 'Desviación estándar'], ['sem', 'Error estándar (SEM)'], ['ic95', 'IC 95 %'], ['ninguno', 'Ninguna']]} />
-            </Campo>
-            <Check label="Mostrar la OD sobre cada barra" checked={o.valores} onChange={(v) => setO('valores', v)} />
-            <Check label="Mostrar el error junto al valor medio" checked={o.errores} onChange={(v) => setO('errores', v)} />
-            <Check label={modo === 'medio' ? 'Mostrar el valor de cada placa' : 'Mostrar los pocillos individuales'} checked={o.puntos} onChange={(v) => setO('puntos', v)} />
-          </>
-        )}
-        <Campo label="Rotación de etiquetas (°)"><Num value={o.rotar} min={0} max={90} step={15} onChange={(v) => setO('rotar', v === '' ? 0 : v)} /></Campo>
         <hr />
-        {vista === 'barras' && modo === 'medio' && (
+        {modo === 'medio' && (
           <>
             <Campo label="Prueba estadística entre medios (opcional)">
               <Select value={o.testG} onChange={(v) => setO('testG', v)}
@@ -290,7 +206,7 @@ export function CompararTab({ s }) {
             )}
           </>
         )}
-        {vista === 'barras' && modo === 'placas' && (
+        {modo === 'placas' && (
           <>
             <Campo label="Prueba estadística (opcional)">
               <Select value={o.test} onChange={(v) => setO('test', v)}
@@ -303,15 +219,15 @@ export function CompararTab({ s }) {
             )}
           </>
         )}
-        <button className="primario ancho" onClick={() => setExp(true)} disabled={!datosGrafico.length}>Descargar imagen…</button>
+        <button className="primario ancho" onClick={() => setExp(true)} disabled={!grupos.length || sinElementos}>Descargar imagen…</button>
       </Panel>
 
       <div className="principal">
-        <h1>Comparación entre placas <span className="sub">· {vista === 'dispersion' ? 'dispersión de los pocillos' : 'OD de cada muestra'}</span></h1>
-        {datosGrafico.length ? grafico(svg, undefined, abrirMenu) : <Vacio texto="Elegí al menos una placa y una muestra para mostrar." />}
-        <p className="ayuda">Clic derecho sobre el gráfico: estilo de todos los textos. Pasá el mouse sobre {vista === 'dispersion' ? 'una columna' : 'una barra'} para ver su placa y su valor. {nBarras > 0 && `${nBarras} ${vista === 'dispersion' ? 'columnas' : 'barras'}.`}</p>
+        <h1>Comparación entre placas <span className="sub">· {modo === 'medio' ? 'por medio de cultivo' : modo === 'pocillo' ? 'pocillo por pocillo' : 'placa por placa'}</span></h1>
+        {grupos.length && !sinElementos ? grafico(svg, undefined, abrirMenu) : <Vacio texto={sinElementos ? 'Activá barras, cajas o puntos para ver el gráfico.' : 'Elegí al menos una placa y una muestra para mostrar.'} />}
+        <p className="ayuda">Clic derecho sobre el gráfico: estilo de todos los textos. Pasá el mouse sobre una columna o un punto para ver su detalle. {nCols > 0 && `${nCols} columnas.`}</p>
 
-        {vista === 'barras' && modo === 'medio' && o.testG === 'control' && (
+        {modo === 'medio' && o.testG === 'control' && (
           <section className="resultado-test">
             <h2>Cada medio contra «{controlG}»</h2>
             {filasG.length ? (
@@ -333,7 +249,7 @@ export function CompararTab({ s }) {
           </section>
         )}
 
-        {vista === 'barras' && modo === 'placas' && o.test === 'anova' && (
+        {modo === 'placas' && o.test === 'anova' && (
           <section className="resultado-test">
             <h2>Resultado del ANOVA</h2>
             {anova ? (
@@ -348,7 +264,7 @@ export function CompararTab({ s }) {
           </section>
         )}
 
-        {vista === 'barras' && modo === 'placas' && o.test === 'control' && (
+        {modo === 'placas' && o.test === 'control' && (
           <section className="resultado-test">
             <h2>Cada muestra contra «{control}»</h2>
             <div className="tabla-scroll">

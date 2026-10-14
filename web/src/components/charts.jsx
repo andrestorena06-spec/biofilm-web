@@ -15,7 +15,7 @@ export function useAncho() {
 }
 
 // Texto con fondo blanco: ninguna línea del gráfico lo atraviesa
-function EtiquetaFondo({ x, y, texto, est, anchor = 'middle', pad = 3 }) {
+export function EtiquetaFondo({ x, y, texto, est, anchor = 'middle', pad = 3 }) {
   const lineas = String(texto).split('\n')
   const alto = est.size * 1.2
   const w = Math.max(...lineas.map((t) => medir(t, est.size, est.bold, est.italic)))
@@ -32,7 +32,7 @@ function EtiquetaFondo({ x, y, texto, est, anchor = 'middle', pad = 3 }) {
   )
 }
 
-function EjeY({ ticks, paso, y, left, plotW, est, titulo }) {
+export function EjeY({ ticks, paso, y, left, plotW, est, titulo }) {
   return (
     <g>
       {ticks.map((t) => (
@@ -49,7 +49,7 @@ function EjeY({ ticks, paso, y, left, plotW, est, titulo }) {
   )
 }
 
-function EtiquetasX({ labels, cx, yBase, ang, est }) {
+export function EtiquetasX({ labels, cx, yBase, ang, est }) {
   return labels.map((l, i) => (
     <text key={l + i} transform={`translate(${cx(i)},${yBase + 10}) rotate(${-ang})`}
       textAnchor={ang > 0 ? 'end' : 'middle'} dominantBaseline={ang > 0 ? 'central' : 'hanging'}
@@ -57,11 +57,11 @@ function EtiquetasX({ labels, cx, yBase, ang, est }) {
   ))
 }
 
-const Titulo = ({ W, est }) => est.titulo.texto ? (
+export const Titulo = ({ W, est }) => est.titulo.texto ? (
   <text x={W / 2} y={14 + est.titulo.size} textAnchor="middle" style={estiloTexto(est.titulo)}>{est.titulo.texto}</text>
 ) : null
 
-const LeyendaX = ({ L, est }) => est.leyendaX.texto ? (
+export const LeyendaX = ({ L, est }) => est.leyendaX.texto ? (
   <text x={L.left + L.plotW / 2} y={L.top + L.plotH + 10 + L.altoEtiquetas + 12 + est.leyendaX.size}
     textAnchor="middle" style={estiloTexto(est.leyendaX)}>{est.leyendaX.texto}</text>
 ) : null

@@ -18,10 +18,12 @@ const optsDef = () => ({
     lineas: true, valoresClase: false, rotar: 45, muestrasSel: null,
   },
   comparar: {
-    error: 'sd', test: 'ninguno', control: '', puntos: true, valores: true, errores: false, rotar: 45,
+    error: 'sd', test: 'ninguno', control: '', rotar: 45,
     placasSel: null, ocultos: [],   // ocultos: "idPlaca|muestra" que no se muestran
     modo: 'placas',                 // 'placas' (una barra por placa) o 'medio' (las placas del mismo medio de cultivo, promediadas)
-    vista: 'barras',                // 'barras' o 'dispersion' (pocillos de cada placa, lado a lado)
+    // elementos del gráfico (cada uno se muestra u oculta por separado)
+    barras: true, cajas: false, puntos: true, barrasError: true, valores: true, errores: false,
+    puntosMedio: 'pocillos',        // en «por medio»: puntos y cajas con todos los pocillos, o un punto por placa
     blancos: true,                  // mostrar también los blancos
     testG: 'ninguno', controlG: '',
   },
