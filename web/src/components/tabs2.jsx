@@ -3,6 +3,7 @@ import { BarChart, ExcluirChart } from './charts.jsx'
 import { Campo, Check, EstiloDialog, MenuContextual, Num, Panel, Select, useMenuContextual } from './ui.jsx'
 import { ExportDialog } from './exportar.jsx'
 import { abrirInforme } from './informe.jsx'
+import { resumenBlancos } from '../blancos.js'
 import { Vacio } from './tabs.jsx'
 import { excelDe } from '../api.js'
 import { Q_TABLA } from '../criticos.js'
@@ -104,12 +105,16 @@ export function GraficoTab({ s }) {
   const a = s.analisis
   if (!a?.resumen?.length) return <Vacio texto="Configurá los pocillos para ver el gráfico." />
 
-  const todas = a.resumen.map((r) => r.Muestra)
+  const verBlancos = o.blancos !== false
+  const blancosRes = verBlancos ? resumenBlancos(a.estado) : []
+  const todas = [...a.resumen.map((r) => r.Muestra), ...blancosRes.map((r) => r.Muestra)]
   const selMuestras = o.muestrasSel ? o.muestrasSel.filter((m) => todas.includes(m)) : todas
-  let filas = a.resumen.filter((r) => selMuestras.includes(r.Muestra) && Number.isFinite(r.Media))
+  let filas = [...a.resumen, ...blancosRes].filter((r) => selMuestras.includes(r.Muestra) && Number.isFinite(r.Media))
   if (o.orden === 'asc') filas = [...filas].sort((x, y) => x.Media - y.Media)
   if (o.orden === 'desc') filas = [...filas].sort((x, y) => y.Media - x.Media)
-  const puntos = a.estado.filter((e) => !e.EsBlanco && e.Usado && filas.some((f) => f.Muestra === e.Muestra))
+  const puntos = a.estado.filter((e) => e.Usado && filas.some((f) => f.Muestra === e.Muestra))
+  const blancosDe = a.blancos || []
+  const usadosOdc = s.blancosUsados ?? blancosDe
 
   return (
     <div className="con-lateral">
@@ -126,6 +131,17 @@ export function GraficoTab({ s }) {
             ))}
           </div>
         </Campo>
+        <Check label="Mostrar los blancos (medio sin inocular)" checked={verBlancos} onChange={(v) => setO('blancos', v)} />
+        {blancosDe.length > 0 && (
+          <Campo label="Blancos usados para el ODc (podés elegir más de uno)">
+            <div className="lista-check">
+              {blancosDe.map((b) => (
+                <Check key={b} label={b} checked={usadosOdc.includes(b)}
+                  onChange={(v) => s.setBlancosUsados(v ? [...usadosOdc, b] : usadosOdc.filter((x) => x !== b))} />
+              ))}
+            </div>
+          </Campo>
+        )}
         <Campo label="Barras de error">
           <Select value={o.error} onChange={(v) => setO('error', v)}
             opciones={[['ic95', 'IC 95 %'], ['sd', 'Desviación estándar'], ['sem', 'Error estándar (SEM)'], ['ninguno', 'Ninguna']]} />

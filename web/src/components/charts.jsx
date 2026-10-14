@@ -74,7 +74,8 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
   const W = tam ? tam.w : Wmed
   const lineas = o.lineas && Number.isFinite(odc)
   const errTxt = { ic95: 'IC 95 %', sd: 'desviación estándar', sem: 'error estándar', ninguno: '' }[o.error]
-  const labels = filas.map((f) => f.Muestra)
+  const labels = filas.map((f) => (f.EsBlanco ? `${f.Muestra} (blanco)` : f.Muestra))
+  const hayBlanco = filas.some((f) => f.EsBlanco)
 
   const errDe = (f) => (o.error === 'ic95' ? f.IC95 : o.error === 'sd' ? f.SD : o.error === 'sem' ? f.SEM : null)
   const topDe = filas.map((f) => {
@@ -117,12 +118,13 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
     W, etiquetas: labels, ang: o.rotar, est, yLabels,
     derecha: lineas ? wClases + 28 : 16,
     titulo: !!est.titulo.texto, tituloX: !!est.leyendaX.texto, altoPlot: 340 + est.valores.size * 2,
-    extraAbajo: (leyenda ? 30 : 0) + (leyendaPuntos?.length ? 26 : 0) + 22, fijoH: tam ? tam.h : 0,
+    extraAbajo: (leyenda || hayBlanco ? 30 : 0) + (leyendaPuntos?.length ? 26 : 0) + 22, fijoH: tam ? tam.h : 0,
     anchoTituloY: medir(est.leyendaY.texto || eje, est.leyendaY.size, est.leyendaY.bold, est.leyendaY.italic),
   })
   const y = (v) => L.top + L.plotH - (v / yMax) * L.plotH
   const cx = (i) => L.left + L.band * (i + 0.5)
   const bw = Math.min(L.band * 0.62, 140)
+  const COLOR_BLANCO = '#cfc8bc'
 
   // etiquetas de clasificación en el margen derecho, sin que se pisen
   const ys = clasesTxt.map((c) => y(c[1] * odc))
@@ -134,7 +136,7 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
     if (pos[i] - pos[i - 1] < minGap) pos[i] = pos[i - 1] + minGap
   }
 
-  const colorBarra = (f) => (o.color === 'clase' && Number.isFinite(odc) ? COLOR_CLASE[f.Clasificacion] : '#6b8fb5')
+  const colorBarra = (f) => (f.EsBlanco ? COLOR_BLANCO : o.color === 'clase' && Number.isFinite(odc) ? COLOR_CLASE[f.Clasificacion] : '#6b8fb5')
   const yLeyenda = L.top + L.plotH + L.altoEtiquetas + L.altoLeyX + 34
 
   return (
@@ -156,7 +158,7 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
           return (
             <g key={f.Muestra}>
               <rect x={cx(i) - bw / 2} y={y(f.Media)} width={bw} height={Math.max(y(0) - y(f.Media), 0)}
-                fill={colorBarra(f)} stroke="#333" strokeWidth="0.8" />
+                fill={colorBarra(f)} stroke="#333" strokeWidth="0.8" strokeDasharray={f.EsBlanco ? '4 2' : undefined} />
               {Number.isFinite(e) && e > 0 && (
                 <g stroke="#111" strokeWidth="1.3">
                   <line x1={cx(i)} x2={cx(i)} y1={y(Math.max(f.Media - e, 0))} y2={y(f.Media + e)} />
@@ -189,16 +191,17 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
         <EtiquetasX labels={labels} cx={cx} yBase={y(0)} ang={o.rotar} est={est} />
         <LeyendaX L={L} est={est} />
 
-        {leyenda && (
+        {(leyenda || hayBlanco) && (
           <g transform={`translate(${L.left + L.plotW / 2},${yLeyenda})`}>
             {(() => {
-              const w = CLASES.map((t) => 22 + medir(t, 12) + 18)
+              const items = [...(leyenda ? CLASES.map((t) => [t, COLOR_CLASE[t]]) : []), ...(hayBlanco ? [['Blanco (medio sin inocular)', COLOR_BLANCO]] : [])]
+              const w = items.map(([t]) => 22 + medir(t, 12) + 18)
               const tot = w.reduce((a, b) => a + b, 0)
               let x = -tot / 2
-              return CLASES.map((t, i) => {
+              return items.map(([t, col], i) => {
                 const g = (
                   <g key={t} transform={`translate(${x},0)`}>
-                    <rect width="14" height="14" y="-11" fill={COLOR_CLASE[t]} stroke="#333" strokeWidth="0.6" />
+                    <rect width="14" height="14" y="-11" fill={col} stroke="#333" strokeWidth="0.6" strokeDasharray={col === COLOR_BLANCO ? '3 2' : undefined} />
                     <text x="20" style={{ fontSize: 12, fill: '#333' }}>{t}</text>
                   </g>
                 )
@@ -209,7 +212,7 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
           </g>
         )}
         {leyendaPuntos?.length > 0 && (
-          <g transform={`translate(${L.left + L.plotW / 2},${yLeyenda + (leyenda ? 26 : 0)})`}>
+          <g transform={`translate(${L.left + L.plotW / 2},${yLeyenda + (leyenda || hayBlanco ? 26 : 0)})`}>
             {(() => {
               const w = leyendaPuntos.map((p) => 20 + medir(p.nombre, 12) + 18)
               let x = -w.reduce((a, b) => a + b, 0) / 2
@@ -347,7 +350,7 @@ export const ExcluirChart = forwardRef(function ExcluirChart({ estado, orden, o,
 export const GroupedBarChart = forwardRef(function GroupedBarChart({ grupos, placas, o, est, eje, onContext, tam, nota }, svgRef) {
   const [wrap, Wmed] = useAncho()
   const W = tam ? tam.w : Wmed
-  const labels = grupos.map((g) => g.muestra)
+  const labels = grupos.map((g) => g.etiqueta || g.muestra)
   const nmax = Math.max(1, ...grupos.map((g) => g.barras.length))
   const todas = grupos.flatMap((g) => g.barras)
 

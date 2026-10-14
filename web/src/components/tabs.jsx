@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { BarChart, ExcluirChart } from './charts.jsx'
+import { PanelLayoutMedio } from './layoutui.jsx'
 import { Campo, Check, EstiloDialog, MenuContextual, Modal, Num, Panel, Select, useMenuContextual } from './ui.jsx'
 import { leerPlaca, hojasDe, MODO } from '../api.js'
 import {
@@ -18,7 +19,8 @@ export function PlacaTab({ s }) {
   const [blanco, setBlanco] = useState(false)
   const [confirmar, setConfirmar] = useState(false)
 
-  const disp = useMemo(() => new Set(s.placa?.datos.map((d) => d.Pocillo)), [s.placa])
+  // sin Excel todavía: se pueden configurar los 96 pocillos de antemano
+  const disp = useMemo(() => new Set(s.placa ? s.placa.datos.map((d) => d.Pocillo) : pocillos96()), [s.placa])
   const cols = useMemo(() => coloresPocillos(s.config), [s.config])
   const cfgDe = (p) => s.config.find((c) => c.Pocillo === p)
 
@@ -77,7 +79,7 @@ export function PlacaTab({ s }) {
   }
   const quitar = () => { s.setConfig(s.config.filter((c) => !sel.includes(c.Pocillo))); setSel(null) }
 
-  if (!s.placa) return <Vacio texto="Primero cargá el archivo del lector en la pestaña Archivo." />
+  if (!s.a) return <Vacio texto="Todavía no hay placas. Cargá un Excel (+ Agregar placa) o creá una placa sin Excel para dejar lista su configuración." />
 
   const resumen = [...new Set(s.config.map((c) => c.Muestra))].map((m) => {
     const g = s.config.filter((c) => c.Muestra === m)
@@ -87,7 +89,8 @@ export function PlacaTab({ s }) {
   return (
     <div className="con-lateral lateral-der">
       <div className="principal">
-        <h1>Placa de 96 pocillos</h1>
+        <h1>Placa de 96 pocillos <span className="sub">· {s.a.nombre}</span></h1>
+        {!s.placa && <p className="aviso-sel">Esta placa todavía no tiene Excel. Podés dejar lista la configuración de los pocillos, el nombre y el medio; al cargar el archivo en «+ Agregar placa» o en Archivo › «Cargar archivo», los datos se completan y se procesan solos.</p>}
         <p className="ayuda">Hacé clic en un pocillo, o clic y arrastrá para seleccionar varios. Elegí una muestra de la lista o escribí una nueva; la réplica se asigna sola. Si es medio sin inocular, marcá «Definir como blanco».</p>
         <div className="placa-wrap">
           <table className="placa">
@@ -121,6 +124,7 @@ export function PlacaTab({ s }) {
         </div>
       </div>
       <Panel titulo="Configuración">
+        <PanelLayoutMedio s={s} />
         <button className="peligro ancho" disabled={!s.config.length} onClick={() => setConfirmar(true)}>Limpiar configuración</button>
         {resumen.length === 0 ? <p className="ayuda">Todavía no hay pocillos configurados.</p> : (
           <>

@@ -2,7 +2,7 @@ import { ACEPTA_LIBRO } from '../libro.js'
 import { useRef, useState } from 'react'
 import { Campo, Modal, Select } from './ui.jsx'
 import { MODO } from '../api.js'
-import { aCSV, descargarBlob, descargarTexto, fmt, pocillos96 } from '../utils.js'
+import { descargarBlob, fmt } from '../utils.js'
 
 // ===============================================================
 // ARCHIVO: placas (un Excel = una placa), muestras, sesión y layout
@@ -11,50 +11,15 @@ export function ArchivoTab({ s }) {
   const [nueva, setNueva] = useState('')
   const [edit, setEdit] = useState(null)
   const [cargando, setCargando] = useState(false)
-  const [origenLayout, setOrigenLayout] = useState('')
   const inputRef = useRef()
   const destinoRef = useRef(null) // placa a la que se le asigna un archivo (si venía sin datos)
   const sesionRef = useRef()
-  const layoutRef = useRef()
-  const destinoLayout = useRef(false)   // true = el CSV que se elija va a todas las placas
 
   const abrirArchivos = async (files, idDestino = null) => {
     if (!files || !files.length) return
     setCargando(true)
     await s.agregarPlacas(files, idDestino)
     setCargando(false)
-  }
-
-  const exportarLayout = () => {
-    const filas = [...s.config].sort((a, b) => pocillos96().indexOf(a.Pocillo) - pocillos96().indexOf(b.Pocillo))
-      .map((c) => ({ Pocillo: c.Pocillo, Muestra: c.Muestra, Replica: c.Replica, Blanco: c.EsBlanco ? 1 : 0 }))
-    descargarTexto(aCSV(filas, ['Pocillo', 'Muestra', 'Replica', 'Blanco']), 'layout_placa.csv')
-  }
-
-  // Lee el CSV del layout y lo aplica a la placa activa (aTodas = false) o a todas las placas con datos (aTodas = true)
-  const importarLayout = async (file, aTodas) => {
-    const txt = (await file.text()).replace(/^﻿/, '')
-    const lineas = txt.split(/\r?\n/).filter(Boolean)
-    if (!lineas.length) return s.avisar('El archivo está vacío.', 'error')
-    const sep = lineas[0].includes(';') ? ';' : ','
-    const cab = lineas[0].split(sep).map((x) => x.trim().toLowerCase())
-    const ix = (n) => cab.findIndex((c) => n.includes(c))
-    const iP = ix(['pocillo', 'well']), iM = ix(['muestra', 'sample']), iR = ix(['replica', 'rep']), iB = ix(['blanco', 'blank', 'esblanco'])
-    if (iP < 0 || iM < 0) return s.avisar("El layout necesita las columnas 'Pocillo' y 'Muestra'.", 'error')
-    const validos = new Set(pocillos96())
-    const cfg = []
-    for (const l of lineas.slice(1)) {
-      const c = l.split(sep).map((x) => x.trim().replace(/^"|"$/g, ''))
-      const p = c[iP]?.toUpperCase().replace(/^([A-H])0+(\d)/, '$1$2')
-      if (!p || !validos.has(p) || !c[iM] || cfg.some((x) => x.Pocillo === p)) continue
-      cfg.push({ Pocillo: p, Muestra: c[iM], Replica: iR >= 0 ? Number(c[iR]) || 0 : 0,
-        EsBlanco: iB >= 0 && ['1', 'true', 'si', 'sí', 'yes', 'x'].includes((c[iB] || '').toLowerCase()) })
-    }
-    if (!cfg.length) return s.avisar('Ningún pocillo válido (A1 a H12) con muestra en el layout.', 'error')
-    const ordenados = cfg.sort((a, b) => pocillos96().indexOf(a.Pocillo) - pocillos96().indexOf(b.Pocillo))
-    const cont = {}
-    ordenados.forEach((c) => { cont[c.Muestra] = (cont[c.Muestra] || 0) + 1; if (!c.Replica) c.Replica = cont[c.Muestra] })
-    s.aplicarLayout(ordenados, aTodas)
   }
 
   const guardarSesion = () => descargarBlob(new Blob([JSON.stringify(s.exportarSesion())], { type: 'application/json' }), 'sesion_biofilm.json')
@@ -93,13 +58,14 @@ export function ArchivoTab({ s }) {
         {s.placas.length > 0 && (
           <div className="tabla-scroll" style={{ marginTop: 14 }}>
             <table className="tabla">
-              <thead><tr><th>Placa</th><th>Archivo</th><th>Pocillos</th><th>Onda</th><th>Fecha de lectura</th><th>Configurados</th><th>ODc</th><th /></tr></thead>
+              <thead><tr><th>Placa</th><th>Medio</th><th>Archivo</th><th>Pocillos</th><th>Onda</th><th>Fecha de lectura</th><th>Configurados</th><th>ODc</th><th /></tr></thead>
               <tbody>
                 {s.placas.map((x) => {
                   const an = s.analisisMap[x.id]
                   return (
                     <tr key={x.id} className={x.id === s.activaId ? 'fila-activa' : ''}>
                       <td><b>{x.nombre}</b>{x.id === s.activaId && <small className="ayuda"> · activa</small>}</td>
+                      <td>{x.medio || '–'}</td>
                       <td>{x.archivo ? `${x.archivo.nombre}${x.archivo.hoja && x.archivo.hoja !== 'csv' ? ' · ' + x.archivo.hoja : ''}` : ''}</td>
                       {x.placa ? (
                         <>
@@ -109,7 +75,7 @@ export function ArchivoTab({ s }) {
                         </>
                       ) : (
                         <td colSpan={3}>
-                          <span className="ayuda">Sin datos del Excel. </span>
+                          <span className="ayuda">Todavía sin Excel (la configuración ya cargada se aplica sola al cargarlo). </span>
                           <button className="chico primario" onClick={() => { destinoRef.current = x.id; inputRef.current.click() }}>Cargar archivo</button>
                         </td>
                       )}
@@ -175,52 +141,6 @@ export function ArchivoTab({ s }) {
               <button onClick={() => sesionRef.current.click()}>Cargar sesión</button>
               <input ref={sesionRef} type="file" hidden accept=".json" onChange={(e) => { e.target.files[0] && cargarSesion(e.target.files[0]); e.target.value = '' }} />
             </div>
-          </section>
-          <section className="tarjeta">
-            <h2>Layout de la placa activa</h2>
-            <p className="ayuda" style={{ marginTop: 0 }}>CSV con las columnas Pocillo, Muestra y, opcionalmente, Replica y Blanco (1/0).</p>
-            <div className="fila-ctrl">
-              <button onClick={exportarLayout} disabled={!s.config.length}>Exportar CSV</button>
-              <button onClick={() => { destinoLayout.current = false; layoutRef.current.click() }} disabled={!p}>
-                Importar CSV en «{act?.nombre || 'placa activa'}»
-              </button>
-              {s.placas.length > 1 && (
-                <button className="primario" onClick={() => { destinoLayout.current = true; layoutRef.current.click() }} disabled={!s.placas.some((x) => x.placa)}>
-                  Importar CSV en todas las placas
-                </button>
-              )}
-              <input ref={layoutRef} type="file" hidden accept=".csv,.txt"
-                onChange={(e) => { e.target.files[0] && importarLayout(e.target.files[0], destinoLayout.current); e.target.value = '' }} />
-            </div>
-            {s.placas.length > 1 && (
-              <>
-                <div className="fila-ctrl">
-                  <button disabled={!s.config.length} onClick={() => s.copiarConfig()}>Copiar el layout de esta placa a las demás</button>
-                </div>
-                <Campo label={`Usar en «${act?.nombre || 'la placa activa'}» el layout de otra placa`}>
-                  <div className="fila-ctrl" style={{ margin: 0 }}>
-                    <select value={origenLayout} onChange={(e) => setOrigenLayout(e.target.value)}>
-                      <option value="">Elegí una placa que ya tenga layout…</option>
-                      {s.placas.filter((x) => x.id !== s.activaId && x.config.length > 0).map((x) => (
-                        <option key={x.id} value={x.id}>{x.nombre} ({x.config.length} pocillos)</option>
-                      ))}
-                    </select>
-                    <button className="primario" disabled={!origenLayout || !p} onClick={() => { s.copiarLayoutDe(origenLayout, s.activaId); setOrigenLayout('') }}>Aplicar</button>
-                  </div>
-                </Campo>
-                <Campo label="Al cargar placas nuevas, copiarles automáticamente el layout de">
-                  <select value={s.opts.archivo.layoutBase} onChange={(e) => s.setOpts({ ...s.opts, archivo: { ...s.opts.archivo, layoutBase: e.target.value } })}>
-                    <option value="">(ninguna: las placas nuevas llegan sin layout)</option>
-                    {s.placas.filter((x) => x.config.length > 0).map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
-                  </select>
-                </Campo>
-              </>
-            )}
-            <p className="ayuda">
-              {s.placas.length > 1
-                ? 'Aplicar el layout a todas es una copia única: después, los cambios que hagas en la pestaña Placa afectan solo a la placa activa.'
-                : 'Con varias placas vas a poder aplicar el mismo layout a todas de una vez.'}
-            </p>
           </section>
         </div>
       </div>

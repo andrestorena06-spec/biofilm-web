@@ -273,3 +273,7 @@ code { background: #f6ebdb; }
 .matriz-muestras .celda-chk { text-align: center; }
 .resultado-test { margin-top: 18px; padding: 14px 16px; border: 1px solid var(--borde); border-radius: 10px; background: #fffaf2; }
 .resultado-test h2 { font-size: 15px; margin: 0 0 8px; }
+
+.medio-placa { background: #f1e3cf; color: #7a4a1c; border-radius: 999px; padding: 1px 8px; margin-left: 6px; font-size: 10.5px; font-weight: 600; }
+.con-lateral.lateral-der { grid-template-columns: minmax(0, 1fr) 330px; }
+.lateral-der .lateral h3 { text-transform: none; letter-spacing: 0; }

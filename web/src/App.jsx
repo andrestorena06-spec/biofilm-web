@@ -20,8 +20,9 @@ const optsDef = () => ({
   comparar: {
     error: 'sd', test: 'ninguno', control: '', puntos: false, valores: true, errores: false, rotar: 45,
     placasSel: null, ocultos: [],   // ocultos: "idPlaca|muestra" que no se muestran
-    modo: 'placas',                 // 'placas' (una barra por placa) o 'grupos' (placas del mismo medio promediadas)
-    grupos: [],                     // [{ id, nombre, placas: [idPlaca] }]
+    modo: 'placas',                 // 'placas' (una barra por placa) o 'medio' (las placas del mismo medio de cultivo, promediadas)
+    vista: 'barras',                // 'barras' o 'dispersion' (pocillos de cada placa, lado a lado)
+    blancos: true,                  // mostrar también los blancos
     testG: 'ninguno', controlG: '',
   },
   archivo: { layoutBase: '' },      // placa cuyo layout se copia a las placas nuevas que se carguen
@@ -31,8 +32,9 @@ const deteccionDef = () => ({ metodo: 'q', usar: false, conf: '95', cvMax: 20 })
 const normDet = (d) => { const x = { ...deteccionDef(), ...d }; if (!['q', 'grubbs', 'cv'].includes(x.metodo)) x.metodo = 'q'; delete x.nsig; delete x.min; return x }
 
 const nuevoId = () => Math.random().toString(36).slice(2, 10)
+const MEDIOS_DEF = ['BHI', 'TSBye']
 const placaVacia = (nombre) => ({
-  id: nuevoId(), nombre, archivo: null, placa: null, config: [], exclManual: [], exclForzado: [], blancosUsados: null,
+  id: nuevoId(), nombre, archivo: null, placa: null, config: [], exclManual: [], exclForzado: [], blancosUsados: null, medio: '',
 })
 
 function cargarGuardado() {
@@ -66,7 +68,7 @@ const LogoPlaca = () => (
 
 function placasIniciales(g) {
   if (Array.isArray(g.placas) && g.placas.length) {
-    return g.placas.map((p) => ({ exclManual: [], exclForzado: [], blancosUsados: null, config: [], ...p }))
+    return g.placas.map((p) => ({ exclManual: [], exclForzado: [], blancosUsados: null, config: [], medio: '', ...p }))
   }
   return []
 }
@@ -90,6 +92,7 @@ export default function App() {
   const [placas, setPlacas] = useState(() => placasIniciales(gi))
   const [activaId, setActivaId] = useState(() => gi.activaId || null)
   const [muestras, setMuestras] = useState(gi.muestras || MUESTRAS_DEF)
+  const [medios, setMedios] = useState(gi.medios || MEDIOS_DEF)
   const [deteccion, setDeteccion] = useState(() => normDet(gi.deteccion || {}))
   const [opts, setOpts] = useState(() => optsDe(gi))
   const [estilos, setEstilos] = useState(() => estilosDe(gi))
@@ -111,12 +114,13 @@ export default function App() {
   useEffect(() => {
     if (pendiente) return
     try {
-      localStorage.setItem(CLAVE, JSON.stringify({ fecha: new Date().toISOString(), tab, placas, activaId, muestras, deteccion, opts, estilos }))
+      localStorage.setItem(CLAVE, JSON.stringify({ fecha: new Date().toISOString(), tab, placas, activaId, muestras, medios, deteccion, opts, estilos }))
     } catch { /* sin almacenamiento o sin espacio */ }
-  }, [pendiente, tab, placas, activaId, muestras, deteccion, opts, estilos])
+  }, [pendiente, tab, placas, activaId, muestras, medios, deteccion, opts, estilos])
 
   const continuarAnterior = () => {
     if (g.tab) setTab(g.tab)
+    setMedios(g.medios || MEDIOS_DEF)
     setPlacas(placasIniciales(g))
     setActivaId(g.activaId || null)
     setMuestras(g.muestras || MUESTRAS_DEF)
@@ -227,7 +231,7 @@ export default function App() {
     const origen = placas.find((p) => p.id === opts.archivo.layoutBase && p.config.length) || null
     const armar = (n, base) => {
       const disp = new Set(n.r.datos.map((d) => d.Pocillo))
-      const hereda = origen && !base.config.length
+      const hereda = origen && !base.config.length && origen.id !== base.id
       return {
         ...base,
         archivo: { nombre: n.file.name, hoja: n.hoja, hojas: n.hojas },
@@ -239,14 +243,17 @@ export default function App() {
     const creadas = []
     let primeraActiva = null
     let restantes = nuevas
-    // si hay una placa sin datos (por ejemplo una que venía de una sesión antigua), el primer archivo va ahí
-    const destino = idDestino || placas.find((p) => !p.placa)?.id || null
-    if (destino) {
-      const n = nuevas[0]
-      archivosRef.current[destino] = n.file
-      setPlacas((ps) => ps.map((p) => (p.id === destino ? armar(n, p) : p)))
-      primeraActiva = destino
-      restantes = nuevas.slice(1)
+    // las placas creadas de antemano (sin Excel) reciben los archivos en orden; conservan su nombre, medio y configuración
+    const vacias = idDestino ? [placas.find((p) => p.id === idDestino)].filter(Boolean) : placas.filter((p) => !p.placa)
+    const asignados = nuevas.slice(0, vacias.length).map((n, i) => [vacias[i], n])
+    if (asignados.length) {
+      asignados.forEach(([p, n]) => { archivosRef.current[p.id] = n.file })
+      setPlacas((ps) => ps.map((p) => {
+        const par = asignados.find(([v]) => v.id === p.id)
+        return par ? armar(par[1], p) : p
+      }))
+      primeraActiva = asignados[0][0].id
+      restantes = nuevas.slice(asignados.length)
     }
     restantes.forEach((n) => {
       const nombre = nombreUnico(n.nombre, [...existentes, ...creadas.map((c) => c.nombre)])
@@ -259,6 +266,22 @@ export default function App() {
     setActivaId(primeraActiva)
     avisar((nuevas.length === 1 ? `Placa agregada: ${nuevas[0].r.datos.length} pocillos con datos.` : `${nuevas.length} placas agregadas.`)
       + (origen ? ` Se copió el layout de «${origen.nombre}».` : ''))
+  }
+
+  // Placa sin Excel: se deja lista de antemano (nombre, medio y configuración de pocillos); el Excel se carga después
+  const nuevaPlacaVacia = () => {
+    const sug = nombreUnico(`Placa ${placas.length + 1}`, placas.map((p) => p.nombre))
+    const n = window.prompt('Nombre de la placa nueva (sin Excel por ahora)', sug)
+    if (n === null) return
+    const nombre = n.trim() || sug
+    if (placas.some((p) => p.nombre.toLowerCase() === nombre.toLowerCase())) return avisar(`Ya hay una placa llamada «${nombre}».`, 'error')
+    const p = placaVacia(nombre)
+    const origen = placas.find((x) => x.id === opts.archivo.layoutBase && x.config.length)
+    if (origen) { p.config = origen.config.map((c) => ({ ...c })); p.blancosUsados = origen.blancosUsados }
+    setPlacas((ps) => [...ps, p])
+    setActivaId(p.id)
+    setTab('placa')
+    avisar(`Placa «${nombre}» creada sin Excel. Configurá los pocillos y el medio; después cargá el archivo.`)
   }
 
   const cambiarHoja = async (id, hoja) => {
@@ -282,7 +305,6 @@ export default function App() {
       comparar: {
         ...o.comparar,
         placasSel: o.comparar.placasSel ? o.comparar.placasSel.filter((x) => x !== id) : o.comparar.placasSel,
-        grupos: (o.comparar.grupos || []).map((gr) => ({ ...gr, placas: gr.placas.filter((x) => x !== id) })),
       },
       archivo: { ...o.archivo, layoutBase: o.archivo.layoutBase === id ? '' : o.archivo.layoutBase },
     }))
@@ -293,10 +315,9 @@ export default function App() {
     const o = placas.find((p) => p.id === idOrigen)
     const d = placas.find((p) => p.id === idDestino)
     if (!o || !d || !o.config.length) return avisar('La placa elegida no tiene layout.', 'error')
-    if (!d.placa) return avisar('Primero cargá el archivo de la placa de destino.', 'error')
     if (d.config.length && !window.confirm(`«${d.nombre}» ya tiene un layout. Se va a reemplazar. ¿Continuar?`)) return
-    const disp = new Set(d.placa.datos.map((x) => x.Pocillo))
-    const cfg = o.config.filter((c) => disp.has(c.Pocillo)).map((c) => ({ ...c }))
+    const disp = d.placa ? new Set(d.placa.datos.map((x) => x.Pocillo)) : null
+    const cfg = o.config.filter((c) => !disp || disp.has(c.Pocillo)).map((c) => ({ ...c }))
     actualizar(idDestino, { config: cfg, exclManual: [], exclForzado: [], blancosUsados: o.blancosUsados })
     avisar(`Layout de «${o.nombre}» copiado a «${d.nombre}» (${cfg.length} pocillos).`)
   }
@@ -326,15 +347,15 @@ export default function App() {
   // Aplica un layout leído de un CSV a la placa activa o a todas (solo pocillos con datos en cada una).
   // No queda enlazado: los cambios posteriores en la pestaña Placa afectan solo a la placa activa.
   const aplicarLayout = (cfgCrudo, aTodas) => {
-    const destinos = aTodas ? placas.filter((p) => p.placa) : activa?.placa ? [activa] : []
-    if (!destinos.length) return avisar('No hay placas con datos para aplicar el layout.', 'error')
+    const destinos = aTodas ? placas : activa ? [activa] : []
+    if (!destinos.length) return avisar('No hay placas para aplicar el layout.', 'error')
     const orden = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
     const clave = (p) => orden.indexOf(p[0]) * 100 + Number(p.slice(1))
     let omitidos = 0
     setPlacas((ps) => ps.map((p) => {
       if (!destinos.some((d) => d.id === p.id)) return p
-      const disp = new Set(p.placa.datos.map((d) => d.Pocillo))
-      const cfg = cfgCrudo.filter((c) => disp.has(c.Pocillo)).map((c) => ({ ...c })).sort((a, b) => clave(a.Pocillo) - clave(b.Pocillo))
+      const disp = p.placa ? new Set(p.placa.datos.map((d) => d.Pocillo)) : null   // sin Excel todavía: se aceptan todos los pocillos
+      const cfg = cfgCrudo.filter((c) => !disp || disp.has(c.Pocillo)).map((c) => ({ ...c })).sort((a, b) => clave(a.Pocillo) - clave(b.Pocillo))
       omitidos += cfgCrudo.length - cfg.length
       return { ...p, config: cfg, exclManual: [], exclForzado: [] }
     }))
@@ -346,12 +367,12 @@ export default function App() {
   const copiarConfig = () => {
     if (!activa) return
     const otras = placas.filter((p) => p.id !== activa.id)
-    if (!otras.some((p) => p.placa)) return avisar('Las demás placas no tienen datos cargados.', 'error')
+    if (!otras.length) return avisar('No hay otras placas.', 'error')
     if (otras.some((p) => p.config.length) && !window.confirm('Las demás placas ya tienen configuración. Se va a reemplazar. ¿Continuar?')) return
     setPlacas((ps) => ps.map((p) => {
-      if (p.id === activa.id || !p.placa) return p
-      const disp = new Set(p.placa.datos.map((d) => d.Pocillo))
-      return { ...p, config: activa.config.filter((c) => disp.has(c.Pocillo)).map((c) => ({ ...c })), exclManual: [], exclForzado: [], blancosUsados: activa.blancosUsados }
+      if (p.id === activa.id) return p
+      const disp = p.placa ? new Set(p.placa.datos.map((d) => d.Pocillo)) : null
+      return { ...p, config: activa.config.filter((c) => !disp || disp.has(c.Pocillo)).map((c) => ({ ...c })), exclManual: [], exclForzado: [], blancosUsados: activa.blancosUsados }
     }))
     avisar('Configuración copiada a las demás placas.')
   }
@@ -383,13 +404,14 @@ export default function App() {
   // Sesión: guarda todas las placas con los datos de sus Excel
   // ---------------------------------------------------------------
   // La sesión guarda TODO: datos de cada Excel, layouts, exclusiones, grupos de comparación, ajustes, estilos y la pestaña abierta
-  const exportarSesion = () => ({ version: 4, fecha: new Date().toISOString(), tab, activaId: activa?.id || null, placas, muestras, deteccion, opts, estilos })
+  const exportarSesion = () => ({ version: 4, fecha: new Date().toISOString(), tab, activaId: activa?.id || null, placas, muestras, medios, deteccion, opts, estilos })
   const importarSesion = (x) => {
     if (Array.isArray(x?.placas)) {
       archivosRef.current = {}
       setPlacas(placasIniciales({ placas: x.placas }))
       setActivaId(x.activaId || x.placas[0]?.id || null)
       setMuestras(x.muestras || MUESTRAS_DEF)
+      setMedios(x.medios || MEDIOS_DEF)
       setDeteccion(normDet(x.deteccion || {}))
       setOpts(optsDe(x))
       setEstilos(estilosDe(x))
@@ -413,7 +435,12 @@ export default function App() {
   const s = {
     // placas
     placas, activaId: activa?.id || null, a: activa, setActiva: setActivaId, analisisMap,
-    agregarPlacas, quitarPlaca, renombrarPlaca, cambiarHoja, copiarConfig, copiarLayoutDe, reordenarPlacas, aplicarLayout,
+    agregarPlacas, nuevaPlacaVacia, quitarPlaca, renombrarPlaca, cambiarHoja, copiarConfig, copiarLayoutDe, reordenarPlacas, aplicarLayout,
+    medios, setMedio: (id, medio) => {
+      const m = (medio || '').trim()
+      if (m && !medios.some((x) => x.toLowerCase() === m.toLowerCase())) setMedios((x) => [...x, m])
+      actualizar(id, { medio: m ? medios.find((x) => x.toLowerCase() === m.toLowerCase()) || m : '' })
+    },
     tieneArchivo: (id) => !!archivosRef.current[id],
     // datos de la placa activa (así las pestañas existentes funcionan sin cambios)
     archivo: activa?.archivo || null, placa: activa?.placa || null,
@@ -481,12 +508,14 @@ export default function App() {
               onDoubleClick={() => { const n = window.prompt('Nombre de la placa', p.nombre); if (n !== null) renombrarPlaca(p.id, n.trim()) }}>
               <i className="punto-placa" style={{ background: colores[p.id] }} />
               <span className="nombre-placa">{p.nombre}</span>
+              {p.medio && <small className="medio-placa">{p.medio}</small>}
               {analisisMap[p.id] && Number.isFinite(analisisMap[p.id].odc?.odc) && <small>ODc {analisisMap[p.id].odc.odc.toFixed(3)}</small>}
               {!p.placa && <small className="sin-datos-placa">sin datos</small>}
               <button className="x-placa" aria-label={`Quitar ${p.nombre}`} onClick={(e) => { e.stopPropagation(); quitarPlaca(p.id) }}>×</button>
             </div>
           ))}
           <button className="agregar-placa" onClick={() => inputPlacas.current.click()}>+ Agregar placa</button>
+          <button className="agregar-placa" onClick={nuevaPlacaVacia} title="Crear una placa sin Excel para dejar lista su configuración, nombre y medio">+ Placa sin Excel</button>
           <input ref={inputPlacas} type="file" multiple hidden accept={ACEPTA_LIBRO}
             onChange={(e) => { agregarPlacas(e.target.files); e.target.value = '' }} />
         </div>
