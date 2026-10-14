@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { BarChart, ExcluirChart } from './charts.jsx'
 import { Campo, Check, EstiloDialog, MenuContextual, Num, Panel, Select, useMenuContextual } from './ui.jsx'
 import { ExportDialog } from './exportar.jsx'
+import { abrirInforme } from './informe.jsx'
 import { Vacio } from './tabs.jsx'
 import { excelDe } from '../api.js'
 import { Q_TABLA } from '../criticos.js'
@@ -367,7 +368,10 @@ export function DatosTab({ s }) {
     <div className="pagina">
       <div className="titulo-fila">
         <p className="ayuda" style={{ margin: 0 }}>Cada columna numérica tiene un botón <code>▾</code> para filtrar (mayor, menor, igual o entre). Clic en un encabezado para ordenar; arrastralo para mover la columna.</p>
-        <button className="primario" onClick={ambas}>Descargar ambas tablas (Excel)</button>
+        <div className="fila-ctrl" style={{ margin: 0 }}>
+          <button onClick={() => { if (abrirInforme(s)) s.avisar('En el cuadro de impresión elegí «Guardar como PDF» como destino.') }}>Informe PDF (todos los datos procesados)</button>
+          <button className="primario" onClick={ambas}>Descargar ambas tablas (Excel)</button>
+        </div>
       </div>
       <TablaAvanzada id="muestras" titulo="Muestras" columnas={cm} filas={muestras} onVista={onVista} />
       <TablaAvanzada id="pocillos" titulo="Pocillos" columnas={cp} filas={pocillos} onVista={onVista} />

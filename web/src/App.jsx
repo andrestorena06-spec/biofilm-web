@@ -1,3 +1,4 @@
+import { ACEPTA_LIBRO } from './libro.js'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { analizar, ErrorRed, hojasDe, leerPlaca, ping } from './api.js'
 import { PlacaTab, AnalisisTab } from './components/tabs.jsx'
@@ -19,7 +20,11 @@ const optsDef = () => ({
   comparar: {
     error: 'sd', test: 'ninguno', control: '', puntos: false, valores: true, errores: false, rotar: 45,
     placasSel: null, ocultos: [],   // ocultos: "idPlaca|muestra" que no se muestran
+    modo: 'placas',                 // 'placas' (una barra por placa) o 'grupos' (placas del mismo medio promediadas)
+    grupos: [],                     // [{ id, nombre, placas: [idPlaca] }]
+    testG: 'ninguno', controlG: '',
   },
+  archivo: { layoutBase: '' },      // placa cuyo layout se copia a las placas nuevas que se carguen
 })
 const deteccionDef = () => ({ metodo: 'q', usar: false, conf: '95', cvMax: 20 })
 // sesiones guardadas con métodos que ya no existen (Hampel, Dixon general) pasan al test Q
@@ -66,11 +71,11 @@ function placasIniciales(g) {
   return []
 }
 
-const optsDe = (x) => ({
-  excluir: { ...optsDef().excluir, ...(x.opts?.excluir || {}) },
-  barras: { ...optsDef().barras, ...(x.opts?.barras || {}) },
-  comparar: { ...optsDef().comparar, ...(x.opts?.comparar || {}) },
-})
+const optsDe = (x) => {
+  const d = optsDef()
+  return Object.fromEntries(Object.keys(d).map((k) => [k, { ...d[k], ...(x.opts?.[k] || {}) }]))
+}
+const esChrome = () => /Chrome\//.test(navigator.userAgent) && !/Edg\/|OPR\/|Brave/.test(navigator.userAgent)
 const estilosDe = (x) => ({
   barras: normalizarEstilo(x.estilos?.barras), excluir: normalizarEstilo(x.estilos?.excluir), comparar: normalizarEstilo(x.estilos?.comparar),
 })
@@ -80,7 +85,8 @@ export default function App() {
   // Si hay un trabajo anterior con placas, no se carga solo: se le pregunta a la persona
   const [pendiente, setPendiente] = useState(() => !!(g.placas && g.placas.length))
   const gi = pendiente ? {} : g
-  const [tab, setTab] = useState('archivo')
+  const [tab, setTab] = useState(gi.tab || 'archivo')
+  const [avisoChrome, setAvisoChrome] = useState(() => !esChrome())
   const [placas, setPlacas] = useState(() => placasIniciales(gi))
   const [activaId, setActivaId] = useState(() => gi.activaId || null)
   const [muestras, setMuestras] = useState(gi.muestras || MUESTRAS_DEF)
@@ -105,11 +111,12 @@ export default function App() {
   useEffect(() => {
     if (pendiente) return
     try {
-      localStorage.setItem(CLAVE, JSON.stringify({ fecha: new Date().toISOString(), placas, activaId, muestras, deteccion, opts, estilos }))
+      localStorage.setItem(CLAVE, JSON.stringify({ fecha: new Date().toISOString(), tab, placas, activaId, muestras, deteccion, opts, estilos }))
     } catch { /* sin almacenamiento o sin espacio */ }
-  }, [pendiente, placas, activaId, muestras, deteccion, opts, estilos])
+  }, [pendiente, tab, placas, activaId, muestras, deteccion, opts, estilos])
 
   const continuarAnterior = () => {
+    if (g.tab) setTab(g.tab)
     setPlacas(placasIniciales(g))
     setActivaId(g.activaId || null)
     setMuestras(g.muestras || MUESTRAS_DEF)
@@ -216,11 +223,18 @@ export default function App() {
     errores.forEach((m) => avisar(m, 'error'))
     if (!nuevas.length) return
 
-    const armar = (n, base) => ({
-      ...base,
-      archivo: { nombre: n.file.name, hoja: n.hoja, hojas: n.hojas },
-      placa: { datos: n.r.datos, onda: n.r.onda, fecha: n.r.fecha, preview: n.r.preview },
-    })
+    // si se eligió una placa «base», las placas nuevas sin layout lo copian de ella (solo pocillos con datos)
+    const origen = placas.find((p) => p.id === opts.archivo.layoutBase && p.config.length) || null
+    const armar = (n, base) => {
+      const disp = new Set(n.r.datos.map((d) => d.Pocillo))
+      const hereda = origen && !base.config.length
+      return {
+        ...base,
+        archivo: { nombre: n.file.name, hoja: n.hoja, hojas: n.hojas },
+        placa: { datos: n.r.datos, onda: n.r.onda, fecha: n.r.fecha, preview: n.r.preview },
+        ...(hereda ? { config: origen.config.filter((c) => disp.has(c.Pocillo)).map((c) => ({ ...c })), blancosUsados: origen.blancosUsados } : {}),
+      }
+    }
     const existentes = placas.map((p) => p.nombre)
     const creadas = []
     let primeraActiva = null
@@ -243,7 +257,8 @@ export default function App() {
     })
     if (creadas.length) setPlacas((ps) => [...ps, ...creadas])
     setActivaId(primeraActiva)
-    avisar(nuevas.length === 1 ? `Placa agregada: ${nuevas[0].r.datos.length} pocillos con datos.` : `${nuevas.length} placas agregadas.`)
+    avisar((nuevas.length === 1 ? `Placa agregada: ${nuevas[0].r.datos.length} pocillos con datos.` : `${nuevas.length} placas agregadas.`)
+      + (origen ? ` Se copió el layout de «${origen.nombre}».` : ''))
   }
 
   const cambiarHoja = async (id, hoja) => {
@@ -262,7 +277,28 @@ export default function App() {
     if (p && p.config.length && !window.confirm(`Se quitará la placa «${p.nombre}» con su configuración. ¿Continuar?`)) return
     delete archivosRef.current[id]
     setPlacas((ps) => ps.filter((x) => x.id !== id))
-    if (opts.comparar.placasSel) setOpts((o) => ({ ...o, comparar: { ...o.comparar, placasSel: o.comparar.placasSel.filter((x) => x !== id) } }))
+    setOpts((o) => ({
+      ...o,
+      comparar: {
+        ...o.comparar,
+        placasSel: o.comparar.placasSel ? o.comparar.placasSel.filter((x) => x !== id) : o.comparar.placasSel,
+        grupos: (o.comparar.grupos || []).map((gr) => ({ ...gr, placas: gr.placas.filter((x) => x !== id) })),
+      },
+      archivo: { ...o.archivo, layoutBase: o.archivo.layoutBase === id ? '' : o.archivo.layoutBase },
+    }))
+  }
+
+  // Copia el layout (muestras, réplicas y blancos) de una placa que ya lo tiene a otra placa, solo en los pocillos con datos
+  const copiarLayoutDe = (idOrigen, idDestino) => {
+    const o = placas.find((p) => p.id === idOrigen)
+    const d = placas.find((p) => p.id === idDestino)
+    if (!o || !d || !o.config.length) return avisar('La placa elegida no tiene layout.', 'error')
+    if (!d.placa) return avisar('Primero cargá el archivo de la placa de destino.', 'error')
+    if (d.config.length && !window.confirm(`«${d.nombre}» ya tiene un layout. Se va a reemplazar. ¿Continuar?`)) return
+    const disp = new Set(d.placa.datos.map((x) => x.Pocillo))
+    const cfg = o.config.filter((c) => disp.has(c.Pocillo)).map((c) => ({ ...c }))
+    actualizar(idDestino, { config: cfg, exclManual: [], exclForzado: [], blancosUsados: o.blancosUsados })
+    avisar(`Layout de «${o.nombre}» copiado a «${d.nombre}» (${cfg.length} pocillos).`)
   }
 
   const renombrarPlaca = (id, nombre) => {
@@ -346,15 +382,18 @@ export default function App() {
   // ---------------------------------------------------------------
   // Sesión: guarda todas las placas con los datos de sus Excel
   // ---------------------------------------------------------------
-  const exportarSesion = () => ({ version: 3, activaId: activa?.id || null, placas, muestras, deteccion, opts, estilos })
+  // La sesión guarda TODO: datos de cada Excel, layouts, exclusiones, grupos de comparación, ajustes, estilos y la pestaña abierta
+  const exportarSesion = () => ({ version: 4, fecha: new Date().toISOString(), tab, activaId: activa?.id || null, placas, muestras, deteccion, opts, estilos })
   const importarSesion = (x) => {
     if (Array.isArray(x?.placas)) {
+      archivosRef.current = {}
       setPlacas(placasIniciales({ placas: x.placas }))
       setActivaId(x.activaId || x.placas[0]?.id || null)
-      if (x.muestras) setMuestras(x.muestras)
+      setMuestras(x.muestras || MUESTRAS_DEF)
       setDeteccion(normDet(x.deteccion || {}))
-      if (x.opts) setOpts({ excluir: { ...optsDef().excluir, ...x.opts.excluir }, barras: { ...optsDef().barras, ...x.opts.barras }, comparar: { ...optsDef().comparar, ...x.opts.comparar } })
-      if (x.estilos) setEstilos({ barras: normalizarEstilo(x.estilos.barras), excluir: normalizarEstilo(x.estilos.excluir), comparar: normalizarEstilo(x.estilos.comparar) })
+      setOpts(optsDe(x))
+      setEstilos(estilosDe(x))
+      if (x.tab) setTab(x.tab)
       claves.current = {}
       return
     }
@@ -374,7 +413,7 @@ export default function App() {
   const s = {
     // placas
     placas, activaId: activa?.id || null, a: activa, setActiva: setActivaId, analisisMap,
-    agregarPlacas, quitarPlaca, renombrarPlaca, cambiarHoja, copiarConfig, reordenarPlacas, aplicarLayout,
+    agregarPlacas, quitarPlaca, renombrarPlaca, cambiarHoja, copiarConfig, copiarLayoutDe, reordenarPlacas, aplicarLayout,
     tieneArchivo: (id) => !!archivosRef.current[id],
     // datos de la placa activa (así las pestañas existentes funcionan sin cambios)
     archivo: activa?.archivo || null, placa: activa?.placa || null,
@@ -421,6 +460,12 @@ export default function App() {
         </div>
       </nav>
       <main className="contenido">
+        {avisoChrome && (
+          <div className="banner banner-chrome">
+            Este programa está pensado para <b>Google Chrome</b> (por ejemplo, el cuadro «Guardar como» para elegir la carpeta). Abrilo con Chrome para que todo funcione igual.
+            <button className="chico" onClick={() => setAvisoChrome(false)}>Entendido</button>
+          </div>
+        )}
         {!motor && <div className="banner">No se pudo conectar con el motor de cálculo (R). Abrí la aplicación con <b>abrir_biofilm_web.bat</b>.</div>}
         <div className="barra-placas">
           {placas.map((p) => (
@@ -442,7 +487,7 @@ export default function App() {
             </div>
           ))}
           <button className="agregar-placa" onClick={() => inputPlacas.current.click()}>+ Agregar placa</button>
-          <input ref={inputPlacas} type="file" multiple hidden accept=".xlsx"
+          <input ref={inputPlacas} type="file" multiple hidden accept={ACEPTA_LIBRO}
             onChange={(e) => { agregarPlacas(e.target.files); e.target.value = '' }} />
         </div>
         <Vista s={s} />

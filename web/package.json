@@ -7,14 +7,15 @@
     "dev": "vite",
     "build": "vite build",
     "build:single": "vite build --mode single --outDir dist-single --emptyOutDir",
-    "build:web":"vite build --mode web --outDir dist-web --emptyOutDir",
+    "build:web": "vite build --mode web --outDir dist-web --emptyOutDir",
     "preview:web": "vite preview --outDir dist-web --port 4173"
   },
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "read-excel-file": "^9.3.10",
-    "write-excel-file": "^4.1.1"
+    "write-excel-file": "^4.1.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",

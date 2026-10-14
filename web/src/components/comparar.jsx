@@ -21,6 +21,14 @@ export function CompararTab({ s }) {
   const conAnalisis = s.placas.filter((p) => s.analisisMap[p.id]?.resumen?.length)
   const placasSel = o.placasSel ? conAnalisis.filter((p) => o.placasSel.includes(p.id)) : conAnalisis
   const colores = useMemo(() => paletaMuestras(s.placas.map((p) => p.id)), [s.placas])
+  const modo = o.modo || 'placas'
+  const gruposP = useMemo(() => o.grupos || [], [o.grupos])
+  const coloresG = useMemo(() => paletaMuestras(gruposP.map((x) => x.id)), [gruposP])
+  const setGrupos = (arr) => setO('grupos', arr)
+  const nuevoGrupo = () => setGrupos([...gruposP, { id: Math.random().toString(36).slice(2, 8), nombre: `Grupo ${gruposP.length + 1}`, placas: [] }])
+  const asignar = (gid, pid, v) => setGrupos(gruposP.map((x) => (x.id === gid
+    ? { ...x, placas: v ? [...new Set([...x.placas, pid])] : x.placas.filter((i) => i !== pid) }
+    : { ...x, placas: v ? x.placas.filter((i) => i !== pid) : x.placas })))
   const ocultos = useMemo(() => new Set(o.ocultos || []), [o.ocultos])
   const clave = (id, m) => `${id}|${m}`
 
@@ -32,10 +40,24 @@ export function CompararTab({ s }) {
 
   const tieneMuestra = (p, m) => s.analisisMap[p.id].resumen.some((r) => r.Muestra === m)
 
-  // grupos del gráfico: una barra por placa para cada muestra (solo las que están marcadas)
+  // grupos del gráfico: una barra por placa para cada muestra (solo las que están marcadas),
+  // o una barra por grupo de placas (promedio de las placas del grupo; cada placa aporta un valor)
   const grupos = useMemo(() => muestras.map((m) => ({
     muestra: m,
-    barras: placasSel.flatMap((p) => {
+    barras: modo === 'grupos' ? gruposP.flatMap((gr) => {
+      const vals = []
+      gr.placas.forEach((id) => {
+        const p = placasSel.find((x) => x.id === id)
+        if (!p || ocultos.has(clave(p.id, m))) return
+        const r = s.analisisMap[p.id].resumen.find((x) => x.Muestra === m)
+        if (r && Number.isFinite(r.Media)) vals.push(r.Media)
+      })
+      if (!vals.length) return []
+      const rg = resumenGrupo(vals)
+      const err = o.error === 'ic95' ? rg.ic95 : o.error === 'sd' ? rg.sd : o.error === 'sem' ? rg.sem : null
+      return [{ id: gr.id + '|' + m, placa: `${gr.nombre} (n = ${vals.length} ${vals.length === 1 ? 'placa' : 'placas'})`, color: coloresG[gr.id],
+        media: rg.media, err: Number.isFinite(err) ? err : null, pts: vals }]
+    }) : placasSel.flatMap((p) => {
       if (ocultos.has(clave(p.id, m))) return []
       const A = s.analisisMap[p.id]
       const r = A.resumen.find((x) => x.Muestra === m)
@@ -46,7 +68,7 @@ export function CompararTab({ s }) {
         pts: A.estado.filter((e) => !e.EsBlanco && e.Muestra === m && e.Usado).map((e) => e.OD),
       }]
     }),
-  })).filter((g) => g.barras.length), [muestras, placasSel, ocultos, o.error, colores, s.analisisMap])
+  })).filter((g) => g.barras.length), [muestras, placasSel, ocultos, o.error, colores, s.analisisMap, modo, gruposP, coloresG])
 
   if (!conAnalisis.length) {
     return <Vacio texto="Cargá al menos dos placas (botón «+ Agregar placa»), configurá sus pocillos y volvé acá para compararlas." />
@@ -78,8 +100,28 @@ export function CompararTab({ s }) {
     anova = anova1(grupos.map((g) => valoresDe(g.muestra)))
   }
 
-  const nota = `Barras: OD media de las réplicas aceptadas de cada placa${ERR_TXT[o.error] ? `; error: ${ERR_TXT[o.error]} entre pocillos de la placa` : ''}`
-  const leyenda = placasSel.map((p) => ({ id: p.id, nombre: p.nombre, color: colores[p.id] }))
+  // ---- grupos de placas: cada grupo contra un grupo control, muestra por muestra (t de Welch, ajuste de Holm) ----
+  const controlG = gruposP.some((x) => x.id === o.controlG) ? o.controlG : gruposP[0]?.id || ''
+  let filasG = []
+  if (modo === 'grupos' && o.testG === 'control' && controlG) {
+    const comps = []
+    grupos.forEach((g) => {
+      const c = g.barras.find((b) => b.id.startsWith(controlG + '|'))
+      g.barras.forEach((b) => { if (!b.id.startsWith(controlG + '|')) comps.push({ muestra: g.muestra, b, c }) })
+    })
+    const resG = comps.map((x) => (x.c ? welch(x.b.pts, x.c.pts) : null))
+    const ajG = holm(resG.map((r) => (r ? r.p : NaN)))
+    filasG = comps.map((x, i) => ({
+      m: x.muestra, grupo: x.b.placa, media: x.b.media, ctrl: x.c ? x.c.media : null, dif: resG[i] ? resG[i].dif : null, p: resG[i] ? resG[i].p : null, pa: ajG[i],
+      texto: !resG[i] ? 'No se puede calcular (hacen falta 2 o más placas en cada grupo)' : ajG[i] < 0.05 ? `Distinto del control (${marcaSig(ajG[i])})` : 'Sin diferencia clara con el control',
+    }))
+  }
+  const nota = modo === 'grupos'
+    ? `Barras: promedio de las placas de cada grupo (cada placa = un valor)${ERR_TXT[o.error] ? `; error: ${ERR_TXT[o.error]} entre placas` : ''}`
+    : `Barras: OD media de las réplicas aceptadas de cada placa${ERR_TXT[o.error] ? `; error: ${ERR_TXT[o.error]} entre pocillos de la placa` : ''}`
+  const leyenda = modo === 'grupos'
+    ? gruposP.filter((x) => grupos.some((g) => g.barras.some((b) => b.id.startsWith(x.id + '|')))).map((x) => ({ id: x.id, nombre: x.nombre, color: coloresG[x.id] }))
+    : placasSel.map((p) => ({ id: p.id, nombre: p.nombre, color: colores[p.id] }))
   const oGraf = { valores: o.valores, errores: o.errores, puntos: o.puntos, rotar: o.rotar }
   const nBarras = grupos.reduce((a, g) => a + g.barras.length, 0)
 
@@ -116,6 +158,32 @@ export function CompararTab({ s }) {
             ))}
           </div>
         </Campo>
+
+        <Campo label="Cómo comparar">
+          <Select value={modo} onChange={(v) => setO('modo', v)}
+            opciones={[['placas', 'Una barra por placa'], ['grupos', 'Por grupos de placas (mismo medio de cultivo)']]} />
+        </Campo>
+        {modo === 'grupos' && (
+          <Campo label="Grupos de placas">
+            <p className="ayuda" style={{ margin: '0 0 6px' }}>Armá un grupo por cada condición (por ejemplo BHI y TSBye) y marcá sus placas. Cada grupo es una barra: el promedio de sus placas, con el error entre placas.</p>
+            {gruposP.map((gr) => (
+              <div key={gr.id} className="bloque-reps" style={{ marginBottom: 8 }}>
+                <div className="fila-ctrl" style={{ margin: '0 0 4px' }}>
+                  <i className="punto-placa" style={{ background: coloresG[gr.id] }} />
+                  <input value={gr.nombre} style={{ flex: 1 }} onChange={(e) => setGrupos(gruposP.map((x) => (x.id === gr.id ? { ...x, nombre: e.target.value } : x)))} />
+                  <button className="chico peligro" onClick={() => setGrupos(gruposP.filter((x) => x.id !== gr.id))}>Quitar</button>
+                </div>
+                {conAnalisis.map((p) => (
+                  <Check key={p.id} label={p.nombre} checked={gr.placas.includes(p.id)} onChange={(v) => asignar(gr.id, p.id, v)} />
+                ))}
+              </div>
+            ))}
+            <button className="chico primario" onClick={nuevoGrupo}>+ Nuevo grupo</button>
+            {gruposP.length > 0 && conAnalisis.some((p) => !gruposP.some((x) => x.placas.includes(p.id))) && (
+              <p className="ayuda">Sin grupo (no se muestran): {conAnalisis.filter((p) => !gruposP.some((x) => x.placas.includes(p.id))).map((p) => p.nombre).join(', ')}.</p>
+            )}
+          </Campo>
+        )}
 
         <Campo label="Muestras a mostrar de cada placa">
           <div className="fila-ctrl" style={{ margin: '0 0 4px' }}>
@@ -160,14 +228,27 @@ export function CompararTab({ s }) {
         </Campo>
         <Check label="Mostrar la OD sobre cada barra" checked={o.valores} onChange={(v) => setO('valores', v)} />
         <Check label="Mostrar el error junto al valor medio" checked={o.errores} onChange={(v) => setO('errores', v)} />
-        <Check label="Mostrar los pocillos individuales" checked={o.puntos} onChange={(v) => setO('puntos', v)} />
+        <Check label={modo === 'grupos' ? 'Mostrar el valor de cada placa del grupo' : 'Mostrar los pocillos individuales'} checked={o.puntos} onChange={(v) => setO('puntos', v)} />
         <Campo label="Rotación de etiquetas (°)"><Num value={o.rotar} min={0} max={90} step={15} onChange={(v) => setO('rotar', v === '' ? 0 : v)} /></Campo>
         <hr />
-        <Campo label="Prueba estadística (opcional)">
+        {modo === 'grupos' && (
+          <>
+            <Campo label="Prueba estadística entre grupos (opcional)">
+              <Select value={o.testG} onChange={(v) => setO('testG', v)}
+                opciones={[['ninguno', 'Ninguna'], ['control', 'Cada grupo contra un grupo control, muestra por muestra']]} />
+            </Campo>
+            {o.testG === 'control' && (
+              <Campo label="Grupo control">
+                <Select value={controlG} onChange={(v) => setO('controlG', v)} opciones={gruposP.map((x) => [x.id, x.nombre])} />
+              </Campo>
+            )}
+          </>
+        )}
+        {modo === 'placas' && <Campo label="Prueba estadística (opcional)">
           <Select value={o.test} onChange={(v) => setO('test', v)}
             opciones={[['ninguno', 'Ninguna'], ['control', 'Cada muestra contra un control'], ['anova', 'ANOVA: ¿hay alguna diferencia?']]} />
-        </Campo>
-        {o.test === 'control' && (
+        </Campo>}
+        {modo === 'placas' && o.test === 'control' && (
           <Campo label="Muestra control">
             <Select value={control} onChange={(v) => setO('control', v)} opciones={grupos.map((g) => [g.muestra, g.muestra])} />
           </Campo>
@@ -182,7 +263,29 @@ export function CompararTab({ s }) {
         ) : <Vacio texto="Elegí al menos una placa y una muestra para mostrar." />}
         <p className="ayuda">Clic derecho sobre el gráfico: estilo de todos los textos. Pasá el mouse sobre una barra para ver su placa y su valor. {nBarras > 0 && `${nBarras} barras.`}</p>
 
-        {o.test === 'anova' && (
+        {modo === 'grupos' && o.testG === 'control' && (
+          <section className="resultado-test">
+            <h2>Cada grupo contra «{gruposP.find((x) => x.id === controlG)?.nombre}»</h2>
+            {filasG.length ? (
+              <div className="tabla-scroll">
+                <table className="tabla">
+                  <thead><tr><th>Muestra</th><th>Grupo</th><th>Media del grupo</th><th>Media del control</th><th>Diferencia</th><th>p</th><th>p ajustado</th><th>Resultado</th></tr></thead>
+                  <tbody>
+                    {filasG.map((f, i) => (
+                      <tr key={i}>
+                        <td><b>{f.m}</b></td><td>{f.grupo}</td><td>{fmt(f.media)}</td><td>{f.ctrl === null ? '–' : fmt(f.ctrl)}</td>
+                        <td>{f.dif === null ? '–' : (f.dif > 0 ? '+' : '') + fmt(f.dif)}</td><td>{pTxt(f.p)}</td><td>{pTxt(f.pa)}</td><td>{f.texto}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : <p>Hacen falta al menos dos grupos con placas.</p>}
+            <p className="ayuda">Cada placa cuenta como una réplica (n = número de placas de cada grupo; con 3 placas por grupo la prueba solo detecta diferencias grandes). Es una prueba t de Welch por muestra con el ajuste de Holm entre todas las comparaciones.</p>
+          </section>
+        )}
+
+        {modo === 'placas' && o.test === 'anova' && (
           <section className="resultado-test">
             <h2>Resultado del ANOVA</h2>
             {anova ? (
@@ -197,7 +300,7 @@ export function CompararTab({ s }) {
           </section>
         )}
 
-        {o.test === 'control' && (
+        {modo === 'placas' && o.test === 'control' && (
           <section className="resultado-test">
             <h2>Cada muestra contra «{control}»</h2>
             <div className="tabla-scroll">

@@ -1,3 +1,4 @@
+import { ACEPTA_LIBRO } from '../libro.js'
 import { useRef, useState } from 'react'
 import { Campo, Modal, Select } from './ui.jsx'
 import { MODO } from '../api.js'
@@ -10,6 +11,7 @@ export function ArchivoTab({ s }) {
   const [nueva, setNueva] = useState('')
   const [edit, setEdit] = useState(null)
   const [cargando, setCargando] = useState(false)
+  const [origenLayout, setOrigenLayout] = useState('')
   const inputRef = useRef()
   const destinoRef = useRef(null) // placa a la que se le asigna un archivo (si venía sin datos)
   const sesionRef = useRef()
@@ -83,9 +85,9 @@ export function ArchivoTab({ s }) {
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => { e.preventDefault(); abrirArchivos(e.dataTransfer.files) }}>
           <strong>{cargando ? 'Leyendo…' : 'Soltá uno o varios Excel acá, o hacé clic para elegirlos'}</strong>
-          <span>Cada archivo (o cada hoja con una placa) se agrega como una placa distinta · solo Excel en formato nuevo (.xlsx)</span>
+          <span>Cada archivo (o cada hoja con una placa) se agrega como una placa distinta · Excel o LibreOffice (.xlsx, .xls, .ods…)</span>
         </div>
-        <input ref={inputRef} type="file" multiple hidden accept=".xlsx"
+        <input ref={inputRef} type="file" multiple hidden accept={ACEPTA_LIBRO}
           onChange={(e) => { abrirArchivos(e.target.files, destinoRef.current); e.target.value = ''; destinoRef.current = null }} />
 
         {s.placas.length > 0 && (
@@ -191,9 +193,28 @@ export function ArchivoTab({ s }) {
                 onChange={(e) => { e.target.files[0] && importarLayout(e.target.files[0], destinoLayout.current); e.target.value = '' }} />
             </div>
             {s.placas.length > 1 && (
-              <div className="fila-ctrl">
-                <button disabled={!s.config.length} onClick={() => s.copiarConfig()}>Copiar el layout de esta placa a las demás</button>
-              </div>
+              <>
+                <div className="fila-ctrl">
+                  <button disabled={!s.config.length} onClick={() => s.copiarConfig()}>Copiar el layout de esta placa a las demás</button>
+                </div>
+                <Campo label={`Usar en «${act?.nombre || 'la placa activa'}» el layout de otra placa`}>
+                  <div className="fila-ctrl" style={{ margin: 0 }}>
+                    <select value={origenLayout} onChange={(e) => setOrigenLayout(e.target.value)}>
+                      <option value="">Elegí una placa que ya tenga layout…</option>
+                      {s.placas.filter((x) => x.id !== s.activaId && x.config.length > 0).map((x) => (
+                        <option key={x.id} value={x.id}>{x.nombre} ({x.config.length} pocillos)</option>
+                      ))}
+                    </select>
+                    <button className="primario" disabled={!origenLayout || !p} onClick={() => { s.copiarLayoutDe(origenLayout, s.activaId); setOrigenLayout('') }}>Aplicar</button>
+                  </div>
+                </Campo>
+                <Campo label="Al cargar placas nuevas, copiarles automáticamente el layout de">
+                  <select value={s.opts.archivo.layoutBase} onChange={(e) => s.setOpts({ ...s.opts, archivo: { ...s.opts.archivo, layoutBase: e.target.value } })}>
+                    <option value="">(ninguna: las placas nuevas llegan sin layout)</option>
+                    {s.placas.filter((x) => x.config.length > 0).map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
+                  </select>
+                </Campo>
+              </>
             )}
             <p className="ayuda">
               {s.placas.length > 1
