@@ -511,6 +511,14 @@ function MetodoDetalle({ d, odc }) {
       </ul>
       <p><b>Opción «ANOVA».</b> Pregunta algo más general: <i>¿hay alguna diferencia entre todas las muestras mostradas?</i> Compara cuánto varían las medias entre muestras con cuánto varían las placas dentro de cada muestra: <code>F = [SCentre / (k − 1)] / [SCdentro / (N − k)]</code>, con k muestras y N valores en total. Un p pequeño dice que <b>al menos dos</b> muestras difieren, pero <b>no cuáles</b>; para eso está la opción anterior. Equivale a <code>summary(aov(y ~ muestra))</code>.</p>
 
+      <h4>Comparación por medio de cultivo</h4>
+      <p>Cada columna junta las placas de un mismo medio. «Datos de cada medio» decide qué valores se usan para <b>todo</b> (puntos, media, error, cajas y pruebas):</p>
+      <ul>
+        <li><b>Promedio por placa</b>: un valor por placa (su OD media). Es lo correcto para concluir, porque cada placa es una réplica biológica; hacen falta 2 o más placas por medio para tener error y prueba.</li>
+        <li><b>Pocillos</b>: todos los pocillos aceptados del medio, de todas sus placas. Muestra la dispersión técnica y permite ver error con una sola placa, pero en las pruebas los pocillos no son réplicas independientes (pseudorreplicación): tomalo como orientación.</li>
+      </ul>
+      <p>Las pruebas son las mismas que por placa: <b>cada muestra contra un control</b> y <b>ANOVA</b>, calculadas dentro de cada medio, y además <b>cada medio contra un medio control</b>, muestra por muestra. Todas con t de Welch y ajuste de Holm, o ANOVA de un factor.</p>
+
       <h4>Cómo leer los resultados</h4>
       <ul>
         <li><b>Diferencia con el control</b>: muestra − control, en unidades de OD. Positiva = la muestra produce más que el control.</li>

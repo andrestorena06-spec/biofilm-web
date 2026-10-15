@@ -26,7 +26,7 @@ const optsDef = () => ({
     barras: true, cajas: false, puntos: true, barrasError: true, valores: true, errores: false,
     puntosMedio: 'pocillos',        // en «por medio»: puntos y cajas con todos los pocillos, o un punto por placa
     blancos: true,                  // mostrar también los blancos
-    testG: 'ninguno', controlG: '',
+    testG: 'ninguno', controlG: '', controlM: '',   // por medio: prueba (muestra, anova o medio) y controles
   },
   archivo: { layoutBase: '', verOcultas: false },   // layoutBase: placa cuyo layout se copia a las nuevas; verOcultas: mostrar las placas ocultas
 })

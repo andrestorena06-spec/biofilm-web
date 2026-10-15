@@ -304,3 +304,7 @@ code { background: #f6ebdb; }
 .chip-op.on { background: var(--acento); border-color: var(--acento); color: #fff; font-weight: 600; }
 .chip-op[disabled] { opacity: .45; cursor: not-allowed; border-style: dashed; }
 .con-calculo { cursor: help; } .con-calculo:hover { background: var(--acento-claro); }
+
+/* menú lateral: el estilo general de los botones al pasar el mouse no debe aclarar el fondo oscuro */
+.nav:hover:not(:disabled) { background: rgba(255, 226, 190, .10); border-color: transparent; }
+.nav.activa:hover:not(:disabled) { background: rgba(255, 190, 120, .20); }

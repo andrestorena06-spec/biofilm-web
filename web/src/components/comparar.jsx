@@ -77,22 +77,54 @@ export function CompararTab({ s }) {
     anova = anova1(grupos.map((g) => valoresDe(g.muestra)))
   }
 
-  // ---- por medio de cultivo: cada medio contra un medio control, muestra por muestra (t de Welch, ajuste de Holm) ----
+  // ---- por medio de cultivo: las mismas pruebas que por placa (dentro de cada medio) y además medio contra medio ----
+  // los datos de cada columna (pocillos o un valor por placa) son los mismos que se dibujan
+  const testG = o.testG === 'control' ? 'medio' : o.testG || 'ninguno'   // sesiones anteriores: 'control' era medio contra medio
+  const porPlacaG = o.puntosMedio === 'placas'
   const controlG = mediosPres.includes(o.controlG) ? o.controlG : mediosPres[0] || ''
-  let filasG = []
-  if (modo === 'medio' && o.testG === 'control' && controlG) {
+  const controlM = grupos.some((g) => g.muestra === o.controlM) ? o.controlM : grupos[0]?.muestra || ''
+  const sinDatos = porPlacaG ? 'hacen falta 2 o más placas en cada grupo' : 'hacen falta 2 o más pocillos en cada grupo'
+  let filasG = [], filasGM = [], anovasG = []
+  if (modo === 'medio' && testG === 'medio' && controlG) {
     const comps = []
     grupos.forEach((g) => {
-      const c = g.barras.find((b) => b.id.startsWith(controlG + '|'))
-      g.barras.forEach((b) => { if (!b.id.startsWith(controlG + '|')) comps.push({ muestra: g.etiqueta, b, c }) })
+      const c = g.barras.find((b) => b.medio === controlG)
+      g.barras.forEach((b) => { if (b.medio !== controlG) comps.push({ muestra: g.etiqueta, b, c }) })
     })
     const resG = comps.map((x) => (x.c ? welch(x.b.vp, x.c.vp) : null))
     const ajG = holm(resG.map((r) => (r ? r.p : NaN)))
     filasG = comps.map((x, i) => ({
-      m: x.muestra, grupo: x.b.placa, media: x.b.media, ctrl: x.c ? x.c.media : null, dif: resG[i] ? resG[i].dif : null, p: resG[i] ? resG[i].p : null, pa: ajG[i],
-      texto: !resG[i] ? 'No se puede calcular (hacen falta 2 o más placas en cada medio)' : ajG[i] < 0.05 ? `Distinto del medio control (${marcaSig(ajG[i])})` : 'Sin diferencia clara con el medio control',
+      m: x.muestra, grupo: x.b.medio, n: x.b.vp.length, media: x.b.media, ctrl: x.c ? x.c.media : null, dif: resG[i] ? resG[i].dif : null, p: resG[i] ? resG[i].p : null, pa: ajG[i],
+      texto: !resG[i] ? `No se puede calcular (${sinDatos})` : ajG[i] < 0.05 ? `Distinto del medio control (${marcaSig(ajG[i])})` : 'Sin diferencia clara con el medio control',
     }))
+  } else if (modo === 'medio' && testG === 'muestra' && controlM) {
+    const gc = grupos.find((g) => g.muestra === controlM)
+    const comps = []
+    mediosPres.forEach((md) => {
+      const c = gc?.barras.find((b) => b.medio === md)
+      grupos.forEach((g) => {
+        if (g.muestra === controlM) return
+        const b = g.barras.find((x) => x.medio === md)
+        if (b) comps.push({ muestra: g.etiqueta, md, b, c })
+      })
+    })
+    const res = comps.map((x) => (x.c ? welch(x.b.vp, x.c.vp) : null))
+    const aj = holm(res.map((r) => (r ? r.p : NaN)))
+    filasGM = comps.map((x, i) => {
+      const r = resumenGrupo(x.b.vp)
+      return {
+        m: x.muestra, grupo: x.md, n: r.n, media: r.media, sd: r.sd, ctrl: x.c ? x.c.media : null, dif: res[i] ? res[i].dif : null, p: res[i] ? res[i].p : null, pa: aj[i],
+        texto: !x.c ? 'El control no está en este medio' : !res[i] ? `No se puede calcular (${sinDatos})` : aj[i] < 0.05 ? `Distinta del control (${marcaSig(aj[i])})` : 'Sin diferencia clara con el control',
+      }
+    })
+  } else if (modo === 'medio' && testG === 'anova') {
+    anovasG = mediosPres.map((md) => {
+      const vs = grupos.map((g) => g.barras.find((b) => b.medio === md)?.vp).filter((v) => v && v.length)
+      return { md, k: vs.length, r: anova1(vs) }
+    })
   }
+  // con un valor por placa y una sola placa en algún medio no hay error ni dispersión entre placas
+  const medios1 = modo === 'medio' && porPlacaG ? [...new Set(grupos.flatMap((g) => g.barras.filter((b) => b.nPlacas < 2).map((b) => b.medio)))] : []
   const nCols = grupos.reduce((a, g) => a + g.barras.length, 0)
   const grafico = (ref, tam, ctx) => (
     <CompararChart ref={ref} grupos={grupos} leyenda={leyenda} o={elementos} est={s.estilos.comparar} eje={s.ejeOD} onContext={ctx} tam={tam} nota={nota} />
@@ -125,10 +157,13 @@ export function CompararTab({ s }) {
           <p className="aviso-sel">Placas sin medio indicado (no se muestran): {sinMedio.map((p) => p.nombre).join(', ')}. Elegí su medio en la pestaña «Placa».</p>
         )}
         {modo === 'medio' && (
-          <Campo label="Datos de cada medio">
+          <Campo label={<>Datos de cada medio<Nota>{'Define los puntos, la media, el error, la dispersión y las pruebas.\nPocillos: todos los pocillos del medio (de todas sus placas).\nPromedio por placa: un valor por placa; cada placa es una réplica biológica (hacen falta 2 o más placas por medio para el error).'}</Nota></>}>
             <Select value={o.puntosMedio || 'pocillos'} onChange={(v) => setO('puntosMedio', v)}
               opciones={[['pocillos', 'Pocillos'], ['placas', 'Promedio por placa']]} />
           </Campo>
+        )}
+        {medios1.length > 0 && (
+          <p className="aviso-sel">Con una sola placa en {medios1.join(', ')} no hay error ni dispersión entre placas. Elegí «Pocillos» para verlos.</p>
         )}
 
         <Campo label={<>Elementos<Nota>Se activan y desactivan al instante. Pasá el mouse por cada elemento del gráfico para ver su valor y cómo se calcula. Con una columna por pocillo no hay cajas ni errores (un solo valor por columna).</Nota></>}>
@@ -210,11 +245,16 @@ export function CompararTab({ s }) {
         <hr />
         {modo === 'medio' && (
           <>
-            <Campo label="Prueba estadística entre medios (opcional)">
-              <Select value={o.testG} onChange={(v) => setO('testG', v)}
-                opciones={[['ninguno', 'Ninguna'], ['control', 'Cada medio contra un medio control, muestra por muestra']]} />
+            <Campo label="Prueba estadística (opcional)">
+              <Select value={testG} onChange={(v) => setO('testG', v)}
+                opciones={[['ninguno', 'Ninguna'], ['muestra', 'Cada muestra contra un control (en cada medio)'], ['anova', 'ANOVA: ¿hay alguna diferencia? (en cada medio)'], ['medio', 'Cada medio contra un medio control']]} />
             </Campo>
-            {o.testG === 'control' && (
+            {testG === 'muestra' && (
+              <Campo label="Muestra control">
+                <Select value={controlM} onChange={(v) => setO('controlM', v)} opciones={grupos.map((g) => [g.muestra, g.etiqueta])} />
+              </Campo>
+            )}
+            {testG === 'medio' && (
               <Campo label="Medio control">
                 <Select value={controlG} onChange={(v) => setO('controlG', v)} opciones={mediosPres.map((x) => [x, x])} />
               </Campo>
@@ -242,17 +282,17 @@ export function CompararTab({ s }) {
         {grupos.length && !sinElementos ? grafico(svg, undefined, abrirMenu) : <Vacio texto={sinElementos ? 'Activá barras, mediana, media o puntos para ver el gráfico.' : 'Elegí al menos una placa y una muestra para mostrar.'} />}
         <p className="ayuda"><Nota titulo="Ayuda">{nCols} columnas <Nota>Pasá el mouse por una barra, caja o punto para ver su valor y el cálculo. Clic derecho sobre el gráfico: estilo de los textos.</Nota></Nota></p>
 
-        {modo === 'medio' && o.testG === 'control' && (
+        {modo === 'medio' && testG === 'medio' && (
           <section className="resultado-test">
             <h2>Cada medio contra «{controlG}»</h2>
             {filasG.length ? (
               <div className="tabla-scroll">
                 <table className="tabla">
-                  <thead><tr><th>Muestra</th><th>Medio</th><th>Media del medio</th><th>Media del control</th><th>Diferencia</th><th>p</th><th>p ajustado</th><th>Resultado</th></tr></thead>
+                  <thead><tr><th>Muestra</th><th>Medio</th><th>n</th><th>Media del medio</th><th>Media del control</th><th>Diferencia</th><th>p</th><th>p ajustado</th><th>Resultado</th></tr></thead>
                   <tbody>
                     {filasG.map((f, i) => (
                       <tr key={i}>
-                        <td><b>{f.m}</b></td><td>{f.grupo}</td><td>{fmt(f.media)}</td><td>{f.ctrl === null ? '–' : fmt(f.ctrl)}</td>
+                        <td><b>{f.m}</b></td><td>{f.grupo}</td><td>{f.n}</td><td>{fmt(f.media)}</td><td>{f.ctrl === null ? '–' : fmt(f.ctrl)}</td>
                         <td>{f.dif === null ? '–' : (f.dif > 0 ? '+' : '') + fmt(f.dif)}</td><td>{pTxt(f.p)}</td><td>{pTxt(f.pa)}</td><td>{f.texto}</td>
                       </tr>
                     ))}
@@ -260,7 +300,50 @@ export function CompararTab({ s }) {
                 </table>
               </div>
             ) : <p>Hacen falta al menos dos medios con placas.</p>}
-            <p className="ayuda"><Nota titulo="Ayuda">Cada placa cuenta como una réplica (n = número de placas de cada medio; con 3 placas por medio la prueba solo detecta diferencias grandes). Es una prueba t de Welch por muestra con el ajuste de Holm entre todas las comparaciones.</Nota></p>
+            <p className="ayuda"><Nota titulo="Ayuda">{porPlacaG ? 'Cada placa cuenta como una réplica (n = número de placas de cada medio).' : 'Cada pocillo cuenta como un dato: la prueba es más sensible, pero los pocillos de una misma placa no son réplicas independientes. Para conclusiones, usá «Promedio por placa» con 3 o más placas por medio.'} Prueba t de Welch por muestra con el ajuste de Holm entre todas las comparaciones.</Nota></p>
+          </section>
+        )}
+
+        {modo === 'medio' && testG === 'muestra' && (
+          <section className="resultado-test">
+            <h2>Cada muestra contra «{controlM}», dentro de cada medio</h2>
+            {filasGM.length ? (
+              <div className="tabla-scroll">
+                <table className="tabla">
+                  <thead><tr><th>Muestra</th><th>Medio</th><th>n</th><th>Media</th><th>DE</th><th>Media del control</th><th>Diferencia</th><th>p</th><th>p ajustado</th><th>Resultado</th></tr></thead>
+                  <tbody>
+                    {filasGM.map((f, i) => (
+                      <tr key={i}>
+                        <td><b>{f.m}</b></td><td>{f.grupo}</td><td>{f.n}</td><td>{fmt(f.media)}</td><td>{fmt(f.sd)}</td><td>{f.ctrl === null ? '–' : fmt(f.ctrl)}</td>
+                        <td>{f.dif === null ? '–' : (f.dif > 0 ? '+' : '') + fmt(f.dif)}</td><td>{pTxt(f.p)}</td><td>{pTxt(f.pa)}</td><td>{f.texto}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : <p>Hacen falta al menos dos muestras.</p>}
+            <p className="ayuda"><Nota titulo="Ayuda">{porPlacaG ? 'Cada placa cuenta como una réplica (n = número de placas de cada medio).' : 'Cada pocillo cuenta como un dato: la prueba es más sensible, pero los pocillos de una misma placa no son réplicas independientes. Para conclusiones, usá «Promedio por placa» con 3 o más placas por medio.'} Prueba t de Welch con el ajuste de Holm entre todas las comparaciones.</Nota></p>
+          </section>
+        )}
+
+        {modo === 'medio' && testG === 'anova' && (
+          <section className="resultado-test">
+            <h2>ANOVA entre muestras, en cada medio</h2>
+            <div className="tabla-scroll">
+              <table className="tabla">
+                <thead><tr><th>Medio</th><th>Muestras</th><th>F</th><th>p</th><th>Resultado</th></tr></thead>
+                <tbody>
+                  {anovasG.map(({ md, k, r }) => (
+                    <tr key={md}>
+                      <td><b>{md}</b></td><td>{k}</td>
+                      <td>{r ? `F(${r.df1}; ${r.df2}) = ${Number.isFinite(r.F) ? r.F.toFixed(3).replace('.', ',') : '∞'}` : '–'}</td><td>{r ? pTxt(r.p) : '–'}</td>
+                      <td>{!r ? `No se puede calcular (${sinDatos})` : r.p < 0.05 ? 'Hay diferencias entre al menos dos muestras' : 'Sin evidencia de diferencias'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="ayuda"><Nota titulo="Ayuda">{porPlacaG ? 'Cada placa cuenta como una réplica (n = número de placas de cada medio).' : 'Cada pocillo cuenta como un dato: la prueba es más sensible, pero los pocillos de una misma placa no son réplicas independientes. Para conclusiones, usá «Promedio por placa» con 3 o más placas por medio.'} El ANOVA no dice cuáles muestras difieren: para eso usá «Cada muestra contra un control».</Nota></p>
           </section>
         )}
 

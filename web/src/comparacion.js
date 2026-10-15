@@ -13,7 +13,8 @@ export const ERR_TXT = { ic95: 'IC 95 %', sd: 'desviación estándar', sem: 'err
 
 // Arma los datos de la comparación entre placas a partir de las opciones de «Comparar»:
 //  modo 'placas'  → una columna por placa
-//  modo 'medio'   → una columna por medio de cultivo (promedio de sus placas; cada placa aporta un valor)
+//  modo 'medio'   → una columna por medio de cultivo. «Datos de cada medio» decide el nivel de TODO (media, error,
+//                   dispersión, puntos y pruebas): todos los pocillos del medio, o un valor por placa (réplica biológica)
 //  modo 'pocillo' → una columna por pocillo
 // Los elementos que se dibujan (barras, cajas, puntos, errores, valores) los decide el gráfico con las mismas opciones.
 export function armarComparacion(s) {
@@ -56,15 +57,19 @@ export function armarComparacion(s) {
         const ps = placasSel.filter((p) => p.medio === md && !ocultos.has(clave(p.id, m)))
         const vp = ps.map((p) => ({ p, r: filasDe(p).find((x) => x.Muestra === m) })).filter((x) => x.r && Number.isFinite(x.r.Media))
         if (!vp.length) return []
-        const vals = vp.map((x) => x.r.Media)
-        const rg = resumenGrupo(vals)
-        const er = errRg(rg)
+        const porPlaca = o.puntosMedio === 'placas'
+        const nPl = vp.length
         // puntos y cajas: un punto por placa, o todos los pocillos del medio (con el color de su placa)
-        const detalle = o.puntosMedio === 'placas'
+        const detalle = porPlaca
           ? vp.map((x) => ({ v: x.r.Media, color: colores[x.p.id], tip: `${x.p.nombre}: media ${x.r.Media.toFixed(3)}` }))
           : vp.flatMap((x) => pozos(x.p, m).map((e) => ({ v: e.OD, color: colores[x.p.id], tip: `${x.p.nombre} · ${e.Pocillo}: ${e.OD.toFixed(3)}` })))
-        return [{ id: md + '|' + m, placa: `${md} (n = ${vals.length} ${vals.length === 1 ? 'placa' : 'placas'})`, color: coloresMedio[md],
-          media: rg.media, err: Number.isFinite(er) ? er : null, pts: detalle.map((d) => d.v), detalle, vp: vals }]
+        // media, error y pruebas con los mismos datos que se dibujan
+        const valores = detalle.map((d) => d.v)
+        const rg = resumenGrupo(valores)
+        const er = errRg(rg)
+        const nTxt = porPlaca ? `n = ${nPl} ${nPl === 1 ? 'placa' : 'placas'}` : `n = ${valores.length} pocillos${nPl > 1 ? ` de ${nPl} placas` : ''}`
+        return [{ id: md + '|' + m, medio: md, muestra: m, placa: `${md} (${nTxt})`, color: coloresMedio[md],
+          media: rg.media, err: Number.isFinite(er) ? er : null, pts: valores, detalle, vp: valores, nPlacas: nPl }]
       })
     }
     if (modo === 'pocillo') {
@@ -88,7 +93,9 @@ export function armarComparacion(s) {
     ? mediosPres.filter((md) => grupos.some((g) => g.barras.some((b) => b.id.startsWith(md + '|')))).map((md) => ({ id: md, nombre: md, color: coloresMedio[md] }))
     : placasSel.map((p) => ({ id: p.id, nombre: nombreP(p), color: colores[p.id] }))
   const nota = modo === 'medio'
-    ? `Barra: promedio de las placas de cada medio${ERR_TXT[o.error] ? `; error: ${ERR_TXT[o.error]} entre placas` : ''}${o.puntosMedio === 'placas' ? ' · puntos: una por placa' : ' · puntos: pocillos de todas las placas'}`
+    ? (o.puntosMedio === 'placas'
+      ? `Barra: promedio de las placas de cada medio${ERR_TXT[o.error] ? `; error: ${ERR_TXT[o.error]} entre placas` : ''} · puntos: uno por placa`
+      : `Barra: media de los pocillos del medio (todas sus placas)${ERR_TXT[o.error] ? `; error: ${ERR_TXT[o.error]} entre pocillos` : ''} · puntos: pocillos`)
     : modo === 'pocillo'
       ? 'Cada columna es un pocillo aceptado (OD)'
       : `Barra: OD media de las réplicas aceptadas de cada placa${ERR_TXT[o.error] ? `; error: ${ERR_TXT[o.error]} entre pocillos` : ''}`
