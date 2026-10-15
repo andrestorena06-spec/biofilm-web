@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { BarChart, ExcluirChart } from './charts.jsx'
 import { Campo, Check, EstiloDialog, MenuContextual, Num, Panel, Select, useMenuContextual } from './ui.jsx'
 import { ExportDialog } from './exportar.jsx'
+import { dCV, dClase, dDE, dIC, dMedia, dRazon, dSEM } from '../calculos.js'
+import { Nota } from './tip.jsx'
 import { abrirInforme } from './informe.jsx'
 import { resumenBlancos } from '../blancos.js'
 import { Vacio } from './tabs.jsx'
@@ -35,7 +37,7 @@ export function ExcluirTab({ s }) {
   return (
     <div className="con-lateral">
       <Panel titulo="Excluir puntos">
-        <p className="ayuda">Clic sobre un punto para excluirlo o incluirlo. Azul: aceptado. Cruz roja: excluido. Anillo naranja: sospechoso según el test elegido.</p>
+        <p className="ayuda"><Nota titulo="Ayuda">Clic sobre un punto para excluirlo o incluirlo. Azul: aceptado. Cruz roja: excluido. Anillo naranja: sospechoso según el test elegido.</Nota></p>
 
         <h3>Opciones del gráfico</h3>
         <Check label="Mostrar puntos" checked={o.puntos} onChange={(v) => setO('puntos', v)} />
@@ -159,14 +161,14 @@ export function GraficoTab({ s }) {
         <Check label="Mostrar líneas y nombres de clasificación" checked={o.lineas} onChange={(v) => setO('lineas', v)} />
         {o.lineas && <Check label="Mostrar el valor numérico bajo cada nombre" checked={o.valoresClase} onChange={(v) => setO('valoresClase', v)} />}
         <Campo label="Rotación de etiquetas (°)"><Num value={o.rotar} min={0} max={90} step={15} onChange={(v) => setO('rotar', v === '' ? 0 : v)} /></Campo>
-        <p className="ayuda">El título y las leyendas se editan con clic derecho sobre el gráfico.</p>
+        <p className="ayuda"><Nota titulo="Ayuda">El título y las leyendas se editan con clic derecho sobre el gráfico.</Nota></p>
         <button className="primario ancho" onClick={() => setExp(true)}>Descargar imagen…</button>
       </Panel>
       <div className="principal">
         {filas.length ? (
           <BarChart ref={svg} filas={filas} puntos={puntos} odc={a.odc.odc} o={o} est={s.estilos.barras} eje={s.ejeOD} onContext={abrirMenu} />
         ) : <Vacio texto="Seleccioná al menos una muestra con réplicas aceptadas." />}
-        <p className="ayuda">Clic derecho sobre el gráfico: estilo de todos los textos (título, leyendas, etiquetas, números, valores y clasificaciones).</p>
+        <p className="ayuda"><Nota titulo="Ayuda">Clic derecho sobre el gráfico: estilo de todos los textos (título, leyendas, etiquetas, números, valores y clasificaciones).</Nota></p>
         {!Number.isFinite(a.odc.odc) && <p className="ayuda">Sin ODc (faltan blancos): las barras no se pueden clasificar.</p>}
       </div>
       <MenuContextual menu={menu} items={[
@@ -273,7 +275,7 @@ function PopoverFiltro({ col, pos, valor, onChange, onClose }) {
   )
 }
 
-export function TablaAvanzada({ id, titulo, columnas, filas, onVista }) {
+export function TablaAvanzada({ id, titulo, columnas, filas, onVista, tips }) {
   const [orden, setOrden] = useState(columnas)
   const [filtros, setFiltros] = useState({})
   const [abierto, setAbierto] = useState(null)
@@ -342,7 +344,7 @@ export function TablaAvanzada({ id, titulo, columnas, filas, onVista }) {
             </tr>
           </thead>
           <tbody>
-            {vista.map((f, i) => <tr key={i}>{orden.map((c) => <td key={c}>{f[c]}</td>)}</tr>)}
+            {vista.map((f, i) => <tr key={i}>{orden.map((c) => { const t = tips ? tips(f, c) : null; return <td key={c} data-tip={t || undefined} className={t ? 'con-calculo' : undefined}>{f[c]}</td> })}</tr>)}
             {!vista.length && <tr><td colSpan={orden.length} className="ayuda">Ninguna fila cumple los filtros.</td></tr>}
           </tbody>
         </table>
@@ -368,13 +370,34 @@ export function DatosTab({ s }) {
     Muestra: m.Muestra, Pocillos: m.N_total, Aceptadas: m.N_aceptadas, Excluidas: m.N_excluidas,
     Media_OD: r(m.Media), DE: r(m.SD), SEM: r(m.SEM), IC95_mas_menos: r(m.IC95), CV_pct: r(m.CV_pct, 2),
     OD_sobre_ODc: r(m.Razon_ODc, 2), Clasificacion: m.Clasificacion || '',
+    _v: a.estado.filter((e) => e.Muestra === m.Muestra && e.Usado).map((e) => e.OD), _clase: m.Clasificacion || '',
   }))
   const pocillos = a.estado.map((e) => ({
     Pocillo: e.Pocillo, Muestra: e.Muestra, Replica: e.Replica, Blanco: e.EsBlanco ? 'Sí' : 'No', OD: r(e.OD),
     Estado: e.Usado ? 'Aceptado' : 'Excluido', Sospechoso: e.Sospechoso ? 'Sí' : 'No',
     Motivo: e.Manual ? 'Excluido manualmente' : e.Motivo || '',
   }))
-  const cm = Object.keys(muestras[0] || {})
+  const odcNum = a.odc?.odc
+  const tipsMuestras = (f, c) => {
+    const v = f._v
+    if (!v || !v.length) return null
+    if (c === 'Media_OD') return dMedia(v)
+    if (c === 'DE') return dDE(v)
+    if (c === 'SEM') return dSEM(v)
+    if (c === 'IC95_mas_menos') return dIC(v)
+    if (c === 'CV_pct') return dCV(v)
+    if (c === 'OD_sobre_ODc' && Number.isFinite(odcNum)) return dRazon(f.Media_OD, odcNum)
+    if (c === 'Clasificacion' && Number.isFinite(odcNum) && f.Clasificacion) return dClase(f.Media_OD, odcNum, f.Clasificacion)
+    if (c === 'Aceptadas') return `Réplicas aceptadas
+${f.Aceptadas} de ${f.Pocillos} pocillos entran en los cálculos
+Excluidas: ${f.Excluidas} (manual o por valor atípico)`
+    return null
+  }
+  const tipsPocillos = (f, c) => (c === 'Estado' || c === 'Motivo' || c === 'Sospechoso' ? `Pocillo ${f.Pocillo} (${f.Muestra} R${f.Replica})
+OD = ${f.OD}
+Estado: ${f.Estado}${f.Sospechoso === 'Sí' ? ' · sospechoso (valor atípico)' : ''}
+${f.Motivo || 'Sin observaciones'}` : null)
+  const cm = Object.keys(muestras[0] || {}).filter((k) => !k.startsWith('_'))
   const cp = Object.keys(pocillos[0] || {})
   const ambas = () => {
     const hojas = ['muestras', 'pocillos'].map((k) => vistas.current[k]).filter(Boolean)
@@ -383,14 +406,14 @@ export function DatosTab({ s }) {
   return (
     <div className="pagina">
       <div className="titulo-fila">
-        <p className="ayuda" style={{ margin: 0 }}>Cada columna numérica tiene un botón <code>▾</code> para filtrar (mayor, menor, igual o entre). Clic en un encabezado para ordenar; arrastralo para mover la columna.</p>
+        <p className="ayuda" style={{ margin: 0 }}>Pasá el mouse por cualquier número para ver cómo se calculó<Nota>Cada columna numérica tiene un botón <code>▾</code> para filtrar. Clic en un encabezado para ordenar; arrastralo para mover la columna.</Nota></p>
         <div className="fila-ctrl" style={{ margin: 0 }}>
           <button onClick={() => { if (abrirInforme(s)) s.avisar('En el cuadro de impresión elegí «Guardar como PDF» como destino.') }}>Informe PDF (todos los datos procesados)</button>
           <button className="primario" onClick={ambas}>Descargar ambas tablas (Excel)</button>
         </div>
       </div>
-      <TablaAvanzada id="muestras" titulo="Muestras" columnas={cm} filas={muestras} onVista={onVista} />
-      <TablaAvanzada id="pocillos" titulo="Pocillos" columnas={cp} filas={pocillos} onVista={onVista} />
+      <TablaAvanzada id="muestras" titulo="Muestras" columnas={cm} filas={muestras} onVista={onVista} tips={tipsMuestras} />
+      <TablaAvanzada id="pocillos" titulo="Pocillos" columnas={cp} filas={pocillos} onVista={onVista} tips={tipsPocillos} />
       <MetodoDetalle d={s.deteccion} odc={a.odc} />
     </div>
   )

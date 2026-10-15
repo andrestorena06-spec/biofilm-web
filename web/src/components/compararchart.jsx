@@ -1,4 +1,5 @@
 import { forwardRef } from 'react'
+import { dBigotes, dCaja, dError, dMedia, dMediana } from '../calculos.js'
 import { calcularLayout } from '../layout.js'
 import { FUENTE, fmt, fmtTick, medir, ticksBonitos } from '../utils.js'
 import { EjeY, EtiquetaFondo, EtiquetasX, LeyendaX, Titulo, useAncho } from './charts.jsx'
@@ -96,46 +97,37 @@ export const CompararChart = forwardRef(function CompararChart({ grupos, leyenda
                   <g key={b.id}>
                     {o.barras && (
                       <rect x={mx - bw / 2} y={y(Math.max(b.media, 0))} width={bw} height={Math.max(Math.abs(y(0) - y(b.media)), 0.5)} rx="2"
-                        fill={b.color} fillOpacity={o.caja ? 0.3 : 0.92} stroke={b.color} strokeWidth="1">
-                        <title>{`${cab}\nBarra: promedio (media) de los ${n} ${n === 1 ? 'valor' : 'valores'} = ${V(b.media)}`}</title>
-                      </rect>
+                        fill={b.color} fillOpacity={o.caja ? 0.3 : 0.92} stroke={b.color} strokeWidth="1"
+                        data-tip={`${cab}\n${dMedia(b.vp || b.pts)}`} />
                     )}
                     {o.barras && o.barrasError && conErr(b) && (
-                      <g stroke="#222" strokeWidth="1.4">
-                        <title>{`${cab}\nBarra de error: ± ${V(b.err)} (${errNom}).\nVa de ${V(b.media - b.err)} a ${V(b.media + b.err)}: indica cuánto varían los valores alrededor de la media.`}</title>
+                      <g stroke="#222" strokeWidth="1.4" data-tip={`${cab}\nBarra de error: ± ${V(b.err)} (${errNom})\n${o.errorTipo ? dError(o.errorTipo, b.vp || b.pts) : ''}\nva de ${V(b.media - b.err)} a ${V(b.media + b.err)}`}>
                         <line x1={mx} x2={mx} y1={y(Math.max(b.media - b.err, eY.min))} y2={y(b.media + b.err)} />
                         <line x1={mx - bw * 0.2} x2={mx + bw * 0.2} y1={y(b.media + b.err)} y2={y(b.media + b.err)} />
                         <line x1={mx - bw * 0.2} x2={mx + bw * 0.2} y1={y(Math.max(b.media - b.err, eY.min))} y2={y(Math.max(b.media - b.err, eY.min))} />
                       </g>
                     )}
-                    {o.bigotes && n >= 2 && (
-                      <g stroke="#444" strokeWidth="1.2">
-                        <title>{`${cab}\nBigotes: del valor mínimo (${V(mn)}) al máximo (${V(mxv)}).\nMuestran todo el rango de los ${n} valores.`}</title>
+                    {o.bigotes && n >= 5 && (
+                      <g stroke="#444" strokeWidth="1.2" data-tip={`${cab}\n${dBigotes(b.pts)}`}>
                         <line x1={mx} x2={mx} y1={y(mn)} y2={y(mxv)} />
                         <line x1={mx - bw * 0.16} x2={mx + bw * 0.16} y1={y(mn)} y2={y(mn)} />
                         <line x1={mx - bw * 0.16} x2={mx + bw * 0.16} y1={y(mxv)} y2={y(mxv)} />
                       </g>
                     )}
-                    {o.caja && n >= 3 && (
-                      <rect x={mx - bw * 0.3} y={y(q3)} width={bw * 0.6} height={Math.max(y(q1) - y(q3), 1)} rx="2" fill="#fff" fillOpacity="0.8" stroke={b.color} strokeWidth="1.6">
-                        <title>{`${cab}\nCaja (cuartiles): Q1 = ${V(q1)} (25 % de los valores por debajo) y Q3 = ${V(q3)} (75 % por debajo).\nEl 50 % central de los valores está entre ${V(q1)} y ${V(q3)} (ancho = ${V(q3 - q1)}).`}</title>
-                      </rect>
+                    {o.caja && n >= 5 && (
+                      <rect x={mx - bw * 0.3} y={y(q3)} width={bw * 0.6} height={Math.max(y(q1) - y(q3), 1)} rx="2" fill="#fff" fillOpacity="0.8" stroke={b.color} strokeWidth="1.6"
+                        data-tip={`${cab}\n${dCaja(b.pts)}`} />
                     )}
-                    {o.mediana && (
-                      <line x1={mx - bw * 0.3} x2={mx + bw * 0.3} y1={y(md)} y2={y(md)} stroke="#222" strokeWidth="2.4">
-                        <title>{`${cab}\nMediana = ${V(md)}: la mitad de los valores está por debajo y la otra mitad por encima. Casi no se afecta por valores extremos.`}</title>
-                      </line>
+                    {o.mediana && n >= 3 && (
+                      <line x1={mx - bw * 0.3} x2={mx + bw * 0.3} y1={y(md)} y2={y(md)} stroke="#222" strokeWidth="2.4"
+                        data-tip={`${cab}\n${dMediana(b.pts)}`} />
                     )}
                     {o.media && (
-                      <path d={`M${mx - 5},${y(b.media)} L${mx},${y(b.media) - 5} L${mx + 5},${y(b.media)} L${mx},${y(b.media) + 5} Z`} fill="#fff" stroke="#222" strokeWidth="1.2">
-                        <title>{`${cab}\nMedia (rombo) = ${V(b.media)}: el promedio de los valores.`}</title>
-                      </path>
+                      <path d={`M${mx - 5},${y(b.media)} L${mx},${y(b.media) - 5} L${mx + 5},${y(b.media)} L${mx},${y(b.media) + 5} Z`} fill="#fff" stroke="#222" strokeWidth="1.2" data-tip={`${cab}\n${dMedia(b.vp || b.pts)}`} />
                     )}
                     {o.puntos && puntos.map((p, j) => (
                       <circle key={j} cx={mx + (puntos.length > 1 ? (((j * 0.6180339) % 1) - 0.5) * bw * 0.56 : 0)} cy={y(p.v)} r="3.6"
-                        fill={p.color} fillOpacity="0.92" stroke="#fff" strokeWidth="1">
-                        <title>{`${p.tip || `${b.placa}: ${V(p.v)}`}\n(cada punto es un valor medido)`}</title>
-                      </circle>
+                        fill={p.color} fillOpacity="0.92" stroke="#fff" strokeWidth="1" data-tip={p.tip || `${b.placa}\nOD = ${V(p.v)}`} />
                     ))}
                     {o.valores && Number.isFinite(arriba) && (
                       <EtiquetaFondo x={mx} y={y(arriba) - 8} est={est.valores}

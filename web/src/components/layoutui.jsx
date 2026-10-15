@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { Nota } from './tip.jsx'
 import { Campo } from './ui.jsx'
 import { aCSV, descargarTexto, pocillos96 } from '../utils.js'
 
@@ -63,7 +64,7 @@ export function PanelLayoutMedio({ s }) {
           <option value="__otro">Otro medio…</option>
         </select>
       </Campo>
-      <p className="ayuda">En «Comparar», las placas con el mismo medio se agrupan solas y se promedian.</p>
+      <p className="ayuda"><Nota titulo="Ayuda">En «Comparar», las placas con el mismo medio se agrupan solas y se promedian.</Nota></p>
 
       <h3>Layout de la placa</h3>
       <div className="fila-ctrl">
@@ -97,7 +98,7 @@ export function PanelLayoutMedio({ s }) {
           </Campo>
         </>
       )}
-      <p className="ayuda">CSV con las columnas Pocillo, Muestra y, opcionalmente, Replica y Blanco (1/0). Después de copiar un layout, los cambios afectan solo a la placa activa.</p>
+      <p className="ayuda"><Nota titulo="Ayuda">CSV con las columnas Pocillo, Muestra y, opcionalmente, Replica y Blanco (1/0). Después de copiar un layout, los cambios afectan solo a la placa activa.</Nota></p>
       <hr />
     </>
   )

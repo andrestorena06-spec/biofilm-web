@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useRef, useState } from 'react'
+import { dBarra } from '../calculos.js'
 import { calcularLayout, estiloTexto } from '../layout.js'
 import { CLASES, COLOR_CLASE, FUENTE, fmt, fmtTick, medir, tCuantil, ticksBonitos } from '../utils.js'
 
@@ -158,7 +159,8 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
           return (
             <g key={f.Muestra}>
               <rect x={cx(i) - bw / 2} y={y(f.Media)} width={bw} height={Math.max(y(0) - y(f.Media), 0)}
-                fill={colorBarra(f)} stroke="#333" strokeWidth="0.8" strokeDasharray={f.EsBlanco ? '4 2' : undefined} />
+                fill={colorBarra(f)} stroke="#333" strokeWidth="0.8" strokeDasharray={f.EsBlanco ? '4 2' : undefined}
+                data-tip={dBarra(`${f.Muestra}${f.EsBlanco ? ' (blanco)' : ''} · OD media = ${fmt(f.Media)}`, pts.map((q) => q.OD), o.error, f.EsBlanco ? NaN : odc, f.Clasificacion)} />
               {Number.isFinite(e) && e > 0 && (
                 <g stroke="#111" strokeWidth="1.3">
                   <line x1={cx(i)} x2={cx(i)} y1={y(Math.max(f.Media - e, 0))} y2={y(f.Media + e)} />
@@ -168,8 +170,7 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
               )}
               {o.puntos && pts.map((q, k) => (
                 <circle key={q.Pocillo} cx={cx(i) + (pts.length > 1 ? (k / (pts.length - 1) - 0.5) * bw * 0.45 : 0)} cy={y(q.OD)} r={q.color ? 4.4 : 3.3}
-                  fill={q.color || '#1b1f23'} fillOpacity="0.9" stroke={q.color ? '#fff' : 'none'} strokeWidth="1">
-                  <title>{`${q.Pocillo}: ${fmt(q.OD)}`}</title>
+                  fill={q.color || '#1b1f23'} fillOpacity="0.9" stroke={q.color ? '#fff' : 'none'} strokeWidth="1" data-tip={`Pocillo ${q.Pocillo}\nOD = ${fmt(q.OD, 4)}`}>
                 </circle>
               ))}
               {o.medias && (
@@ -307,7 +308,8 @@ export const ExcluirChart = forwardRef(function ExcluirChart({ estado, orden, o,
         ) : null)}
 
         {o.puntos && estado.map((e) => (
-          <g key={e.Pocillo} onClick={() => onClickPunto(e.Pocillo)} style={{ cursor: 'pointer' }}>
+          <g key={e.Pocillo} onClick={() => onClickPunto(e.Pocillo)} style={{ cursor: 'pointer' }}
+            data-tip={`${e.Pocillo} · ${e.Muestra} R${e.Replica}\nOD = ${fmt(e.OD, 4)}\n${e.Manual ? 'Excluido manualmente' : e.Motivo || (e.Usado ? 'Aceptado' : 'Excluido')}\nClic: ${e.Usado ? 'excluir' : 'reincorporar'}`}>
             <circle cx={px(e)} cy={y(e.OD)} r="14" fill="transparent" />
             {e.Sospechoso && <circle cx={px(e)} cy={y(e.OD)} r="9" fill="none" stroke="#f0932b" strokeWidth="2.4" />}
             {e.Usado ? (
@@ -318,7 +320,6 @@ export const ExcluirChart = forwardRef(function ExcluirChart({ estado, orden, o,
                 <line x1={px(e) - 5} x2={px(e) + 5} y1={y(e.OD) + 5} y2={y(e.OD) - 5} />
               </g>
             )}
-            <title>{`${e.Pocillo} · ${e.Muestra} R${e.Replica}\nOD = ${fmt(e.OD)}${e.Manual ? '\nExcluido manualmente' : e.Motivo ? '\n' + e.Motivo : ''}`}</title>
           </g>
         ))}
 
@@ -409,9 +410,7 @@ export const GroupedBarChart = forwardRef(function GroupedBarChart({ grupos, pla
                 return (
                   <g key={b.id}>
                     <rect x={bx + 1} y={y(b.media)} width={Math.max(bw - 2, 1)} height={Math.max(y(0) - y(b.media), 0)}
-                      fill={b.color} stroke="#333" strokeWidth="0.7">
-                      <title>{`${g.muestra} · ${b.placa}\nOD media = ${fmt(b.media)}${hasErr ? ` ± ${fmt(b.err)}` : ''}\n${b.pts.length} pocillos`}</title>
-                    </rect>
+                      fill={b.color} stroke="#333" strokeWidth="0.7" data-tip={`${g.muestra} · ${b.placa}\nOD media = ${fmt(b.media)}${hasErr ? ` ± ${fmt(b.err)}` : ''}\n${b.pts.length} pocillos`} />
                     {hasErr && (
                       <g stroke="#111" strokeWidth="1.2">
                         <line x1={mx} x2={mx} y1={y(Math.max(b.media - b.err, 0))} y2={y(b.media + b.err)} />

@@ -5,6 +5,7 @@ import { PlacaTab, AnalisisTab } from './components/tabs.jsx'
 import { ArchivoTab } from './components/archivo.jsx'
 import { ExcluirTab, GraficoTab, DatosTab } from './components/tabs2.jsx'
 import { CompararTab } from './components/comparar.jsx'
+import { GloboInfo } from './components/tip.jsx'
 import { MenuContextual, Modal, useMenuContextual } from './components/ui.jsx'
 import { estiloDefecto, normalizarEstilo, paletaMuestras } from './utils.js'
 
@@ -573,6 +574,7 @@ export default function App() {
           <p className="ayuda">«Continuar con lo anterior» recupera todo tal como lo dejaste. «Empezar de cero» borra ese trabajo guardado del navegador y arranca vacío (si querés conservarlo antes, cargá un archivo de sesión que hayas descargado).</p>
         </Modal>
       )}
+      <GloboInfo />
       <div className="toasts">{avisos.map((a) => <div key={a.id} className={`toast ${a.tipo}`}>{a.texto}</div>)}</div>
     </div>
   )

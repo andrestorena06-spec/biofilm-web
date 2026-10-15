@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Nota } from './tip.jsx'
 import { BarChart, ExcluirChart } from './charts.jsx'
+import { dDE, dMedia, dODc } from '../calculos.js'
 import { PanelLayoutMedio } from './layoutui.jsx'
 import { Campo, Check, EstiloDialog, MenuContextual, Modal, Num, Panel, Select, useMenuContextual } from './ui.jsx'
 import { leerPlaca, hojasDe, MODO } from '../api.js'
@@ -91,7 +93,7 @@ export function PlacaTab({ s }) {
       <div className="principal">
         <h1>Placa de 96 pocillos <span className="sub">· {s.a.nombre}</span></h1>
         {!s.placa && <p className="aviso-sel">Esta placa todavía no tiene Excel. Podés dejar lista la configuración de los pocillos, el nombre y el medio; al cargar el archivo en «+ Agregar placa» o en Archivo › «Cargar archivo», los datos se completan y se procesan solos.</p>}
-        <p className="ayuda">Hacé clic en un pocillo, o clic y arrastrá para seleccionar varios. Elegí una muestra de la lista o escribí una nueva; la réplica se asigna sola. Si es medio sin inocular, marcá «Definir como blanco».</p>
+        <p className="ayuda"><Nota titulo="Ayuda">Hacé clic en un pocillo, o clic y arrastrá para seleccionar varios. Elegí una muestra de la lista o escribí una nueva; la réplica se asigna sola. Si es medio sin inocular, marcá «Definir como blanco».</Nota></p>
         <div className="placa-wrap">
           <table className="placa">
             <thead><tr><th />{Array.from({ length: 12 }, (_, i) => <th key={i}>{i + 1}</th>)}</tr></thead>
@@ -263,9 +265,10 @@ export function AnalisisTab({ s }) {
     <div className="con-lateral">
       <Panel titulo="Punto de corte (ODc)">
         <div className="kpi"><span>Blancos aceptados</span><b>{a.odc.n}</b></div>
-        <div className="kpi"><span>Media de blancos</span><b>{fmt(a.odc.media, 4)}</b></div>
-        <div className="kpi"><span>Desv. estándar de blancos</span><b>{fmt(a.odc.sd, 4)}</b></div>
-        <div className="kpi odc"><span>ODc = media + 3 × DE</span><b>{fmt(odc, 4)}</b></div>
+        <div className="kpi" data-tip={`Media de blancos
+${dMedia(a.estado.filter((r) => r.EsBlanco && r.Usado && (usados || []).includes(r.Muestra)).map((r) => r.OD))}`}><span>Media de blancos</span><b>{fmt(a.odc.media, 4)}</b></div>
+        <div className="kpi" data-tip={dDE(a.estado.filter((r) => r.EsBlanco && r.Usado && (usados || []).includes(r.Muestra)).map((r) => r.OD))}><span>DE de blancos</span><b>{fmt(a.odc.sd, 4)}</b></div>
+        <div className="kpi odc" data-tip={a.odc.n > 1 ? dODc(a.estado.filter((r) => r.EsBlanco && r.Usado && (s.blancosUsados || usados || []).includes(r.Muestra)).map((r) => r.OD)) : 'Punto de corte (ODc): hacen falta al menos 2 blancos aceptados'}><span>ODc = media + 3 × DE</span><b>{fmt(odc, 4)}</b></div>
         {!finito && <p className="ayuda">Se necesitan al menos 2 pocillos blanco aceptados para calcular el ODc.</p>}
         {blancos.length > 0 ? (
           <>
@@ -318,7 +321,7 @@ export function AnalisisTab({ s }) {
             <span key={c}><i className="chip" style={{ background: fondo[c], border: c === 'Excluido' ? '2px solid #c0392b' : undefined }} /><b>{c}</b> {t}</span>
           ))}
         </div>
-        <p className="ayuda">Hacé clic en un pocillo para ver cómo se calculó su clasificación y para excluirlo o incluirlo.</p>
+        <p className="ayuda"><Nota titulo="Ayuda">Hacé clic en un pocillo para ver cómo se calculó su clasificación y para excluirlo o incluirlo.</Nota></p>
       </div>
 
       {det && (

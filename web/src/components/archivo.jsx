@@ -1,4 +1,5 @@
 import { ACEPTA_LIBRO } from '../libro.js'
+import { Nota } from './tip.jsx'
 import { useRef, useState } from 'react'
 import { Campo, Modal, Select } from './ui.jsx'
 import { MODO } from '../api.js'
@@ -109,7 +110,7 @@ export function ArchivoTab({ s }) {
       <div className="rejilla-2">
         <section className="tarjeta">
           <h2>Muestras</h2>
-          <p className="ayuda" style={{ marginTop: 0 }}>La lista de muestras es común a todas las placas.</p>
+          <p className="ayuda" style={{ marginTop: 0 }}><Nota titulo="Ayuda">La lista de muestras es común a todas las placas.</Nota></p>
           <div className="fila-ctrl">
             <input className="grande" placeholder="Nombre de la muestra y Enter (ej.: L100)" value={nueva}
               onChange={(e) => setNueva(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && agregar()} />
@@ -129,13 +130,13 @@ export function ArchivoTab({ s }) {
               )
             })}
           </ul>
-          <p className="ayuda">Estas muestras aparecen al configurar cada pocillo. Los medios (BHI, TSBye) se marcan como blancos al configurar el pocillo.</p>
+          <p className="ayuda"><Nota titulo="Ayuda">Estas muestras aparecen al configurar cada pocillo. Los medios (BHI, TSBye) se marcan como blancos al configurar el pocillo.</Nota></p>
         </section>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
           <section className="tarjeta">
             <h2>Sesión</h2>
-            <p className="ayuda" style={{ marginTop: 0 }}>Guarda <b>todas las placas con sus datos del Excel</b>, la configuración de pocillos, muestras, exclusiones, ajustes y estilos. Para continuar otro día alcanza con cargar la sesión: no hace falta volver a subir los Excel.</p>
+            <p className="ayuda" style={{ marginTop: 0 }}><Nota titulo="Ayuda">Guarda <b>todas las placas con sus datos del Excel</b>, la configuración de pocillos, muestras, exclusiones, ajustes y estilos. Para continuar otro día alcanza con cargar la sesión: no hace falta volver a subir los Excel.</Nota></p>
             <div className="fila-ctrl">
               <button className="primario" onClick={guardarSesion} disabled={!s.placas.length}>Guardar sesión</button>
               <button onClick={() => sesionRef.current.click()}>Cargar sesión</button>

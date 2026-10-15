@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { CompararChart } from './compararchart.jsx'
-import { Desplegable } from './desplegable.jsx'
+import { Nota } from './tip.jsx'
 import { ExportDialog } from './exportar.jsx'
 import { Vacio } from './tabs.jsx'
 import { Campo, Check, EstiloDialog, MenuContextual, Num, Panel, Select, useMenuContextual } from './ui.jsx'
@@ -30,15 +30,21 @@ export function CompararTab({ s }) {
     barras: o.barras !== false, barrasError: o.barrasError !== false,
     caja: o.caja ?? !!o.cajas, mediana: o.mediana ?? !!o.cajas, bigotes: o.bigotes ?? !!o.cajas, media: o.media ?? !!o.cajas,
     puntos: o.puntos !== false, valores: o.valores !== false, errores: !!o.errores, rotar: o.rotar ?? 45,
+    errorTipo: o.error,
     errorNombre: { sd: 'desviación estándar', sem: 'error estándar de la media', ic95: 'intervalo de confianza del 95 %', ninguno: 'error' }[o.error] || 'error',
   }
   const sinElementos = !elementos.barras && !elementos.caja && !elementos.mediana && !elementos.bigotes && !elementos.media && !elementos.puntos
+  // la caja (cuartiles) y los bigotes solo tienen sentido con 5 o más datos por columna
+  const nMaxCol = Math.max(0, ...grupos.flatMap((g) => g.barras.map((b) => b.pts.length)))
+  const puedeCaja = nMaxCol >= 5
   const LISTA = [
-    ['barras', 'Barras (promedio)'], ['barrasError', 'Barras de error'], ['caja', 'Caja (cuartiles Q1–Q3)'], ['mediana', 'Mediana (línea)'],
-    ['bigotes', 'Bigotes (mínimo y máximo)'], ['media', 'Media (rombo ◇)'], ['puntos', modo === 'medio' && o.puntosMedio === 'placas' ? 'Puntos (uno por placa)' : 'Puntos (cada valor)'],
-    ['valores', 'Etiquetas con el valor'], ['errores', 'Error dentro de la etiqueta'],
+    ['barras', 'Barras', 'Media de las réplicas aceptadas.'], ['barrasError', 'Error', 'Barra de error del tipo elegido (DE, SEM o IC 95 %).'],
+    ['caja', 'Caja Q1–Q3', 'Cuartiles Q1 y Q3: contiene el 50 % central de los datos. Solo con 5 o más datos por columna.'],
+    ['mediana', 'Mediana', 'Valor central: la mitad de los datos queda por debajo.'],
+    ['bigotes', 'Mín–máx', 'Bigotes del mínimo al máximo. Solo con 5 o más datos por columna.'],
+    ['media', 'Media ◇', 'Rombo en el promedio.'], ['puntos', modo === 'medio' && o.puntosMedio === 'placas' ? 'Puntos (placa)' : 'Puntos', 'Cada valor medido.'],
+    ['valores', 'Valores', 'Escribe la media sobre cada columna.'], ['errores', '± Error', 'Agrega el error al valor escrito.'],
   ]
-  const nActivos = LISTA.filter(([k]) => elementos[k]).length
   const poner = (cambios) => setVarios({ ...cambios, cajas: undefined })
 
   if (!conAnalisis.length) {
@@ -111,45 +117,47 @@ export function CompararTab({ s }) {
   return (
     <div className="con-lateral">
       <Panel titulo="Comparar placas">
-        <p className="ayuda">El medio de cultivo de cada placa se elige en la pestaña «Placa»; las placas con el mismo medio quedan juntas y del mismo color.</p>
-        <Campo label="Cómo comparar">
+        <Campo label={<>Cómo comparar<Nota>El medio de cultivo de cada placa se elige en la pestaña «Placa»; las placas con el mismo medio quedan juntas y del mismo color.</Nota></>}>
           <Select value={modo} onChange={(v) => setO('modo', v)}
-            opciones={[['placas', 'Una columna por placa'], ['medio', 'Una columna por medio de cultivo (promedio de sus placas)'], ['pocillo', 'Una columna por pocillo']]} />
+            opciones={[['placas', 'Por placa'], ['medio', 'Por medio de cultivo'], ['pocillo', 'Por pocillo']]} />
         </Campo>
         {modo === 'medio' && sinMedio.length > 0 && (
           <p className="aviso-sel">Placas sin medio indicado (no se muestran): {sinMedio.map((p) => p.nombre).join(', ')}. Elegí su medio en la pestaña «Placa».</p>
         )}
         {modo === 'medio' && (
-          <Campo label="Puntos y cajas de cada medio">
+          <Campo label="Datos de cada medio">
             <Select value={o.puntosMedio || 'pocillos'} onChange={(v) => setO('puntosMedio', v)}
-              opciones={[['pocillos', 'Todos los pocillos de sus placas'], ['placas', 'Un punto por placa (su promedio)']]} />
+              opciones={[['pocillos', 'Pocillos'], ['placas', 'Promedio por placa']]} />
           </Campo>
         )}
 
-        <Campo label="Qué mostrar en el gráfico">
-          <Desplegable etiqueta="Elementos del gráfico" resumen={`${nActivos} de ${LISTA.length}`} ancho={290}>
-            <div className="fila-ctrl" style={{ margin: '0 0 6px' }}>
-              <button className="chico" onClick={() => poner({ barras: true, barrasError: true, caja: false, mediana: false, bigotes: false, media: false, puntos: true })}>Barras</button>
-              <button className="chico" onClick={() => poner({ barras: false, barrasError: false, caja: true, mediana: true, bigotes: true, media: true, puntos: true })}>Cajas</button>
-              <button className="chico" onClick={() => poner({ barras: true, barrasError: true, caja: true, mediana: true, bigotes: true, media: true, puntos: true })}>Todo</button>
-            </div>
-            {LISTA.map(([k, t]) => (
-              <Check key={k} label={t} checked={elementos[k]} onChange={(v) => poner({ [k]: v })} />
-            ))}
-            <p className="ayuda" style={{ margin: '6px 0 0' }}>Los cambios se ven al instante. Hacé clic afuera para cerrar. Pasá el mouse por cada elemento del gráfico para ver qué es y cuánto vale.</p>
-          </Desplegable>
-          {sinElementos && <p className="aviso-sel">No hay nada para dibujar: activá barras, caja, mediana, bigotes, media o puntos.</p>}
-          {modo === 'pocillo' && <p className="ayuda">Con una columna por pocillo no hay cajas ni barras de error (cada columna es un solo valor).</p>}
+        <Campo label={<>Elementos<Nota>Se activan y desactivan al instante. Pasá el mouse por cada elemento del gráfico para ver su valor y cómo se calcula. Con una columna por pocillo no hay cajas ni errores (un solo valor por columna).</Nota></>}>
+          <div className="fila-chips">
+            <button className="chip-op" data-tip="Solo barras y puntos" onClick={() => poner({ barras: true, barrasError: true, caja: false, mediana: false, bigotes: false, media: false, puntos: true })}>⟲ Barras</button>
+            <button className="chip-op" disabled={!puedeCaja} data-tip={puedeCaja ? 'Caja, mediana, mín–máx y puntos' : 'Hacen falta 5 o más datos por columna'}
+              onClick={() => poner({ barras: false, barrasError: false, caja: true, mediana: true, bigotes: true, media: true, puntos: true })}>⟲ Cajas</button>
+          </div>
+          <div className="fila-chips">
+            {LISTA.map(([k, t, d]) => {
+              const bloq = (k === 'caja' || k === 'bigotes') && !puedeCaja
+              return (
+                <button key={k} type="button" className={`chip-op ${elementos[k] && !bloq ? 'on' : ''}`} disabled={bloq}
+                  data-tip={bloq ? `${t}\nHacen falta 5 o más datos por columna (hoy el máximo es ${nMaxCol}).` : `${t}\n${d}`}
+                  onClick={() => poner({ [k]: !elementos[k] })}>{t}</button>
+              )
+            })}
+          </div>
+          {sinElementos && <p className="aviso-sel">No hay nada para dibujar: activá barras, mediana, media o puntos.</p>}
         </Campo>
         {(modo === 'placas' || modo === 'medio') && (
-          <Campo label="Tipo de error">
+          <Campo label="Error">
             <Select value={o.error} onChange={(v) => setO('error', v)}
-              opciones={[['sd', 'Desviación estándar'], ['sem', 'Error estándar (SEM)'], ['ic95', 'IC 95 %'], ['ninguno', 'Ninguno']]} />
+              opciones={[['sd', 'DE'], ['sem', 'SEM'], ['ic95', 'IC 95 %'], ['ninguno', 'Ninguno']]} />
           </Campo>
         )}
-        <Campo label="Rotación de etiquetas (°)"><Num value={o.rotar} min={0} max={90} step={15} onChange={(v) => setO('rotar', v === '' ? 0 : v)} /></Campo>
+        <Campo label="Rotación (°)"><Num value={o.rotar} min={0} max={90} step={15} onChange={(v) => setO('rotar', v === '' ? 0 : v)} /></Campo>
 
-        <Campo label="Placas a ver">
+        <Campo label="Placas">
           <div className="fila-ctrl" style={{ margin: '0 0 4px' }}>
             <button className="chico" onClick={() => setO('placasSel', conAnalisis.map((p) => p.id))}>Todas</button>
             <button className="chico" onClick={() => setO('placasSel', [])}>Ninguna</button>
@@ -162,9 +170,9 @@ export function CompararTab({ s }) {
             ))}
           </div>
         </Campo>
-        <Check label="Mostrar también los blancos" checked={D.verBlancos} onChange={(v) => setO('blancos', v)} />
+        <Check label="Incluir blancos" checked={D.verBlancos} onChange={(v) => setO('blancos', v)} />
 
-        <Campo label="Muestras a mostrar de cada placa">
+        <Campo label={<>Muestras por placa<Nota>Cada columna es una placa (mismo color que en el gráfico). Destildá una celda para ocultar esa muestra solo en esa placa, o la casilla de la izquierda para ocultarla en todas.</Nota></>}>
           <div className="fila-ctrl" style={{ margin: '0 0 4px' }}>
             <button className="chico" onClick={() => todoVisible(true)}>Mostrar todas</button>
             <button className="chico" onClick={() => todoVisible(false)}>Ocultar todas</button>
@@ -198,7 +206,6 @@ export function CompararTab({ s }) {
               </tbody>
             </table>
           </div>
-          <p className="ayuda">Cada columna es una placa (mismo color que en el gráfico). Destildá una celda para ocultar esa muestra solo en esa placa, o la casilla de la izquierda para ocultarla en todas.</p>
         </Campo>
         <hr />
         {modo === 'medio' && (
@@ -232,8 +239,8 @@ export function CompararTab({ s }) {
 
       <div className="principal">
         <h1>Comparación entre placas <span className="sub">· {modo === 'medio' ? 'por medio de cultivo' : modo === 'pocillo' ? 'pocillo por pocillo' : 'placa por placa'}</span></h1>
-        {grupos.length && !sinElementos ? grafico(svg, undefined, abrirMenu) : <Vacio texto={sinElementos ? 'Activá barras, cajas o puntos para ver el gráfico.' : 'Elegí al menos una placa y una muestra para mostrar.'} />}
-        <p className="ayuda">Clic derecho sobre el gráfico: estilo de todos los textos. Pasá el mouse sobre una columna o un punto para ver su detalle. {nCols > 0 && `${nCols} columnas.`}</p>
+        {grupos.length && !sinElementos ? grafico(svg, undefined, abrirMenu) : <Vacio texto={sinElementos ? 'Activá barras, mediana, media o puntos para ver el gráfico.' : 'Elegí al menos una placa y una muestra para mostrar.'} />}
+        <p className="ayuda"><Nota titulo="Ayuda">{nCols} columnas <Nota>Pasá el mouse por una barra, caja o punto para ver su valor y el cálculo. Clic derecho sobre el gráfico: estilo de los textos.</Nota></Nota></p>
 
         {modo === 'medio' && o.testG === 'control' && (
           <section className="resultado-test">
@@ -253,7 +260,7 @@ export function CompararTab({ s }) {
                 </table>
               </div>
             ) : <p>Hacen falta al menos dos medios con placas.</p>}
-            <p className="ayuda">Cada placa cuenta como una réplica (n = número de placas de cada medio; con 3 placas por medio la prueba solo detecta diferencias grandes). Es una prueba t de Welch por muestra con el ajuste de Holm entre todas las comparaciones.</p>
+            <p className="ayuda"><Nota titulo="Ayuda">Cada placa cuenta como una réplica (n = número de placas de cada medio; con 3 placas por medio la prueba solo detecta diferencias grandes). Es una prueba t de Welch por muestra con el ajuste de Holm entre todas las comparaciones.</Nota></p>
           </section>
         )}
 
@@ -268,7 +275,7 @@ export function CompararTab({ s }) {
                   : <><b>No hay evidencia de diferencias</b> entre las muestras mostradas (p mayor o igual que 0,05).</>}</p>
               </>
             ) : <p>No se puede calcular: hacen falta al menos 2 muestras y más datos que grupos.</p>}
-            <p className="ayuda">Cada placa cuenta como una réplica. Más detalle en Datos › Método, sección 7.</p>
+            <p className="ayuda"><Nota titulo="Ayuda">Cada placa cuenta como una réplica. Más detalle en Datos › Método, sección 7.</Nota></p>
           </section>
         )}
 
@@ -289,7 +296,7 @@ export function CompararTab({ s }) {
                 </tbody>
               </table>
             </div>
-            <p className="ayuda">Cada placa cuenta como una réplica (n = número de placas). Con 2 o 3 placas la prueba detecta solo diferencias muy grandes. Cómo leer esta tabla: Datos › Método, sección 7.</p>
+            <p className="ayuda"><Nota titulo="Ayuda">Cada placa cuenta como una réplica (n = número de placas). Con 2 o 3 placas la prueba detecta solo diferencias muy grandes. Cómo leer esta tabla: Datos › Método, sección 7.</Nota></p>
           </section>
         )}
       </div>
