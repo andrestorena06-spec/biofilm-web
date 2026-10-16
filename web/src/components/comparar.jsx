@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { CompararChart } from './compararchart.jsx'
+import { ReproTab } from './repro.jsx'
 import { Nota } from './tip.jsx'
 import { ExportDialog } from './exportar.jsx'
 import { Vacio } from './tabs.jsx'
@@ -46,10 +47,17 @@ export function CompararTab({ s }) {
     ['valores', 'Valores', 'Escribe la media sobre cada columna.'], ['errores', '± Error', 'Agrega el error al valor escrito.'],
   ]
   const poner = (cambios) => setVarios({ ...cambios, cajas: undefined })
+  const selectorModo = (
+    <Campo label={<>Cómo comparar<Nota>El medio de cultivo de cada placa se elige en la pestaña «Placa»; las placas con el mismo medio quedan juntas y del mismo color. «Reproducibilidad» toma cada placa como una repetición del experimento.</Nota></>}>
+      <Select value={modo} onChange={(v) => setO('modo', v)}
+        opciones={[['placas', 'Por placa'], ['medio', 'Por medio de cultivo'], ['pocillo', 'Por pocillo'], ['repro', 'Reproducibilidad entre experimentos']]} />
+    </Campo>
+  )
 
   if (!conAnalisis.length) {
     return <Vacio texto="Cargá al menos dos placas (botón «+ Agregar placa»), configurá sus pocillos y volvé acá para compararlas." />
   }
+  if (modo === 'repro') return <ReproTab s={s} D={D} o={o} setO={setO} selectorModo={selectorModo} />
 
   // ---- prueba estadística (opcional): cada placa aporta un valor por muestra ----
   const control = grupos.some((g) => g.muestra === o.control) ? o.control : grupos[0]?.muestra || ''
@@ -149,10 +157,7 @@ export function CompararTab({ s }) {
   return (
     <div className="con-lateral">
       <Panel titulo="Comparar placas">
-        <Campo label={<>Cómo comparar<Nota>El medio de cultivo de cada placa se elige en la pestaña «Placa»; las placas con el mismo medio quedan juntas y del mismo color.</Nota></>}>
-          <Select value={modo} onChange={(v) => setO('modo', v)}
-            opciones={[['placas', 'Por placa'], ['medio', 'Por medio de cultivo'], ['pocillo', 'Por pocillo']]} />
-        </Campo>
+        {selectorModo}
         {modo === 'medio' && sinMedio.length > 0 && (
           <p className="aviso-sel">Placas sin medio indicado (no se muestran): {sinMedio.map((p) => p.nombre).join(', ')}. Elegí su medio en la pestaña «Placa».</p>
         )}

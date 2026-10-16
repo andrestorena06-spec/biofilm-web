@@ -308,3 +308,15 @@ code { background: #f6ebdb; }
 /* menú lateral: el estilo general de los botones al pasar el mouse no debe aclarar el fondo oscuro */
 .nav:hover:not(:disabled) { background: rgba(255, 226, 190, .10); border-color: transparent; }
 .nav.activa:hover:not(:disabled) { background: rgba(255, 190, 120, .20); }
+
+/* reproducibilidad entre experimentos */
+.repro .resultado-test h2 { display: flex; align-items: center; gap: 4px; }
+.repro .resultado-test h3 { margin: 16px 0 8px; font-size: 14px; text-transform: none; letter-spacing: 0; color: var(--texto); }
+.resumen-repro { margin: 6px 0 0 18px; padding: 0; line-height: 1.55; }
+.resumen-repro li { margin: 4px 0; }
+.eval-ok { color: #2e7d32; font-weight: 600; }
+.eval-mal { color: #b3261e; font-weight: 600; }
+.campos-cv { flex-wrap: nowrap; }
+.campos-cv input { width: 100%; min-width: 0; }
+.repro .tabla td { white-space: normal; }
+.repro .tabla td:first-child { white-space: nowrap; }

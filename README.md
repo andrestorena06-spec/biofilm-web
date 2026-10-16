@@ -17,6 +17,9 @@ No requiere instalar nada (ni R ni Node.js) ni conexión a internet. Se abre en 
 - **Comparar entre placas**: cada placa es una réplica biológica (n = número de placas). Valor `OD ÷ ODc` por placa,
   media ± error entre placas, prueba t de Welch contra un control con ajuste de Holm, ANOVA, matriz de
   consistencia de la clasificación y control de las placas (verificado contra R).
+- **Reproducibilidad entre experimentos** (cada placa es una repetición): CV % entre experimentos, ANOVA de una vía o
+  Kruskal-Wallis según Shapiro-Wilk, ANOVA de dos vías cepa × experimento, correlación de Pearson/Spearman entre pares
+  e ICC(2,1) y ICC(3,1) con IC 95 %; resumen para copiar y descarga a Excel.
 - Lee el archivo del lector (`.xlsx`, `.csv`, `.txt`), detecta la placa y la longitud de onda.
 - Configuración de pocillos por arrastre, con muestras, réplicas automáticas y blancos.
 - Detección de valores atípicos: test Q de Dixon, test de Grubbs y coeficiente de variación (%RSD) con límite.

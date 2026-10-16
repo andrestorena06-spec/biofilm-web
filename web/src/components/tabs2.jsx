@@ -519,6 +519,16 @@ function MetodoDetalle({ d, odc }) {
       </ul>
       <p>Las pruebas son las mismas que por placa: <b>cada muestra contra un control</b> y <b>ANOVA</b>, calculadas dentro de cada medio, y además <b>cada medio contra un medio control</b>, muestra por muestra. Todas con t de Welch y ajuste de Holm, o ANOVA de un factor.</p>
 
+      <h4>Reproducibilidad entre experimentos</h4>
+      <p>En «Comparar › Reproducibilidad entre experimentos» cada placa es una repetición independiente del experimento. Responde si las repeticiones dan resultados consistentes. Se puede usar la OD o la <b>OD ÷ ODc</b> de cada placa (corrige las diferencias de fondo entre días).</p>
+      <ul>
+        <li><b>1. Variabilidad</b>: cada experimento aporta la media de sus pocillos por cepa; entre experimentos se calculan media, DE y <code>CV % = DE ÷ media × 100</code>. En biofilm un CV menor que 20–30 % suele considerarse aceptable (los límites se pueden cambiar).</li>
+        <li><b>2. ¿Difieren los experimentos?</b> Para cada cepa, ANOVA de una vía con el experimento como factor y los pocillos como datos. Se revisa la normalidad de los residuos con <b>Shapiro-Wilk</b>; si p &lt; 0,05 o algún experimento tiene menos de 3 pocillos se usa <b>Kruskal-Wallis</b>. p ≥ 0,05 = sin diferencias entre repeticiones (lo deseable). Además, <b>ANOVA de dos vías cepa × experimento</b> (sumas de cuadrados tipo II, como <code>car::Anova</code>): si la interacción tiene p ≥ 0,05, el efecto de la cepa se mantiene en todos los experimentos.</li>
+        <li><b>3. Correlación</b> entre pares de experimentos con la media de cada cepa: <b>Pearson</b> si las medias de los dos experimentos son normales (Shapiro-Wilk), si no <b>Spearman</b>. r cercano a 1 = las cepas mantienen el mismo orden. Hacen falta 3 o más cepas.</li>
+        <li><b>4. ICC</b> (correlación intraclase, Shrout y Fleiss): <b>ICC(2,1)</b> de acuerdo absoluto (el que se reporta para reproducibilidad) e <b>ICC(3,1)</b> de consistencia, con IC 95 % (McGraw y Wong). Menor que 0,5 pobre, 0,5–0,75 moderada, 0,75–0,9 buena, mayor que 0,9 excelente (Koo y Li, 2016). Solo entran las cepas presentes en todos los experimentos.</li>
+      </ul>
+      <p className="ayuda">Verificado contra scipy, statsmodels y pingouin (equivalentes a <code>aov</code>, <code>car::Anova</code>, <code>shapiro.test</code>, <code>kruskal.test</code>, <code>cor.test</code> y <code>psych::ICC</code> de R).</p>
+
       <h4>Cómo leer los resultados</h4>
       <ul>
         <li><b>Diferencia con el control</b>: muestra − control, en unidades de OD. Positiva = la muestra produce más que el control.</li>
