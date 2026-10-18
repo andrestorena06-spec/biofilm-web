@@ -4,6 +4,7 @@ import { Campo, Check, EstiloDialog, MenuContextual, Num, Panel, Select, useMenu
 import { ExportDialog } from './exportar.jsx'
 import { dCV, dClase, dDE, dIC, dMedia, dRazon, dSEM } from '../calculos.js'
 import { Nota } from './tip.jsx'
+import { PasoAPaso } from './pasos.jsx'
 import { abrirInforme } from './informe.jsx'
 import { resumenBlancos } from '../blancos.js'
 import { Vacio } from './tabs.jsx'
@@ -414,6 +415,7 @@ ${f.Motivo || 'Sin observaciones'}` : null)
       </div>
       <TablaAvanzada id="muestras" titulo="Muestras" columnas={cm} filas={muestras} onVista={onVista} tips={tipsMuestras} />
       <TablaAvanzada id="pocillos" titulo="Pocillos" columnas={cp} filas={pocillos} onVista={onVista} tips={tipsPocillos} />
+      <PasoAPaso s={s} />
       <MetodoDetalle d={s.deteccion} odc={a.odc} />
     </div>
   )

@@ -73,3 +73,18 @@ export function anova1(grupos) {
 }
 
 export const marcaSig = (p) => (!finito(p) ? '' : p < 0.001 ? '***' : p < 0.01 ? '**' : p < 0.05 ? '*' : 'ns')
+
+// Tabla de ANOVA de una vía con todos los pasos (SC, gl, CM, F y p)
+export function anovaTabla(grupos) {
+  const g = grupos.map((v) => v.filter(finito)).filter((v) => v.length > 0)
+  const k = g.length
+  const N = g.reduce((s, v) => s + v.length, 0)
+  if (k < 2 || N - k < 1) return null
+  const gm = media(g.flat())
+  const ssb = g.reduce((s, v) => s + v.length * (media(v) - gm) ** 2, 0)
+  const ssw = g.reduce((s, v) => s + v.reduce((a, x) => a + (x - media(v)) ** 2, 0), 0)
+  const df1 = k - 1, df2 = N - k
+  const F = ssw === 0 ? Infinity : ssb / df1 / (ssw / df2)
+  const p = ssw === 0 ? (ssb === 0 ? 1 : 0) : betaInc(df2 / (df2 + df1 * F), df2 / 2, df1 / 2)
+  return { k, N, gm, ssb, ssw, sst: ssb + ssw, df1, df2, msb: ssb / df1, msw: ssw / df2, F, p, medias: g.map((v) => media(v)), ns: g.map((v) => v.length) }
+}

@@ -320,3 +320,7 @@ code { background: #f6ebdb; }
 .campos-cv input { width: 100%; min-width: 0; }
 .repro .tabla td { white-space: normal; }
 .repro .tabla td:first-child { white-space: nowrap; }
+
+.paso-tabla tfoot th { text-align: right; font-weight: 500; color: var(--suave); background: #fbf5ec; }
+.paso-tabla tfoot td { background: #fbf5ec; }
+.paso-tabla td { font-variant-numeric: tabular-nums; }
