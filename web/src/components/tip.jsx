@@ -28,11 +28,23 @@ export function GloboInfo() {
       setT({ txt: f.txt, x: e.clientX, y: e.clientY })
     }
     const salir = () => { actual = null; setT(null) }
+    // en pantallas táctiles no hay «pasar el mouse»: un toque sobre un elemento con información la muestra unos segundos
+    let tt = null
+    const tocar = (e) => {
+      if (!window.matchMedia('(hover: none)').matches) return
+      const fh = buscar(e.target)
+      clearTimeout(tt)
+      if (!fh) { setT(null); return }
+      setT({ txt: fh.txt, x: e.clientX, y: Math.max(e.clientY - 150, 70) })
+      tt = setTimeout(() => setT(null), 4500)
+    }
+    document.addEventListener('click', tocar, true)
     document.addEventListener('mousemove', mover)
     document.addEventListener('mouseleave', salir)
     document.addEventListener('mousedown', salir)
     window.addEventListener('scroll', salir, true)
     return () => {
+      document.removeEventListener('click', tocar, true); clearTimeout(tt)
       document.removeEventListener('mousemove', mover); document.removeEventListener('mouseleave', salir)
       document.removeEventListener('mousedown', salir); window.removeEventListener('scroll', salir, true)
     }

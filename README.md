@@ -5,6 +5,14 @@ producción de biofilm según **Stepanović et al. (2000)**, *J Microbiol Method
 
 **Todo se calcula en tu navegador.** El archivo y los resultados no se envían a ningún servidor.
 
+## Instalar en el celular (Android, Galaxy A55)
+
+Abrí **https://andrestorena06-spec.github.io/biofilm-web/** en Chrome o Samsung Internet. Menú ⋮ › **Instalar app** (o *Agregar a pantalla de inicio*): queda un ícono «Biofilm» y se abre como una app, a pantalla completa. Después de abrirla una vez con internet también funciona **sin conexión**. Los archivos y resultados se quedan en el teléfono.
+
+- Los Excel (.xlsx, .xls, .ods) se eligen desde el almacenamiento del teléfono o Google Drive.
+- En la placa, un toque en un pocillo lo configura; tocar una letra o un número de la placa selecciona la fila o la columna completa.
+- El informe PDF se abre en otra pestaña con un botón «Imprimir o guardar como PDF».
+
 ## Descargar y usar sin internet
 
 [**Biofilm_un_solo_archivo.zip**](https://andrestorena06-spec.github.io/biofilm-web/Biofilm_un_solo_archivo.zip) (110 KB): descomprimir y hacer doble clic en `Biofilm.html`.

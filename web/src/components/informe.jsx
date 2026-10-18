@@ -96,6 +96,17 @@ export function abrirInforme(s) {
     ${secciones.join('')}${comparacion}
   </body></html>`
 
+  // en el celular el cuadro de impresión no se abre desde un marco oculto: el informe se abre en otra pestaña
+  // con un botón para imprimir o guardar como PDF (o compartirlo)
+  if (/Android|iPhone|iPad/i.test(navigator.userAgent) || window.matchMedia('(pointer: coarse)').matches) {
+    const barra = '<div class="no-imprimir" style="position:sticky;top:0;background:#4a2312;padding:10px;text-align:center;margin:-14mm -12mm 12px"><button onclick="window.print()" style="font-size:16px;padding:10px 18px;border-radius:10px;border:0;background:#f4a04c;color:#3b1c0a;font-weight:700">Imprimir o guardar como PDF</button></div>'
+    const movil = html.replace('<body>', '<body>' + barra).replace('</style>', '@media print { .no-imprimir { display: none !important; } } body { max-width: 900px; margin: 0 auto; padding: 0 10px 20px; } </style>')
+    const url = URL.createObjectURL(new Blob([movil], { type: 'text/html;charset=utf-8' }))
+    const w = window.open(url, '_blank')
+    if (!w) window.location.href = url
+    return true
+  }
+
   // se imprime desde un marco oculto (en Chrome: Destino › Guardar como PDF)
   const marco = document.createElement('iframe')
   marco.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0'

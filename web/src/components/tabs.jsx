@@ -31,30 +31,33 @@ export function PlacaTab({ s }) {
     : null
   const enRect = (f, c) => rect && f >= rect.f1 && f <= rect.f2 && c >= rect.c1 && c <= rect.c2
 
+  // abre la ventana de configuración para un rectángulo de pocillos (arrastre con el mouse, un toque o una fila/columna completa)
+  const abrirRect = (r) => {
+    const ids = []
+    for (let f = r.f1; f <= r.f2; f++) for (let c = r.c1; c <= r.c2; c++) {
+      const p = FILAS[f] + (c + 1)
+      if (disp.has(p)) ids.push(p)
+    }
+    if (!ids.length) return
+    const info = ids.map(cfgDe).filter(Boolean)
+    const nombres = [...new Set(info.map((i) => i.Muestra))]
+    // si todos los pocillos ya tienen la MISMA muestra, se muestra seleccionada (como en un pocillo solo)
+    const unica = info.length === ids.length && nombres.length === 1
+    const estadosBlanco = [...new Set(info.map((i) => !!i.EsBlanco))]
+    setSel(ids)
+    setMuestra(unica ? nombres[0] : '')
+    setBlanco(estadosBlanco.length === 0 ? false : estadosBlanco.length === 1 ? estadosBlanco[0] : null)
+  }
   useEffect(() => {
     const up = () => {
       if (!arr) return
-      if (rect) {
-        const ids = []
-        for (let f = rect.f1; f <= rect.f2; f++) for (let c = rect.c1; c <= rect.c2; c++) {
-          const p = FILAS[f] + (c + 1)
-          if (disp.has(p)) ids.push(p)
-        }
-        if (ids.length) {
-          const info = ids.map(cfgDe).filter(Boolean)
-          const nombres = [...new Set(info.map((i) => i.Muestra))]
-          // si todos los pocillos ya tienen la MISMA muestra, se muestra seleccionada (como en un pocillo solo)
-          const unica = info.length === ids.length && nombres.length === 1
-          const estadosBlanco = [...new Set(info.map((i) => !!i.EsBlanco))]
-          setSel(ids)
-          setMuestra(unica ? nombres[0] : '')
-          setBlanco(estadosBlanco.length === 0 ? false : estadosBlanco.length === 1 ? estadosBlanco[0] : null)
-        }
-      }
+      if (rect) abrirRect(rect)
       setArr(null); setAct(null)
     }
-    window.addEventListener('mouseup', up)
-    return () => window.removeEventListener('mouseup', up)
+    const cancelar = () => { setArr(null); setAct(null) }
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', cancelar)
+    return () => { window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', cancelar) }
   })
 
   const guardar = (elegida) => {
@@ -96,11 +99,11 @@ export function PlacaTab({ s }) {
         <p className="ayuda"><Nota titulo="Ayuda">Hacé clic en un pocillo, o clic y arrastrá para seleccionar varios. Elegí una muestra de la lista o escribí una nueva; la réplica se asigna sola. Si es medio sin inocular, marcá «Definir como blanco».</Nota></p>
         <div className="placa-wrap">
           <table className="placa">
-            <thead><tr><th />{Array.from({ length: 12 }, (_, i) => <th key={i}>{i + 1}</th>)}</tr></thead>
+            <thead><tr><th />{Array.from({ length: 12 }, (_, i) => <th key={i} className="enc-sel" onClick={() => abrirRect({ f1: 0, f2: 7, c1: i, c2: i })} data-tip={`Columna ${i + 1} completa`}>{i + 1}</th>)}</tr></thead>
             <tbody>
               {FILAS.map((f, fi) => (
                 <tr key={f}>
-                  <th>{f}</th>
+                  <th className="enc-sel" onClick={() => abrirRect({ f1: fi, f2: fi, c1: 0, c2: 11 })} data-tip={`Fila ${f} completa`}>{f}</th>
                   {Array.from({ length: 12 }, (_, ci) => {
                     const p = f + (ci + 1)
                     const c = cfgDe(p)
@@ -108,8 +111,8 @@ export function PlacaTab({ s }) {
                     const enSel = ok && enRect(fi, ci)
                     return (
                       <td key={p}
-                        onMouseDown={(e) => { if (e.button === 0 && ok) { e.preventDefault(); setArr({ f: fi, c: ci }); setAct({ f: fi, c: ci }) } }}
-                        onMouseEnter={() => arr && setAct({ f: fi, c: ci })}>
+                        onPointerDown={(e) => { if (e.button === 0 && ok) { if (e.pointerType === 'mouse') e.preventDefault(); setArr({ f: fi, c: ci }); setAct({ f: fi, c: ci }) } }}
+                        onPointerEnter={(e) => e.pointerType === 'mouse' && arr && setAct({ f: fi, c: ci })}>
                         <div className={`pocillo ${!ok ? 'sin-datos' : ''} ${enSel ? 'sel' : ''} ${c ? 'asig' : ''}`}
                           style={c && !enSel ? { background: cols[p] } : undefined}>
                           {!ok ? <><b>Sin datos</b><small>{p}</small></>
