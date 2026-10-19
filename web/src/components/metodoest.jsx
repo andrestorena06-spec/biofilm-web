@@ -116,7 +116,7 @@ const Sec = ({ id, n, t, children }) => <><h3 id={id} className="sec-est"><i>{n}
 // Diagrama de decisión (cada caja resume una regla del programa)
 // ---------------------------------------------------------------
 function Flujo({ r }) {
-  const on = (t) => (r && r.tipo === t ? 1 : 0.35)
+  const on = (t) => (!r || r.tipo === t ? 1 : 0.35)
   return (
     <svg viewBox="0 0 640 330" className="flujo-decision" role="img" aria-label="Cómo elige el programa la prueba">
       <defs><marker id="fl" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#8a6a49" /></marker></defs>
