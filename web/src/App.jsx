@@ -3,8 +3,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { analizar, ErrorRed, hojasDe, leerPlaca, ping } from './api.js'
 import { PlacaTab, AnalisisTab } from './components/tabs.jsx'
 import { ArchivoTab } from './components/archivo.jsx'
-import { ExcluirTab, GraficoTab, DatosTab } from './components/tabs2.jsx'
-import { CompararTab } from './components/comparar.jsx'
+import { ExcluirTab, DatosTab } from './components/tabs2.jsx'
+import { GraficoPestana } from './components/graficos.jsx'
+import { EstadisticaTab } from './components/estadistica.jsx'
 import { GloboInfo } from './components/tip.jsx'
 import { MenuContextual, Modal, useMenuContextual } from './components/ui.jsx'
 import { estiloDefecto, normalizarEstilo, paletaMuestras } from './utils.js'
@@ -53,8 +54,8 @@ const PESTANAS = [
   ['placa', 'Placa', 'Configurar pocillos'],
   ['excluir', 'Excluir puntos', 'Control de calidad'],
   ['analisis', 'Análisis', 'ODc y mapa'],
-  ['grafico', 'Gráfico', 'Barras y clasificación'],
-  ['comparar', 'Comparar', 'Entre placas'],
+  ['grafico', 'Gráfico', 'Placa actual o comparación'],
+  ['estadistica', 'Estadística', 'Pruebas y resultados'],
   ['datos', 'Datos', 'Tablas y método'],
 ]
 
@@ -465,7 +466,7 @@ export default function App() {
     blancosUsados: activa?.blancosUsados ?? null, setBlancosUsados: (b) => activa && actualizar(activa.id, { blancosUsados: b }),
     analisis, ordenMuestras, ejeOD,
     // globales
-    muestras, setMuestras, deteccion, setDeteccion, opts, setOpts, estilos, setEstilos, avisar, alternarPocillo,
+    irA: setTab, muestras, setMuestras, deteccion, setDeteccion, opts, setOpts, estilos, setEstilos, avisar, alternarPocillo,
     restablecerExclusiones: () => { if (activa) { actualizar(activa.id, { exclManual: [], exclForzado: [] }); avisar('Exclusiones restablecidas en esta placa.') } },
     borrarMuestra: (m) => {
       const n = placas.reduce((a, p) => a + p.config.filter((c) => c.Muestra === m).length, 0)
@@ -482,7 +483,7 @@ export default function App() {
     exportarSesion, importarSesion,
   }
 
-  const Vista = { archivo: ArchivoTab, placa: PlacaTab, excluir: ExcluirTab, analisis: AnalisisTab, grafico: GraficoTab, comparar: CompararTab, datos: DatosTab }[tab]
+  const Vista = { archivo: ArchivoTab, placa: PlacaTab, excluir: ExcluirTab, analisis: AnalisisTab, grafico: GraficoPestana, comparar: GraficoPestana, estadistica: EstadisticaTab, datos: DatosTab }[tab]
   const colores = paletaMuestras(placas.map((p) => p.id))
 
   return (

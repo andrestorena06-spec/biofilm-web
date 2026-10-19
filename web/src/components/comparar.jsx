@@ -1,7 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
 import { CompararChart } from './compararchart.jsx'
-import { ReproTab } from './repro.jsx'
-import { PanelPruebas, ResultadosPruebas } from './pruebas.jsx'
 import { Nota } from './tip.jsx'
 import { ExportDialog } from './exportar.jsx'
 import { Vacio } from './tabs.jsx'
@@ -51,14 +49,13 @@ export function CompararTab({ s }) {
   const selectorModo = (
     <Campo label={<>Qué mostrar<Nota>El medio de cultivo de cada placa se elige en la pestaña «Placa»; las placas con el mismo medio quedan juntas y del mismo color. «Reproducibilidad» toma cada placa como una repetición del experimento.</Nota></>}>
       <Select value={modo} onChange={(v) => setO('modo', v)}
-        opciones={[['placas', 'Una columna por placa'], ['medio', 'Una columna por medio de cultivo'], ['pocillo', 'Una columna por pocillo'], ['repro', 'Reproducibilidad entre experimentos']]} />
+        opciones={[['placas', 'Una columna por placa'], ['medio', 'Una columna por medio de cultivo'], ['pocillo', 'Una columna por pocillo']]} />
     </Campo>
   )
 
   if (!conAnalisis.length) {
     return <Vacio texto="Cargá al menos dos placas (botón «+ Agregar placa»), configurá sus pocillos y volvé acá para compararlas." />
   }
-  if (modo === 'repro') return <ReproTab s={s} D={D} o={o} setO={setO} selectorModo={selectorModo} />
 
   // ---- prueba estadística (opcional): cada placa aporta un valor por muestra ----
   const control = grupos.some((g) => g.muestra === o.control) ? o.control : grupos[0]?.muestra || ''
@@ -253,15 +250,12 @@ export function CompararTab({ s }) {
             </table>
           </div>
         </Campo>
-        <h3 className="seccion-lateral"><i>4</i> Estadística</h3>
-        <PanelPruebas o={o} setO={setO} D={D} />
       </Panel>
 
       <div className="principal">
         <h1>Comparación entre placas <span className="sub">· {modo === 'medio' ? 'por medio de cultivo' : modo === 'pocillo' ? 'pocillo por pocillo' : 'placa por placa'}</span></h1>
         {grupos.length && !sinElementos ? grafico(svg, undefined, abrirMenu) : <Vacio texto={sinElementos ? 'Activá barras, mediana, media o puntos para ver el gráfico.' : 'Elegí al menos una placa y una muestra para mostrar.'} />}
         <p className="ayuda">{nCols} columnas <Nota>Pasá el mouse por una barra, caja o punto para ver su valor y el cálculo. Clic derecho sobre el gráfico: estilo de los textos.</Nota></p>
-        <ResultadosPruebas s={s} D={D} o={o} />
       </div>
 
       <MenuContextual menu={menu} items={[

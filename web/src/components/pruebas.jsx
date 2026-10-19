@@ -12,10 +12,13 @@ const NOMBRE_TEST = { anova: 'ANOVA', welch: 'ANOVA de Welch', kw: 'Kruskal-Wall
 // ---------------------------------------------------------------
 // Objetivos (qué se quiere evaluar)
 // ---------------------------------------------------------------
+// el objetivo por defecto es «entre medios»: la estadística siempre se muestra
+export const objetivoDe = (o) => (['medios', 'placas', 'cepas', 'concordancia'].includes(o.objetivo) ? o.objetivo : 'medios')
 export const OBJETIVOS = [
   ['medios', 'Entre medios', '¿En qué medio hay más OD? Cada cepa se compara entre los medios.'],
   ['placas', 'Entre placas (réplicas)', '¿Una misma cepa da lo mismo en todas las placas? Reproducibilidad.'],
   ['cepas', 'Entre cepas', 'Dentro de cada medio, ¿qué cepas difieren?'],
+  ['concordancia', 'Concordancia entre placas', '¿Las placas ordenan igual las cepas? ICC, correlaciones y CV.'],
 ]
 
 // Hipótesis en el contexto del biofilm: la OD (cristal violeta) es la medida de biomasa de biofilm producida
@@ -56,24 +59,21 @@ function Chip({ tipo, children, tip }) {
 // PANEL de la izquierda: qué evaluar y con qué opciones (sin botones repetidos: cada prueba se elige una sola vez)
 // ===============================================================
 export function PanelPruebas({ o, setO, D }) {
-  const obj = o.objetivo || 'ninguno'
+  const obj = objetivoDe(o)
   const var_ = o.variable || 'od'
   const nivel = o.nivel || 'placa'
   const comp = o.comp || 'pares'
   return (
     <div className="panel-pruebas">
-      <h3 className="sub-seccion">¿Qué querés evaluar? <Nota>Elegí qué querés evaluar. El programa revisa los datos (normalidad y varianzas) y elige solo la prueba adecuada; los resultados aparecen debajo del gráfico. Cada placa cuenta como una réplica biológica.</Nota></h3>
+      <h3 className="sub-seccion">¿Qué querés evaluar? <Nota>El programa revisa los datos (normalidad y varianzas) y elige solo la prueba adecuada; los resultados aparecen debajo del gráfico. Cada placa cuenta como una réplica biológica.</Nota></h3>
       <div className="objetivos">
-        <button type="button" className={`objetivo ${obj === 'ninguno' ? 'on' : ''}`} onClick={() => setO('objetivo', 'ninguno')}>
-          <b>Solo el gráfico</b><span>Sin pruebas</span>
-        </button>
         {OBJETIVOS.map(([id, t, d]) => (
           <button key={id} type="button" className={`objetivo ${obj === id ? 'on' : ''}`} onClick={() => setO('objetivo', id)}>
             <b>{t}</b><span>{d}</span>
           </button>
         ))}
       </div>
-      {obj !== 'ninguno' && (
+      {obj !== 'concordancia' && (
         <>
           <Campo label="Datos">
             <div className="seg">
@@ -247,13 +247,76 @@ function Bloque({ titulo, sub, r, colorDe, ctrl, abierto, sujeto, factor }) {
   )
 }
 
+// datos del resumen: una fila por análisis, con su p
+function infoDe(bloques, globales, etiquetaFila) {
+  const ok = bloques.filter((b) => b.r.ok)
+  const sig = ok.filter((b) => b.r.global.p < 0.05)
+  const filas = [...globales.map((g) => ({ ...g, tipo: 'ANOVA de parcelas divididas', global: true })),
+    ...bloques.map((b) => ({ nombre: b.titulo, p: b.r.ok ? b.r.global.p : NaN, tipo: b.r.ok ? NOMBRE_TEST[b.r.tipo] : '' }))]
+  const frases = sig.slice(0, 6).map((b) => `${b.titulo}: ${lecturaDe(b.r, null)}`)
+  globales.filter((g) => g.p < 0.05).forEach((g) => frases.unshift(`${g.nombre.replace('Global · ', 'Efecto global de ')}: significativo (p = ${pTxt(g.p)}).`))
+  return {
+    filas, etiquetaFila, frases,
+    kpis: { n: bloques.length, dif: sig.length, welch: ok.filter((b) => b.r.tipo === 'welch').length, kw: ok.filter((b) => b.r.tipo === 'kw').length },
+  }
+}
+
+// cabecera: resumen gráfico de los resultados (−log₁₀ p de cada análisis frente al umbral de 0,05)
+function Infografia({ info, titulo }) {
+  const filas = info.filas.filter((x) => finito(x.p))
+  const MAXV = 5, X0 = 190, W = 330
+  const v = (p) => Math.min(MAXV, -Math.log10(Math.max(p, 1e-5)))
+  const x = (val) => X0 + (val / MAXV) * W
+  const H = filas.length * 26 + 44
+  const umbral = -Math.log10(0.05)
+  return (
+    <div className="infografia">
+      <div className="info-kpis">
+        <div className="kpi-info"><b>{info.kpis.n}</b><small>análisis</small></div>
+        <div className={`kpi-info ${info.kpis.dif ? 'dif' : 'ok'}`}><b>{info.kpis.dif}</b><small>con diferencias (p &lt; 0,05)</small></div>
+        <div className="kpi-info" data-tip="Análisis con ANOVA de Welch porque las varianzas son distintas (Levene)"><b>{info.kpis.welch}</b><small>ANOVA de Welch</small></div>
+        <div className="kpi-info" data-tip="Análisis con Kruskal-Wallis porque los residuos no son normales (Shapiro-Wilk)"><b>{info.kpis.kw}</b><small>Kruskal-Wallis</small></div>
+      </div>
+      <div className="info-grafico">
+        <h4>Resumen: ¿dónde hay diferencias? <Nota>Cada barra es un análisis. Cuanto más larga, más evidencia de diferencia (−log₁₀ de p). Si pasa la línea punteada (p = 0,05), la diferencia es significativa.</Nota></h4>
+        {filas.length > 0 ? (
+          <svg viewBox={`0 0 ${X0 + W + 90} ${H}`} className="barras-grupo" role="img" aria-label="Resumen de los valores de p de cada análisis">
+            {[0, 1, 2, 3, 4, 5].map((t) => (
+              <g key={t}><line x1={x(t)} x2={x(t)} y1="16" y2={H - 20} stroke="#ecdfcd" /><text x={x(t)} y={H - 6} textAnchor="middle" fontSize="10" fill="#8a7765">{t === 0 ? 'p = 1' : t === 1 ? '0,1' : t === 2 ? '0,01' : t === 3 ? '0,001' : t === 4 ? '1e-4' : '1e-5'}</text></g>
+            ))}
+            <line x1={x(umbral)} x2={x(umbral)} y1="10" y2={H - 20} stroke="#a2391a" strokeDasharray="4 3" strokeWidth="1.5" />
+            <text x={x(umbral)} y="9" textAnchor="middle" fontSize="10" fill="#a2391a" fontWeight="700">p = 0,05</text>
+            {filas.map((fi, i) => {
+              const y = 20 + i * 26
+              const val = v(fi.p)
+              const sg = fi.p < 0.05
+              return (
+                <g key={fi.nombre + i} data-tip={`${fi.nombre}\n${fi.tipo}\np = ${pTxt(fi.p)} ${marcaSig(fi.p)}\n${sg ? 'Hay diferencias' : 'Sin diferencia clara'}`}>
+                  <text x={X0 - 8} y={y + 13} textAnchor="end" fontSize="11.5" fill="#3a2a1e" fontWeight={fi.global ? 700 : 400}>{fi.nombre.length > 28 ? fi.nombre.slice(0, 27) + '…' : fi.nombre}</text>
+                  <rect x={X0} y={y} width={Math.max((val / MAXV) * W, 2)} height="18" rx="4" fill={sg ? '#d9731f' : '#b9c9ae'} />
+                  <text x={x(val) + 6} y={y + 13} fontSize="11" fontWeight="700" fill={sg ? '#a2391a' : '#6b7a62'}>{pTxt(fi.p)} {marcaSig(fi.p) === 'ns' ? '' : marcaSig(fi.p)}</text>
+                </g>
+              )
+            })}
+          </svg>
+        ) : <p className="ayuda">Sin análisis para resumir.</p>}
+      </div>
+      <div className="info-frases">
+        <h4>Conclusiones</h4>
+        {info.frases.length ? <ul>{info.frases.map((t, i) => <li key={i}>{t}</li>)}</ul>
+          : <p>Ningún análisis muestra diferencias claras (p ≥ 0,05). Con pocas réplicas el análisis solo detecta diferencias grandes: sumar placas aumenta el poder.</p>}
+      </div>
+    </div>
+  )
+}
+
 // resumen de todos los análisis en una tabla
 function Resumen({ titulo, bloques, etiquetas }) {
   const ok = bloques.filter((b) => b.r.ok)
   const conDif = ok.filter((b) => b.r.global.p < 0.05).length
   return (
     <>
-      <div className="indicadores grandes">
+      <div className="indicadores grandes" style={{ display: 'none' }}>
         <div className="ind"><small>Análisis</small><b>{bloques.length}</b></div>
         <div className="ind"><small>Con diferencias (p &lt; 0,05)</small><b className={conDif ? 'num-dif' : ''}>{conDif}</b></div>
         <div className="ind" data-tip="ANOVA de Welch porque las varianzas son distintas (Levene)"><small>Con ANOVA de Welch</small><b>{ok.filter((b) => b.r.tipo === 'welch').length}</b></div>
@@ -270,8 +333,8 @@ function Resumen({ titulo, bloques, etiquetas }) {
 // RESULTADOS debajo del gráfico
 // ===============================================================
 export function ResultadosPruebas({ s, D, o }) {
-  const obj = o.objetivo || 'ninguno'
-  if (obj === 'ninguno') return null
+  const obj = objetivoDe(o)
+  if (obj === 'concordancia') return null
   const variable = o.variable || 'od'
   const nivel = obj === 'placas' ? 'pocillo' : o.nivel || 'placa'
   const forzado = o.prueba || 'auto'
@@ -302,6 +365,7 @@ export function ResultadosPruebas({ s, D, o }) {
   const ctrlCepa = cepas.includes(o.ctrlCepa) ? o.ctrlCepa : cepas[0]
   const titulo = { medios: '¿Hay más OD en un medio que en otro?', placas: '¿Cada cepa da lo mismo en todas las placas?', cepas: '¿Difieren las cepas dentro de cada medio?' }[obj]
   let cuerpo = null
+  let info = null
 
   if (obj === 'medios') {
     const bloques = cepas.map((c) => {
@@ -311,6 +375,7 @@ export function ResultadosPruebas({ s, D, o }) {
     })
     // efecto global (todas las cepas juntas) con la placa como bloque
     const sp = parcelasDivididas(obsPlaca.filter((x) => finito(x.y)))
+    info = infoDe(bloques, sp ? sp.filas.filter((x) => finito(x.p)).map((x) => ({ nombre: `Global · ${x.nombre}`, p: x.p })) : [], 'cepa')
     cuerpo = medios.length < 2 ? <p className="ayuda">Hacen falta placas de al menos 2 medios distintos (el medio de cada placa se elige en la pestaña «Placa»).</p> : (
       <>
         {sp && (
@@ -334,6 +399,7 @@ export function ResultadosPruebas({ s, D, o }) {
       const r = analizar(grupos, forzado, comp === 'control' ? ctrlCepa : null)
       return { titulo: m, r, grupos, extra: [`${grupos.filter((g) => g.v.length).length} cepas · ${[...new Set(obs.filter((x) => x.medio === m).map((x) => x.placa))].length} placas`] }
     })
+    info = infoDe(bloques, [], 'medio')
     cuerpo = cepas.length < 2 ? <p className="ayuda">Hacen falta al menos 2 cepas con datos.</p> : (
       <>
         <Resumen titulo="Medio" bloques={bloques} etiquetas={['Datos']} />
@@ -352,6 +418,7 @@ export function ResultadosPruebas({ s, D, o }) {
       const cv = finito(sd) && M !== 0 ? (100 * sd) / Math.abs(M) : NaN
       bloques.push({ titulo: `${c} · ${m}`, r, grupos, extra: [pls.length, grupos.map((g) => f(media(g.v), 3)).join(' · '), f(cv, 1), !finito(cv) ? '–' : cv <= 20 ? 'Buena' : cv <= 30 ? 'Aceptable' : 'Alta variabilidad'] })
     }))
+    info = infoDe(bloques, [], 'cepa · medio')
     cuerpo = !bloques.length ? <p className="ayuda">Hacen falta al menos 2 placas con la misma cepa y el mismo medio.</p> : (
       <>
         <Resumen titulo="Cepa · medio" bloques={bloques} etiquetas={['Placas', 'Media de cada placa', 'CV entre placas (%)', 'Reproducibilidad']} />
@@ -372,6 +439,7 @@ export function ResultadosPruebas({ s, D, o }) {
           {obj !== 'placas' && <Chip tipo="neutro">{comp === 'control' ? 'contra un control' : 'todos los pares'}</Chip>}
         </div>
       </div>
+      {info && <Infografia info={info} titulo={titulo} />}
       <Hip titulo={`Hipótesis del objetivo · α = 0,05 · ${nivel === 'placa' ? 'cada placa es una réplica' : 'cada pocillo es una réplica'}`} items={{
         medios: [{ nombre: 'Cada cepa', h0: 'La producción de biofilm (OD de cristal violeta) de la cepa es la misma en todos los medios de cultivo.', h1: 'La producción de biofilm de la cepa cambia según el medio (al menos un medio difiere).' },
           { nombre: 'Medio (todas las cepas)', h0: 'El medio de cultivo no afecta la producción de biofilm (OD media de las cepas).', h1: 'Hay un efecto del medio sobre la producción de biofilm.' },

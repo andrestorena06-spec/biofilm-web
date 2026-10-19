@@ -19,7 +19,7 @@ export const ERR_TXT = { ic95: 'IC 95 %', sd: 'desviación estándar', sem: 'err
 // Los elementos que se dibujan (barras, cajas, puntos, errores, valores) los decide el gráfico con las mismas opciones.
 export function armarComparacion(s) {
   const o = s.opts.comparar
-  const modo = ['placas', 'medio', 'pocillo', 'repro'].includes(o.modo) ? o.modo : 'placas'
+  const modo = ['placas', 'medio', 'pocillo'].includes(o.modo) ? o.modo : 'placas'
   const verBlancos = o.blancos !== false
   const conAnalisis = s.placas.filter((p) => !p.oculta && s.analisisMap[p.id]?.resumen?.length)
   const sel0 = o.placasSel ? conAnalisis.filter((p) => o.placasSel.includes(p.id)) : conAnalisis
