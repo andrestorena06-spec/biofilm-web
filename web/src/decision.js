@@ -166,6 +166,13 @@ export function parcelasDivididas(obs) {
   const msPl = dfPl > 0 ? (mM.rss - mP.rss) / dfPl : NaN
   return {
     n: d.length, placas: placas.length, medios: medios.length, cepas: cepas.length,
+    modelos: [
+      { nombre: 'OD ~ 1 (solo la media general)', rss: m0.rss, rango: m0.rango },
+      { nombre: 'OD ~ medio', rss: mM.rss, rango: mM.rango },
+      { nombre: 'OD ~ placa (incluye al medio)', rss: mP.rss, rango: mP.rango },
+      { nombre: 'OD ~ placa + cepa', rss: mPC.rss, rango: mPC.rango },
+      { nombre: 'OD ~ placa + cepa + cepa × medio', rss: mF.rss, rango: mF.rango },
+    ],
     filas: [
       fila('Medio', m0.rss - mM.rss, mM.rango - m0.rango, msPl, dfPl, 'placas dentro de cada medio'),
       { nombre: 'Placas dentro de cada medio (error entre placas)', ss: mM.rss - mP.rss, df: dfPl, ms: msPl, F: NaN, p: NaN, error: '' },

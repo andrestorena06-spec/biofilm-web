@@ -5,6 +5,7 @@ import { ExportDialog } from './exportar.jsx'
 import { dCV, dClase, dDE, dIC, dMedia, dRazon, dSEM } from '../calculos.js'
 import { Nota } from './tip.jsx'
 import { PasoAPaso } from './pasos.jsx'
+import { MetodoEstadistico } from './metodoest.jsx'
 import { abrirInforme } from './informe.jsx'
 import { resumenBlancos } from '../blancos.js'
 import { Vacio } from './tabs.jsx'
@@ -416,6 +417,7 @@ ${f.Motivo || 'Sin observaciones'}` : null)
       <TablaAvanzada id="muestras" titulo="Muestras" columnas={cm} filas={muestras} onVista={onVista} tips={tipsMuestras} />
       <TablaAvanzada id="pocillos" titulo="Pocillos" columnas={cp} filas={pocillos} onVista={onVista} tips={tipsPocillos} />
       <PasoAPaso s={s} />
+      <MetodoEstadistico s={s} />
       <MetodoDetalle d={s.deteccion} odc={a.odc} />
     </div>
   )
