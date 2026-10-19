@@ -220,7 +220,7 @@ export function icc(Y) {
 export const nivelIcc = (x) => (!finito(x) ? '' : x < 0.5 ? 'Pobre' : x < 0.75 ? 'Moderada' : x < 0.9 ? 'Buena' : 'Excelente')
 
 // ---------- mínimos cuadrados (QR de Householder con detección de columnas redundantes) ----------
-function rssRango(X, y) {
+export function rssRango(X, y) {
   const n = X.length, p = X[0].length
   const A = X.map((f) => [...f])
   const b = [...y]

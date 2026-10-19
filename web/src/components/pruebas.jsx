@@ -1,34 +1,93 @@
+import { Campo, Select } from './ui.jsx'
 import { Nota } from './tip.jsx'
-import { anovaTabla, desvio, holm, marcaSig, media, welch } from '../estadistica.js'
-import { anova2 } from '../reproducibilidad.js'
+import { analizar, parcelasDivididas } from '../decision.js'
+import { desvio, marcaSig, media } from '../estadistica.js'
+import { paletaMuestras } from '../utils.js'
 
 const finito = Number.isFinite
-const f = (x, d = 4) => (finito(x) ? x.toFixed(d) : x === Infinity ? '∞' : '–')
+const f = (x, d = 3) => (finito(x) ? x.toFixed(d) : x === Infinity ? '∞' : '–')
 const pTxt = (p) => (!finito(p) ? '–' : p < 0.0001 ? '< 0.0001' : p.toFixed(4))
+const NOMBRE_TEST = { anova: 'ANOVA', welch: 'ANOVA de Welch', kw: 'Kruskal-Wallis' }
 
-export const PRUEBAS = [
-  ['anova2', 'ANOVA cepa × medio', 'ANOVA de dos vías: efecto de la cepa, efecto del medio y si el efecto del medio depende de la cepa (interacción). Cada dato es la OD media de una cepa en una placa.'],
-  ['cepaMedios', 'Cepa: entre medios', 'Para cada cepa: ANOVA de una vía entre los medios y comparación de los medios de a pares (t de Welch con corrección de Holm).'],
-  ['medioCepas', 'Medio: entre cepas', 'Para cada medio: ANOVA de una vía entre las cepas y comparación de las cepas de a pares (t de Welch con corrección de Holm).'],
-  ['placasCepa', 'Cepa: entre placas', 'Reproducibilidad: para cada cepa y medio, cuánto varía la OD media de una placa a otra (media, DE y coeficiente de variación).'],
+// ---------------------------------------------------------------
+// Objetivos (qué se quiere evaluar)
+// ---------------------------------------------------------------
+export const OBJETIVOS = [
+  ['medios', 'Entre medios', '¿En qué medio hay más OD? Cada cepa se compara entre los medios.'],
+  ['placas', 'Entre placas (réplicas)', '¿Una misma cepa da lo mismo en todas las placas? Reproducibilidad.'],
+  ['cepas', 'Entre cepas', 'Dentro de cada medio, ¿qué cepas difieren?'],
 ]
 
-// Lista de pruebas para elegir (cada una abre su tabla de resultados debajo del gráfico)
-export function ListaPruebas({ o, setO }) {
-  const sel = o.pruebas || []
+function Chip({ tipo, children, tip }) {
+  return <span className={`badge badge-${tipo}`} data-tip={tip}>{children}</span>
+}
+
+// ===============================================================
+// PANEL de la izquierda: qué evaluar y con qué opciones (sin botones repetidos: cada prueba se elige una sola vez)
+// ===============================================================
+export function PanelPruebas({ o, setO, D }) {
+  const obj = o.objetivo || 'ninguno'
+  const var_ = o.variable || 'od'
+  const nivel = o.nivel || 'placa'
+  const comp = o.comp || 'pares'
   return (
-    <div className="campo">
-      <label>Pruebas estadísticas <Nota>Elegí las que quieras ver: cada una muestra su tabla debajo del gráfico. Cada placa cuenta como una réplica (el dato es la OD media de la cepa en esa placa). Con 2 o 3 placas por grupo solo se detectan diferencias grandes.</Nota></label>
-      <div className="fila-chips">
-        {PRUEBAS.map(([id, t, d]) => (
-          <button key={id} type="button" className={`chip-op ${sel.includes(id) ? 'on' : ''}`} data-tip={`${t}\n${d}`}
-            onClick={() => setO('pruebas', sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id])}>{t}</button>
+    <div className="panel-pruebas">
+      <h3>Pruebas estadísticas <Nota>Elegí qué querés evaluar. El programa revisa los datos (normalidad y varianzas) y elige solo la prueba adecuada; los resultados aparecen debajo del gráfico. Cada placa cuenta como una réplica biológica.</Nota></h3>
+      <div className="objetivos">
+        <button type="button" className={`objetivo ${obj === 'ninguno' ? 'on' : ''}`} onClick={() => setO('objetivo', 'ninguno')}>
+          <b>Solo el gráfico</b><span>Sin pruebas</span>
+        </button>
+        {OBJETIVOS.map(([id, t, d]) => (
+          <button key={id} type="button" className={`objetivo ${obj === id ? 'on' : ''}`} onClick={() => setO('objetivo', id)}>
+            <b>{t}</b><span>{d}</span>
+          </button>
         ))}
       </div>
+      {obj !== 'ninguno' && (
+        <>
+          <Campo label="Datos">
+            <div className="seg">
+              {[['od', 'OD'], ['ln', 'ln(OD)'], ['odc', 'OD ÷ ODc']].map(([v, t]) => <button key={v} className={var_ === v ? 'on' : ''} onClick={() => setO('variable', v)}
+                data-tip={{ od: 'OD tal cual', ln: 'Logaritmo natural de la OD: estabiliza la varianza cuando la DE crece con la media', odc: 'Cada OD dividida por el ODc de su placa: reduce la diferencia entre placas' }[v]}>{t}</button>)}
+            </div>
+          </Campo>
+          {obj !== 'placas' && (
+            <Campo label={<>Réplica<Nota>«Placa»: cada placa aporta un valor (la OD media de la cepa); es la réplica biológica y la opción correcta. «Pocillos»: cada pocillo cuenta como una réplica; da más datos pero los pocillos de una placa no son independientes (pseudo-replicación) y los p salen demasiado chicos.</Nota></>}>
+              <div className="seg">
+                <button className={nivel === 'placa' ? 'on' : ''} onClick={() => setO('nivel', 'placa')}>Placa</button>
+                <button className={nivel === 'pocillo' ? 'on' : ''} onClick={() => setO('nivel', 'pocillo')}>Pocillos</button>
+              </div>
+            </Campo>
+          )}
+          <Campo label={<>Prueba<Nota>Automática: si los residuos no son normales (Shapiro-Wilk) usa Kruskal-Wallis; si las varianzas son distintas (Levene) usa el ANOVA de Welch; si no, el ANOVA clásico. Podés forzar una.</Nota></>}>
+            <Select value={o.prueba || 'auto'} onChange={(v) => setO('prueba', v)}
+              opciones={[['auto', 'Automática (Levene y Shapiro)'], ['anova', 'ANOVA clásico'], ['welch', 'ANOVA de Welch'], ['kw', 'Kruskal-Wallis']]} />
+          </Campo>
+          {obj !== 'placas' && (
+            <>
+              <Campo label="Comparaciones de a pares">
+                <div className="seg">
+                  <button className={comp === 'pares' ? 'on' : ''} onClick={() => setO('comp', 'pares')}>Todos los pares</button>
+                  <button className={comp === 'control' ? 'on' : ''} onClick={() => setO('comp', 'control')}>Contra un control</button>
+                </div>
+              </Campo>
+              {comp === 'control' && obj === 'medios' && (
+                <Campo label="Medio control"><Select value={D.mediosPres.includes(o.ctrlMedio) ? o.ctrlMedio : D.mediosPres[0] || ''} onChange={(v) => setO('ctrlMedio', v)} opciones={D.mediosPres.map((x) => [x, x])} /></Campo>
+              )}
+              {comp === 'control' && obj === 'cepas' && (
+                <Campo label="Cepa control"><Select value={D.muestras.includes(o.ctrlCepa) ? o.ctrlCepa : D.muestras[0] || ''} onChange={(v) => setO('ctrlCepa', v)} opciones={D.muestras.map((x) => [x, x])} /></Campo>
+              )}
+            </>
+          )}
+        </>
+      )}
     </div>
   )
 }
 
+// ---------------------------------------------------------------
+// piezas de resultados
+// ---------------------------------------------------------------
 function Tabla({ cols, filas }) {
   return (
     <div className="tabla-scroll chica">
@@ -40,112 +99,250 @@ function Tabla({ cols, filas }) {
   )
 }
 
-// ANOVA de una vía + comparaciones de a pares (Welch con Holm) entre los grupos dados
-function unaVia(grupos) {
-  const g = grupos.filter((x) => x.v.length > 0)
-  const an = g.length > 1 ? anovaTabla(g.map((x) => x.v)) : null
-  const pares = []
-  for (let i = 0; i < g.length; i++) for (let j = i + 1; j < g.length; j++) pares.push({ a: g[i], b: g[j], w: welch(g[i].v, g[j].v) })
-  const aj = holm(pares.map((p) => (p.w ? p.w.p : NaN)))
-  return { g, an, pares: pares.map((p, i) => ({ ...p, pa: aj[i] })) }
+// barras de la media ± DE de cada grupo con sus letras (grupos con la misma letra no difieren)
+function BarrasGrupo({ r, colorDe }) {
+  const g = r.grupos
+  const mx = Math.max(...g.map((x) => media(x.v) + (x.v.length > 1 ? desvio(x.v) : 0)), 1e-9)
+  const H = g.length * 26 + 8
+  const X0 = 150, W = 420
+  return (
+    <svg viewBox={`0 0 ${W + 60} ${H}`} className="barras-grupo" role="img" aria-label="Media y desviación estándar de cada grupo">
+      {g.map((x, i) => {
+        const m = media(x.v), sd = x.v.length > 1 ? desvio(x.v) : 0
+        const y = 6 + i * 26
+        const w = (m / mx) * (W - X0 - 10)
+        return (
+          <g key={x.nombre} data-tip={`${x.nombre}\nmedia = ${f(m, 4)}\nDE = ${x.v.length > 1 ? f(sd, 4) : '–'}\nn = ${x.v.length}`}>
+            <text x={X0 - 8} y={y + 13} textAnchor="end" fontSize="11.5" fill="#3a2a1e">{x.nombre.length > 22 ? x.nombre.slice(0, 21) + '…' : x.nombre}</text>
+            <rect x={X0} y={y} width={Math.max(w, 1)} height="18" rx="4" fill={colorDe(x.nombre)} fillOpacity=".85" />
+            {sd > 0 && <g stroke="#222" strokeWidth="1.2"><line x1={X0 + w} x2={X0 + w + (sd / mx) * (W - X0 - 10)} y1={y + 9} y2={y + 9} /><line x1={X0 + w + (sd / mx) * (W - X0 - 10)} x2={X0 + w + (sd / mx) * (W - X0 - 10)} y1={y + 4} y2={y + 14} /></g>}
+            {x.v.map((v, k) => <circle key={k} cx={X0 + (v / mx) * (W - X0 - 10)} cy={y + 9} r="2.6" fill="#fff" stroke="#3a2a1e" strokeWidth="1" />)}
+            <text x={X0 + Math.max(w, 1) + (sd / mx) * (W - X0 - 10) + 8} y={y + 13} fontSize="12" fontWeight="700" fill="#7a3a0e">{r.letras?.[x.nombre] || ''}</text>
+          </g>
+        )
+      })}
+    </svg>
+  )
 }
 
-function BloqueUnaVia({ titulo, r, factor }) {
+// matriz de p ajustados entre grupos (colores según la significancia)
+function MatrizP({ r }) {
+  if (!r.pares.length || r.pares.length > 120) return null
+  const nombres = r.grupos.map((x) => x.nombre)
+  const busca = (a, b) => r.pares.find((p) => (p.a === a && p.b === b) || (p.a === b && p.b === a))
+  const clase = (p) => (!finito(p) ? 'p-na' : p < 0.001 ? 'p-3' : p < 0.01 ? 'p-2' : p < 0.05 ? 'p-1' : 'p-0')
   return (
-    <div className="bloque-prueba">
-      <h4>{titulo}</h4>
-      {r.an ? (
-        <>
-          <Tabla cols={['Fuente', 'Suma de cuadrados', 'gl', 'Cuadrado medio', 'F', 'p', 'Resultado']}
-            filas={[[`Entre ${factor}`, f(r.an.ssb, 6), r.an.df1, f(r.an.msb, 6), f(r.an.F, 3), pTxt(r.an.p), r.an.p < 0.05 ? `Hay diferencias (${marcaSig(r.an.p)})` : 'Sin diferencia clara'],
-              ['Dentro (error)', f(r.an.ssw, 6), r.an.df2, f(r.an.msw, 6), '', '', ''], ['Total', f(r.an.sst, 6), r.an.df1 + r.an.df2, '', '', '', '']]} />
-          <Tabla cols={['Grupo', 'n (placas)', 'Media', 'DE']} filas={r.g.map((x) => [x.nombre, x.v.length, f(media(x.v)), x.v.length > 1 ? f(desvio(x.v)) : '–'])} />
-          {r.pares.length > 0 && (
-            <Tabla cols={['Comparación', 'Media A', 'Media B', 'Diferencia (A − B)', 't', 'gl', 'p', 'p ajustado (Holm)', 'Resultado']}
-              filas={r.pares.map((p) => [`${p.a.nombre} vs ${p.b.nombre}`, f(media(p.a.v)), f(media(p.b.v)), p.w ? f(p.w.dif) : '–', p.w ? f(p.w.t, 3) : '–', p.w ? f(p.w.df, 2) : '–', p.w ? pTxt(p.w.p) : '–', pTxt(p.pa),
-                !p.w ? 'Hacen falta 2 o más placas en cada grupo' : p.pa < 0.05 ? `Distinto (${marcaSig(p.pa)})` : 'Sin diferencia clara'])} />
-          )}
-        </>
-      ) : <p className="ayuda">No se puede calcular: hacen falta al menos 2 grupos y más datos que grupos.</p>}
+    <div className="tabla-scroll chica">
+      <table className="matriz-p">
+        <thead><tr><th />{nombres.map((n) => <th key={n}>{n}</th>)}</tr></thead>
+        <tbody>
+          {nombres.map((a) => (
+            <tr key={a}>
+              <th>{a}</th>
+              {nombres.map((b) => {
+                if (a === b) return <td key={b} className="p-diag" />
+                const p = busca(a, b)
+                return <td key={b} className={p ? clase(p.pa) : 'p-na'} data-tip={p ? `${a} vs ${b}\ndiferencia = ${f(a === p.a ? p.dif : -p.dif, 4)}\np ajustado (Holm) = ${pTxt(p.pa)}` : 'sin comparación'}>{p ? marcaSig(p.pa) : ''}</td>
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
 
+function Indicadores({ r }) {
+  const lev = r.lev, sw = r.sw
+  return (
+    <div className="indicadores">
+      <div className="ind" data-tip={sw ? `Normalidad de los residuos (Shapiro-Wilk)\nW = ${f(sw.W, 3)}, p = ${pTxt(sw.p)}\np < 0.05: los residuos se apartan de la normal` : 'Hacen falta al menos 3 datos con variación'}>
+        <small>Normalidad</small>{sw ? <Chip tipo={sw.p < 0.05 ? 'alerta' : 'ok'}>{sw.p < 0.05 ? 'No normal' : 'Normal'} · p {pTxt(sw.p)}</Chip> : <Chip tipo="neutro">sin datos</Chip>}
+      </div>
+      <div className="ind" data-tip={lev ? `Igualdad de varianzas (Levene, Brown-Forsythe)\nF = ${f(lev.F, 3)} (${lev.df1}; ${lev.df2}), p = ${pTxt(lev.p)}\nmayor DE / menor DE = ${f(lev.razonSD, 2)} (regla práctica: hasta 2)\np < 0.05: varianzas distintas` : 'Hacen falta al menos 2 grupos con 2 o más datos'}>
+        <small>Varianzas</small>{lev ? <Chip tipo={lev.p < 0.05 ? 'alerta' : 'ok'}>{lev.p < 0.05 ? 'Distintas' : 'Parecidas'} · p {pTxt(lev.p)}</Chip> : <Chip tipo="neutro">sin datos</Chip>}
+      </div>
+      <div className="ind" data-tip={r.razon}><small>Prueba usada</small><Chip tipo="prueba">{NOMBRE_TEST[r.tipo]}</Chip></div>
+      <div className="ind" data-tip={`${r.global.nombre}\n${r.global.est} = ${f(r.global.valor, 3)}${r.global.df2 ? ` (${r.global.df1}; ${f(r.global.df2, 2)} gl)` : ` (${r.global.df1} gl)`}\np = ${pTxt(r.global.p)}`}>
+        <small>¿Hay diferencias?</small><Chip tipo={r.global.p < 0.05 ? 'dif' : 'ok'}>{r.global.p < 0.05 ? 'Sí' : 'No'} · p {pTxt(r.global.p)} {marcaSig(r.global.p)}</Chip>
+      </div>
+    </div>
+  )
+}
+
+function lecturaDe(r, ctrl) {
+  if (!r.ok) return r.motivo
+  const sig = r.pares.filter((p) => finito(p.pa) && p.pa < 0.05)
+  if (r.global.p >= 0.05) return 'No hay diferencias claras entre los grupos (p ≥ 0,05). Con pocas réplicas el análisis solo detecta diferencias grandes.'
+  if (!sig.length) return 'La prueba global da diferencias (p < 0,05), pero ningún par difiere al corregir por comparaciones múltiples.'
+  const mayor = (p) => (p.dif > 0 ? `${p.a} > ${p.b}` : `${p.b} > ${p.a}`)
+  return `Difieren: ${sig.map((p) => `${mayor(p)} (p = ${pTxt(p.pa)})`).join('; ')}.${ctrl ? ` Todas las comparaciones son contra «${ctrl}».` : ''}`
+}
+
+// un análisis completo (indicadores, barras, tablas y conclusión) plegable
+function Bloque({ titulo, sub, r, colorDe, ctrl, abierto }) {
+  if (!r.ok) return <div className="bloque-res"><b>{titulo}</b> <span className="ayuda">{r.motivo}</span></div>
+  return (
+    <details className="bloque-res" open={abierto || r.global.p < 0.05}>
+      <summary>
+        <b>{titulo}</b> {sub && <small>{sub}</small>}
+        <Chip tipo={r.global.p < 0.05 ? 'dif' : 'ok'}>{r.global.p < 0.05 ? 'Hay diferencias' : 'Sin diferencias'}</Chip>
+        <Chip tipo="prueba">{NOMBRE_TEST[r.tipo]}</Chip>
+      </summary>
+      <Indicadores r={r} />
+      <p className="razon-test">{r.razon}</p>
+      <div className="res-doble">
+        <BarrasGrupo r={r} colorDe={colorDe} />
+        <div>
+          <Tabla cols={['Grupo', 'n', 'Media', 'DE', 'Letra']} filas={r.grupos.map((x) => [x.nombre, x.v.length, f(media(x.v), 4), x.v.length > 1 ? f(desvio(x.v), 4) : '–', r.letras?.[x.nombre] || '–'])} />
+        </div>
+      </div>
+      <Tabla cols={['Prueba', 'Estadístico', 'gl', 'p', 'Resultado']}
+        filas={[[r.global.nombre, `${r.global.est} = ${f(r.global.valor, 3)}`, r.global.df2 ? `${r.global.df1}; ${f(r.global.df2, 2)}` : r.global.df1, pTxt(r.global.p), r.global.p < 0.05 ? `Diferencias significativas (${marcaSig(r.global.p)})` : 'Sin diferencia clara']]} />
+      {r.tipo === 'anova' && r.global.tabla && (
+        <Tabla cols={['Fuente', 'Suma de cuadrados', 'gl', 'Cuadrado medio', 'F', 'p']}
+          filas={[['Entre grupos', f(r.global.tabla.ssb, 6), r.global.tabla.df1, f(r.global.tabla.msb, 6), f(r.global.tabla.F, 3), pTxt(r.global.tabla.p)],
+            ['Dentro (error)', f(r.global.tabla.ssw, 6), r.global.tabla.df2, f(r.global.tabla.msw, 6), '', ''], ['Total', f(r.global.tabla.sst, 6), r.global.tabla.df1 + r.global.tabla.df2, '', '', '']]} />
+      )}
+      {r.pares.length > 0 && (
+        <>
+          <Tabla cols={[ctrl ? `Contra «${ctrl}»` : 'Par', 'Media A', 'Media B', 'Diferencia (A − B)', r.tipo === 'kw' ? 'z (Dunn)' : 't', 'gl', 'p', 'p ajustado (Holm)', 'Resultado']}
+            filas={r.pares.map((p) => [`${p.a} vs ${p.b}`, f(p.ma, 4), f(p.mb, 4), f(p.dif, 4), f(p.est, 3), finito(p.df) ? f(p.df, 2) : '–', pTxt(p.p), pTxt(p.pa), !finito(p.p) ? 'Hacen falta 2 o más datos' : p.pa < 0.05 ? `Distinto (${marcaSig(p.pa)})` : 'Sin diferencia clara'])} />
+          {!ctrl && <MatrizP r={r} />}
+        </>
+      )}
+      <p className="conclusion"><b>Lectura:</b> {lecturaDe(r, ctrl)}</p>
+    </details>
+  )
+}
+
+// resumen de todos los análisis en una tabla
+function Resumen({ titulo, bloques, etiquetas }) {
+  const ok = bloques.filter((b) => b.r.ok)
+  const conDif = ok.filter((b) => b.r.global.p < 0.05).length
+  return (
+    <>
+      <div className="indicadores grandes">
+        <div className="ind"><small>Análisis</small><b>{bloques.length}</b></div>
+        <div className="ind"><small>Con diferencias (p &lt; 0,05)</small><b className={conDif ? 'num-dif' : ''}>{conDif}</b></div>
+        <div className="ind" data-tip="ANOVA de Welch porque las varianzas son distintas (Levene)"><small>Con ANOVA de Welch</small><b>{ok.filter((b) => b.r.tipo === 'welch').length}</b></div>
+        <div className="ind" data-tip="Kruskal-Wallis porque los residuos no son normales (Shapiro-Wilk)"><small>Con Kruskal-Wallis</small><b>{ok.filter((b) => b.r.tipo === 'kw').length}</b></div>
+      </div>
+      <Tabla cols={[titulo, ...etiquetas, 'Varianzas (Levene p)', 'Prueba', 'Estadístico', 'p', 'Resultado']}
+        filas={bloques.map((b) => [b.titulo, ...b.extra, b.r.ok ? (b.r.lev ? pTxt(b.r.lev.p) : '–') : '–', b.r.ok ? NOMBRE_TEST[b.r.tipo] : '–',
+          b.r.ok ? `${b.r.global.est} = ${f(b.r.global.valor, 3)}` : '–', b.r.ok ? pTxt(b.r.global.p) : '–', b.r.ok ? (b.r.global.p < 0.05 ? `Hay diferencias ${marcaSig(b.r.global.p)}` : 'Sin diferencias') : b.r.motivo])} />
+    </>
+  )
+}
+
 // ===============================================================
-// RESULTADOS de las pruebas elegidas, debajo del gráfico
+// RESULTADOS debajo del gráfico
 // ===============================================================
 export function ResultadosPruebas({ s, D, o }) {
-  const sel = o.pruebas || []
-  if (!sel.length) return null
-  // un dato por cepa, medio y placa: la OD media de las réplicas aceptadas (cada placa es una réplica biológica)
-  const obs = []
+  const obj = o.objetivo || 'ninguno'
+  if (obj === 'ninguno') return null
+  const variable = o.variable || 'od'
+  const nivel = obj === 'placas' ? 'pocillo' : o.nivel || 'placa'
+  const forzado = o.prueba || 'auto'
+  const comp = o.comp || 'pares'
+  const fx = (y, odc) => (variable === 'ln' ? (y > 0 ? Math.log(y) : NaN) : variable === 'odc' ? (odc > 0 ? y / odc : NaN) : y)
+  const obsPlaca = [], obsPozo = []
   D.placasSel.forEach((p) => {
-    s.analisisMap[p.id].resumen.forEach((r) => {
-      if (!finito(r.Media) || D.ocultos.has(D.clave(p.id, r.Muestra))) return
-      obs.push({ cepa: r.Muestra, medio: p.medio || '(sin medio)', placa: p.nombre, y: r.Media })
+    const a = s.analisisMap[p.id]
+    const odc = a.odc?.odc
+    const medio = p.medio || '(sin medio)'
+    a.resumen.forEach((r) => {
+      if (D.ocultos.has(D.clave(p.id, r.Muestra))) return
+      if (finito(r.Media)) obsPlaca.push({ cepa: r.Muestra, medio, placa: p.nombre, y: fx(r.Media, odc) })
+    })
+    a.estado.forEach((e) => {
+      if (!e.Usado || e.EsBlanco || D.ocultos.has(D.clave(p.id, e.Muestra))) return
+      obsPozo.push({ cepa: e.Muestra, medio, placa: p.nombre, y: fx(e.OD, odc) })
     })
   })
+  const obs = (nivel === 'placa' ? obsPlaca : obsPozo).filter((x) => finito(x.y))
   const cepas = [...new Set(obs.map((x) => x.cepa))]
   const medios = [...new Set(obs.map((x) => x.medio))]
-  const cvBueno = finito(Number(o.reproCvBueno)) ? Number(o.reproCvBueno) : 20
-  const cvMax = finito(Number(o.reproCvMax)) ? Number(o.reproCvMax) : 30
-  const nota = (t) => <p className="ayuda">{t}</p>
+  const placas = [...new Set(obs.map((x) => x.placa))]
+  const unidad = variable === 'ln' ? 'ln(OD)' : variable === 'odc' ? 'OD ÷ ODc' : 'OD'
+  const vals = (c, m, pl) => obs.filter((x) => (c === null || x.cepa === c) && (m === null || x.medio === m) && (pl === null || x.placa === pl)).map((x) => x.y)
+  const colorMedios = paletaMuestras(medios), colorCepas = paletaMuestras(cepas), colorPlacas = paletaMuestras(placas)
+  const ctrlMedio = medios.includes(o.ctrlMedio) ? o.ctrlMedio : medios[0]
+  const ctrlCepa = cepas.includes(o.ctrlCepa) ? o.ctrlCepa : cepas[0]
+  const titulo = { medios: '¿Hay más OD en un medio que en otro?', placas: '¿Cada cepa da lo mismo en todas las placas?', cepas: '¿Difieren las cepas dentro de cada medio?' }[obj]
+  let cuerpo = null
+
+  if (obj === 'medios') {
+    const bloques = cepas.map((c) => {
+      const grupos = medios.map((m) => ({ nombre: m, v: vals(c, m, null) }))
+      const r = analizar(grupos, forzado, comp === 'control' ? ctrlMedio : null)
+      return { titulo: c, r, grupos, extra: [grupos.map((g) => `${g.nombre}: ${g.v.length ? f(media(g.v), 3) : '–'} (n ${g.v.length})`).join(' · ')] }
+    })
+    // efecto global (todas las cepas juntas) con la placa como bloque
+    const sp = parcelasDivididas(obsPlaca.filter((x) => finito(x.y)))
+    cuerpo = medios.length < 2 ? <p className="ayuda">Hacen falta placas de al menos 2 medios distintos (el medio de cada placa se elige en la pestaña «Placa»).</p> : (
+      <>
+        {sp && (
+          <div className="bloque-res global-sp">
+            <h4>Efecto del medio con todas las cepas juntas (placa como bloque) <Nota>ANOVA de parcelas divididas: cada placa tiene un solo medio, así que el medio se prueba contra la variación entre placas del mismo medio; la cepa y la interacción cepa × medio se prueban contra la variación dentro de las placas. Equivale a un modelo mixto con la placa como efecto aleatorio.</Nota></h4>
+            <Tabla cols={['Fuente', 'Suma de cuadrados', 'gl', 'Cuadrado medio', 'F', 'p', 'Se prueba contra', 'Resultado']}
+              filas={sp.filas.map((x) => [x.nombre, f(x.ss, 5), x.df, f(x.ms, 5), f(x.F, 3), pTxt(x.p), x.error, finito(x.p) ? (x.p < 0.05 ? `Significativo (${marcaSig(x.p)})` : 'Sin diferencia clara') : ''])} />
+            <p className="conclusion"><b>Lectura:</b> {sp.filas.filter((x) => finito(x.p) && x.p < 0.05).length
+              ? sp.filas.filter((x) => finito(x.p) && x.p < 0.05).map((x) => ({ Medio: 'la OD cambia según el medio', Cepa: 'las cepas difieren entre sí', 'Cepa × medio': 'el efecto del medio depende de la cepa' }[x.nombre])).join('; ') + '.'
+              : 'Ningún efecto es significativo (p ≥ 0,05).'}</p>
+          </div>
+        )}
+        <h4 className="sub-res">Cada cepa entre medios</h4>
+        <Resumen titulo="Cepa" bloques={bloques} etiquetas={['Media de OD por medio']} />
+        {bloques.map((b) => <Bloque key={b.titulo} titulo={b.titulo} sub={`entre medios · ${unidad}`} r={b.r} colorDe={(n) => colorMedios[n]} ctrl={comp === 'control' ? ctrlMedio : null} />)}
+      </>
+    )
+  } else if (obj === 'cepas') {
+    const bloques = medios.map((m) => {
+      const grupos = cepas.map((c) => ({ nombre: c, v: vals(c, m, null) }))
+      const r = analizar(grupos, forzado, comp === 'control' ? ctrlCepa : null)
+      return { titulo: m, r, grupos, extra: [`${grupos.filter((g) => g.v.length).length} cepas · ${[...new Set(obs.filter((x) => x.medio === m).map((x) => x.placa))].length} placas`] }
+    })
+    cuerpo = cepas.length < 2 ? <p className="ayuda">Hacen falta al menos 2 cepas con datos.</p> : (
+      <>
+        <Resumen titulo="Medio" bloques={bloques} etiquetas={['Datos']} />
+        {bloques.map((b) => <Bloque key={b.titulo} titulo={`Medio «${b.titulo}»`} sub={`entre cepas · ${unidad}`} r={b.r} colorDe={(n) => colorCepas[n]} ctrl={comp === 'control' ? ctrlCepa : null} />)}
+      </>
+    )
+  } else {
+    // entre placas: para cada cepa y medio, las placas son los grupos y los pocillos las réplicas
+    const bloques = []
+    cepas.forEach((c) => medios.forEach((m) => {
+      const pls = [...new Set(obs.filter((x) => x.cepa === c && x.medio === m).map((x) => x.placa))]
+      if (pls.length < 2) return
+      const grupos = pls.map((p) => ({ nombre: p, v: vals(c, m, p) }))
+      const r = analizar(grupos, forzado, null)
+      const mm = grupos.map((g) => media(g.v)), M = media(mm), sd = desvio(mm)
+      const cv = finito(sd) && M !== 0 ? (100 * sd) / Math.abs(M) : NaN
+      bloques.push({ titulo: `${c} · ${m}`, r, grupos, extra: [pls.length, grupos.map((g) => f(media(g.v), 3)).join(' · '), f(cv, 1), !finito(cv) ? '–' : cv <= 20 ? 'Buena' : cv <= 30 ? 'Aceptable' : 'Alta variabilidad'] })
+    }))
+    cuerpo = !bloques.length ? <p className="ayuda">Hacen falta al menos 2 placas con la misma cepa y el mismo medio.</p> : (
+      <>
+        <Resumen titulo="Cepa · medio" bloques={bloques} etiquetas={['Placas', 'Media de cada placa', 'CV entre placas (%)', 'Reproducibilidad']} />
+        {bloques.map((b) => <Bloque key={b.titulo} titulo={b.titulo} sub={`entre placas · ${unidad}`} r={b.r} colorDe={(n) => colorPlacas[n]} ctrl={null} />)}
+        <p className="ayuda">Los grupos son las placas y los datos de cada una son sus pocillos. Si p &lt; 0,05 la placa influye: la cepa no se repite igual. Para ICC y correlaciones entre experimentos usá el modo «Reproducibilidad entre experimentos».</p>
+      </>
+    )
+  }
 
   return (
-    <div className="pruebas-resultados">
-      {sel.includes('anova2') && (() => {
-        const r = cepas.length > 1 && medios.length > 1 ? anova2(obs.map((x) => ({ y: x.y, a: x.cepa, b: x.medio }))) : null
-        const nom = { A: 'Cepa', B: 'Medio', AB: 'Cepa × medio', Residual: 'Residual (error)' }
-        return (
-          <section className="resultado-test">
-            <h2>ANOVA de dos vías: cepa × medio <Nota>Modelo: OD = cepa + medio + cepa × medio. Sumas de cuadrados tipo II (igual que car::Anova de R). F = CM del efecto / CM residual. La interacción dice si el efecto del medio es distinto según la cepa.</Nota></h2>
-            {r ? (
-              <>
-                <Tabla cols={['Fuente', 'Suma de cuadrados', 'gl', 'Cuadrado medio', 'F', 'p', 'Resultado']}
-                  filas={r.filas.map((x) => [nom[x.nombre], f(x.ss, 6), x.df, f(x.ms, 6), f(x.F, 3), pTxt(x.p), x.nombre === 'Residual' ? '' : x.p < 0.05 ? `Significativo (${marcaSig(x.p)})` : 'Sin diferencia clara'])} />
-                {nota(`n = ${r.n} datos (cepa × medio × placa). ${r.filas[3].df < 3 ? 'Muy pocos grados de libertad residuales: hacen falta más placas por cepa y medio para confiar en estas pruebas.' : ''}`)}
-                {nota(r.filas.slice(0, 3).filter((x) => x.p < 0.05).length
-                  ? `Interpretación: ${r.filas.slice(0, 3).filter((x) => x.p < 0.05).map((x) => ({ A: 'la OD cambia según la cepa', B: 'la OD cambia según el medio', AB: 'el efecto del medio depende de la cepa' }[x.nombre])).join('; ')}.`
-                  : 'Interpretación: no hay efectos significativos (p ≥ 0,05).')}
-              </>
-            ) : <p className="ayuda">Hacen falta al menos 2 cepas y 2 medios (cada placa tiene un medio, que se elige en la pestaña «Placa»), con datos en las combinaciones.</p>}
-            <Tabla cols={['Cepa', 'Medio', 'Placa', 'OD media de la placa']} filas={obs.map((x) => [x.cepa, x.medio, x.placa, f(x.y)])} />
-          </section>
-        )
-      })()}
-
-      {sel.includes('cepaMedios') && (
-        <section className="resultado-test">
-          <h2>Cada cepa: comparación entre medios <Nota>Para cada cepa, un ANOVA de una vía con los medios como grupos (un dato por placa) y, debajo, todos los pares de medios con t de Welch y ajuste de Holm.</Nota></h2>
-          {medios.length < 2 ? <p className="ayuda">Hacen falta placas de al menos 2 medios distintos.</p> : cepas.map((c) => (
-            <BloqueUnaVia key={c} titulo={`Cepa «${c}»`} factor="medios" r={unaVia(medios.map((m) => ({ nombre: m, v: obs.filter((x) => x.cepa === c && x.medio === m).map((x) => x.y) })))} />
-          ))}
-        </section>
-      )}
-
-      {sel.includes('medioCepas') && (
-        <section className="resultado-test">
-          <h2>Cada medio: comparación entre cepas <Nota>Para cada medio, un ANOVA de una vía con las cepas como grupos (un dato por placa) y, debajo, todos los pares de cepas con t de Welch y ajuste de Holm.</Nota></h2>
-          {cepas.length < 2 ? <p className="ayuda">Hacen falta al menos 2 cepas.</p> : medios.map((m) => (
-            <BloqueUnaVia key={m} titulo={`Medio «${m}»`} factor="cepas" r={unaVia(cepas.map((c) => ({ nombre: c, v: obs.filter((x) => x.cepa === c && x.medio === m).map((x) => x.y) })))} />
-          ))}
-        </section>
-      )}
-
-      {sel.includes('placasCepa') && (
-        <section className="resultado-test">
-          <h2>Cada cepa entre placas: reproducibilidad <Nota>CV = 100 × DE / media, con un dato por placa. Hasta {cvBueno} %: buena; hasta {cvMax} %: aceptable; más: alta variabilidad. Para ICC, Kruskal-Wallis y correlaciones usá «Reproducibilidad entre experimentos».</Nota></h2>
-          <Tabla cols={['Cepa', 'Medio', 'n (placas)', 'OD media de cada placa', 'Media', 'DE', 'CV (%)', 'Evaluación']}
-            filas={cepas.flatMap((c) => medios.map((m) => {
-              const v = obs.filter((x) => x.cepa === c && x.medio === m)
-              if (!v.length) return null
-              const y = v.map((x) => x.y)
-              const mm = media(y), sd = y.length > 1 ? desvio(y) : NaN
-              const cv = finito(sd) && mm !== 0 ? (100 * sd) / Math.abs(mm) : NaN
-              return [c, m, y.length, v.map((x) => `${x.placa}: ${f(x.y, 3)}`).join(' · '), f(mm), f(sd), f(cv, 1), !finito(cv) ? 'Hace falta más de 1 placa' : cv <= cvBueno ? 'Buena' : cv <= cvMax ? 'Aceptable' : 'Alta variabilidad']
-            }).filter(Boolean))} />
-        </section>
-      )}
-    </div>
+    <section className="pruebas-resultados">
+      <div className="cabecera-res">
+        <h2>{titulo}</h2>
+        <div className="fila-chips">
+          <Chip tipo="neutro">{unidad}</Chip>
+          <Chip tipo="neutro">{obj === 'placas' ? 'pocillos por placa' : nivel === 'placa' ? 'un valor por placa' : 'pocillos'}</Chip>
+          <Chip tipo="neutro">prueba {forzado === 'auto' ? 'automática' : NOMBRE_TEST[forzado]}</Chip>
+          {obj !== 'placas' && <Chip tipo="neutro">{comp === 'control' ? 'contra un control' : 'todos los pares'}</Chip>}
+        </div>
+      </div>
+      {nivel === 'pocillo' && obj !== 'placas' && <p className="aviso-sel">Cada pocillo cuenta como una réplica: los pocillos de una misma placa no son independientes y los p pueden salir demasiado chicos. Para conclusiones usá «Placa».</p>}
+      {cuerpo}
+    </section>
   )
 }
