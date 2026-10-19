@@ -15,7 +15,16 @@ const NOMBRE_TEST = { anova: 'ANOVA', welch: 'ANOVA de Welch', kw: 'Kruskal-Wall
 // Objetivos (qué se quiere evaluar)
 // ---------------------------------------------------------------
 // el objetivo por defecto es «entre medios»: la estadística siempre se muestra
-export const objetivoDe = (o) => (['medios', 'placas', 'placastodas', 'cepas', 'concordancia'].includes(o.objetivo) ? o.objetivo : 'medios')
+// «Separar por medio» (o.juntar = false) compara dentro de cada medio; con o.juntar las placas o las cepas se comparan sin separar por medio
+export const juntarDe = (o) => (o.juntar === undefined ? o.objetivo === 'placastodas' : !!o.juntar)
+export const objetivoDe = (o) => {
+  const b = o.objetivo === 'placastodas' ? 'placas' : ['medios', 'placas', 'cepas', 'concordancia'].includes(o.objetivo) ? o.objetivo : 'medios'
+  if (b === 'placas' && juntarDe(o)) return 'placastodas'
+  if (b === 'cepas' && juntarDe(o)) return 'cepastodas'
+  return b
+}
+// selección hecha en la barra superior de Estadística (undefined = todas)
+export const dentroDeSel = (o, x) => (!o.eCepas || o.eCepas.includes(x.cepa)) && (!o.eMedios || o.eMedios.includes(x.medio)) && (!o.ePlacas || o.ePlacas.includes(x.placaId))
 export const OBJETIVOS = [
   ['medios', 'Entre medios', '¿En qué medio hay más OD? Cada cepa se compara entre los medios.'],
   ['placas', 'Entre placas (réplicas)', '¿Una misma cepa da lo mismo en todas las placas? Reproducibilidad.'],
@@ -61,22 +70,22 @@ function Chip({ tipo, children, tip }) {
 // ===============================================================
 // PANEL de la izquierda: qué evaluar y con qué opciones (sin botones repetidos: cada prueba se elige una sola vez)
 // ===============================================================
-export function PanelPruebas({ o, setO, D }) {
+export function PanelPruebas({ o, setO, D, sinObjetivos, horizontal }) {
   const obj = objetivoDe(o)
   const esPl = obj === 'placas' || obj === 'placastodas'
   const var_ = o.variable || 'od'
   const nivel = o.nivel || 'placa'
   const comp = o.comp || 'pares'
   return (
-    <div className="panel-pruebas">
-      <h3 className="sub-seccion">¿Qué querés evaluar? <Nota>El programa revisa los datos (normalidad y varianzas) y elige solo la prueba adecuada; los resultados aparecen debajo del gráfico. Cada placa cuenta como una réplica biológica.</Nota></h3>
-      <div className="objetivos">
+    <div className={`panel-pruebas ${horizontal ? 'horizontal' : ''}`}>
+      {!sinObjetivos && <h3 className="sub-seccion">¿Qué querés evaluar? <Nota>El programa revisa los datos (normalidad y varianzas) y elige solo la prueba adecuada; los resultados aparecen debajo del gráfico. Cada placa cuenta como una réplica biológica.</Nota></h3>}
+      {!sinObjetivos && <div className="objetivos">
         {OBJETIVOS.map(([id, t, d]) => (
           <button key={id} type="button" className={`objetivo ${obj === id ? 'on' : ''}`} onClick={() => setO('objetivo', id)}>
             <b>{t}</b><span>{d}</span>
           </button>
         ))}
-      </div>
+      </div>}
       {obj !== 'concordancia' && (
         <>
           <Campo label="Datos">
@@ -432,20 +441,21 @@ export function ResultadosPruebas({ s, D, o }) {
   const forzado = o.prueba || 'auto'
   const comp = o.comp || 'pares'
   const fx = (y, odc) => (variable === 'ln' ? (y > 0 ? Math.log(y) : NaN) : variable === 'odc' ? (odc > 0 ? y / odc : NaN) : y)
-  const obsPlaca = [], obsPozo = []
+  const obsPlaca0 = [], obsPozo0 = []
   D.placasSel.forEach((p) => {
     const a = s.analisisMap[p.id]
     const odc = a.odc?.odc
     const medio = p.medio || '(sin medio)'
     a.resumen.forEach((r) => {
       if (D.ocultos.has(D.clave(p.id, r.Muestra))) return
-      if (finito(r.Media)) obsPlaca.push({ cepa: r.Muestra, medio, placa: p.nombre, y: fx(r.Media, odc) })
+      if (finito(r.Media)) obsPlaca0.push({ cepa: r.Muestra, medio, placa: p.nombre, placaId: p.id, y: fx(r.Media, odc) })
     })
     a.estado.forEach((e) => {
       if (!e.Usado || e.EsBlanco || D.ocultos.has(D.clave(p.id, e.Muestra))) return
-      obsPozo.push({ cepa: e.Muestra, medio, placa: p.nombre, y: fx(e.OD, odc) })
+      obsPozo0.push({ cepa: e.Muestra, medio, placa: p.nombre, placaId: p.id, y: fx(e.OD, odc) })
     })
   })
+  const obsPlaca = obsPlaca0.filter((x) => dentroDeSel(o, x)), obsPozo = obsPozo0.filter((x) => dentroDeSel(o, x))
   const obs = (nivel === 'placa' ? obsPlaca : obsPozo).filter((x) => finito(x.y))
   const cepas = [...new Set(obs.map((x) => x.cepa))]
   const medios = [...new Set(obs.map((x) => x.medio))]
@@ -455,7 +465,8 @@ export function ResultadosPruebas({ s, D, o }) {
   const colorMedios = paletaMuestras(medios), colorCepas = paletaMuestras(cepas), colorPlacas = paletaMuestras(placas)
   const ctrlMedio = medios.includes(o.ctrlMedio) ? o.ctrlMedio : medios[0]
   const ctrlCepa = cepas.includes(o.ctrlCepa) ? o.ctrlCepa : cepas[0]
-  const titulo = { medios: '¿Hay más OD en un medio que en otro?', placas: '¿Cada cepa da lo mismo en todas las placas?', placastodas: '¿Cada cepa da lo mismo en todas las placas, sea cual sea el medio?', cepas: '¿Difieren las cepas dentro de cada medio?' }[obj]
+  const titulo = { cepastodas: '¿Difieren las cepas, sin separar por medio?', medios: '¿Hay más OD en un medio que en otro?', placas: '¿Cada cepa da lo mismo en todas las placas?', placastodas: '¿Cada cepa da lo mismo en todas las placas, sea cual sea el medio?', cepas: '¿Difieren las cepas dentro de cada medio?' }[obj]
+  const l = (a) => a.join(', ')
   let cuerpo = null
   let info = null
 
@@ -483,6 +494,17 @@ export function ResultadosPruebas({ s, D, o }) {
         <h4 className="sub-res">Cada cepa entre medios</h4>
         <Resumen titulo="Cepa" bloques={bloques} etiquetas={['Media de OD por medio']} />
         {bloques.map((b) => <Bloque key={b.titulo} titulo={b.titulo} sub={`entre medios · ${unidad}`} sujeto={`la producción de biofilm de «${b.titulo}»`} factor="los medios de cultivo" r={b.r} colorDe={(n) => colorMedios[n]} ctrl={comp === 'control' ? ctrlMedio : null} />)}
+      </>
+    )
+  } else if (obj === 'cepastodas') {
+    const grupos = cepas.map((c) => ({ nombre: c, v: vals(c, null, null) }))
+    const r = analizar(grupos, forzado, comp === 'control' ? ctrlCepa : null)
+    const bloques = [{ titulo: 'Todos los medios', r, grupos, extra: [`${grupos.filter((g) => g.v.length).length} cepas · ${medios.length} ${medios.length === 1 ? 'medio' : 'medios'} · ${placas.length} placas`] }]
+    info = infoDe(bloques, [], 'análisis')
+    cuerpo = cepas.length < 2 ? <p className="ayuda">Elegí al menos 2 cepas con datos.</p> : (
+      <>
+        <p className="aviso-sel">Las cepas se comparan juntando los datos de {medios.join(' y ')}: si las placas de un medio rinden distinto que las del otro, esa diferencia entra en el error. Para compararlas dentro de cada medio activá «Separar por medio».</p>
+        <Bloque abierto titulo="Todos los medios" sub={`entre cepas · ${unidad}`} sujeto={`la producción de biofilm (medios: ${medios.join(', ')})`} factor="las cepas" r={r} colorDe={(n) => colorCepas[n]} ctrl={comp === 'control' ? ctrlCepa : null} />
       </>
     )
   } else if (obj === 'cepas') {
@@ -585,15 +607,16 @@ export function ResultadosPruebas({ s, D, o }) {
       }[obj]} />}
       <DiagnosticoGlobal d={diagnosticoGlobal(obsPozo.filter((x) => finito(x.y)))} unidad={unidad} />
       <Hip titulo={`Hipótesis del objetivo · α = 0,05 · ${nivel === 'placa' ? 'cada placa es una réplica' : 'cada pocillo es una réplica'}`} items={{
-        medios: [{ nombre: 'Cada cepa', h0: 'La producción de biofilm (OD de cristal violeta) de la cepa es la misma en todos los medios de cultivo.', h1: 'La producción de biofilm de la cepa cambia según el medio (al menos un medio difiere).' },
+        medios: [{ nombre: 'Cada cepa', h0: `La producción de biofilm (OD) de cada cepa (${l(cepas)}) es la misma en ${l(medios)}.`, h1: `La producción de biofilm de la cepa cambia según el medio (${l(medios)}): al menos un medio difiere.` },
           { nombre: 'Medio (todas las cepas)', h0: 'El medio de cultivo no afecta la producción de biofilm (OD media de las cepas).', h1: 'Hay un efecto del medio sobre la producción de biofilm.' },
           { nombre: 'Cepa', h0: 'Todas las cepas producen la misma cantidad de biofilm (OD).', h1: 'Al menos una cepa produce más o menos que otra.' },
           { nombre: 'Cepa × medio', h0: 'El efecto del medio es el mismo para todas las cepas (sin interacción).', h1: 'El efecto del medio depende de la cepa: algunas crecen mejor en un medio y otras en otro.' }],
-        placas: [{ nombre: 'Cada cepa y medio', h0: 'La OD media de la cepa es la misma en todas las placas: el resultado se reproduce entre réplicas.', h1: 'La OD media cambia entre placas (efecto placa): el resultado no se reproduce igual en cada placa.' }],
-        placastodas: [{ nombre: 'Cada cepa (todas las placas)', h0: 'La OD media de la cepa es la misma en todas las placas, sin importar el medio.', h1: 'La OD media cambia entre placas (por la placa, por el medio o por ambos).' },
+        placas: [{ nombre: 'Cada cepa y medio', h0: `La OD media de la cepa es la misma en las placas del mismo medio (${l(placas)}): el resultado se reproduce entre réplicas.`, h1: 'La OD media cambia entre placas (efecto placa): el resultado no se reproduce igual en cada placa.' }],
+        placastodas: [{ nombre: 'Cada cepa (todas las placas)', h0: `La OD media de la cepa es la misma en las placas ${l(placas)}, sin importar el medio.`, h1: 'La OD media cambia entre placas (por la placa, por el medio o por ambos).' },
           { nombre: 'Medio frente a placa (cada cepa)', h0: 'El medio no cambia la OD de la cepa una vez descontada la variación entre placas del mismo medio.', h1: 'El medio cambia la OD de la cepa más de lo que varían las placas de un mismo medio.' },
           { nombre: 'Placa · cepa × placa (todas las cepas)', h0: 'Las placas dan la misma OD y las cepas conservan su orden en todas ellas.', h1: 'Hay un efecto de la placa o el orden de las cepas cambia entre placas.' }],
-        cepas: [{ nombre: 'Cada medio', h0: 'Todas las cepas producen la misma cantidad de biofilm (OD) en el medio.', h1: 'Al menos una cepa produce más o menos biofilm que otra en ese medio.' }],
+        cepas: [{ nombre: 'Cada medio', h0: `Las cepas ${l(cepas)} producen la misma cantidad de biofilm (OD) en el medio.`, h1: 'Al menos una cepa produce más o menos biofilm que otra en ese medio.' }],
+        cepastodas: [{ nombre: 'Todos los medios', h0: `Las cepas ${l(cepas)} producen la misma cantidad de biofilm (OD), con los datos de ${l(medios)} juntos.`, h1: 'Al menos una cepa produce más o menos biofilm que otra.' }],
       }[obj]} />
       {nivel === 'pocillo' && !esPl && <p className="aviso-sel">Cada pocillo cuenta como una réplica: los pocillos de una misma placa no son independientes y los p pueden salir demasiado chicos. Para conclusiones usá «Placa».</p>}
       {cuerpo}

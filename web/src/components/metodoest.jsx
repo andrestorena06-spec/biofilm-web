@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Campo, Select } from './ui.jsx'
 import { Nota } from './tip.jsx'
-import { objetivoDe } from './pruebas.jsx'
+import { dentroDeSel, objetivoDe } from './pruebas.jsx'
 import { armarComparacion } from '../comparacion.js'
 import { analizar, anidada, levene, parcelasDivididas, placaCepa, razonSD } from '../decision.js'
 import { anovaTabla, desvio, holm, marcaSig, media, varianza } from '../estadistica.js'
@@ -175,14 +175,15 @@ function prepararBloques(s, D, o) {
   const esPl = obj === 'placas' || obj === 'placastodas'
   const nivel = esPl ? 'pocillo' : o.nivel || 'placa'
   const fx = (y, odc) => (variable === 'ln' ? (y > 0 ? Math.log(y) : NaN) : variable === 'odc' ? (odc > 0 ? y / odc : NaN) : y)
-  const obsPlaca = [], obsPozo = []
+  const obsPlaca0 = [], obsPozo0 = []
   D.placasSel.forEach((p) => {
     const a = s.analisisMap[p.id]
     const odc = a.odc?.odc
     const medio = p.medio || '(sin medio)'
-    a.resumen.forEach((r) => { if (!D.ocultos.has(D.clave(p.id, r.Muestra)) && finito(r.Media)) obsPlaca.push({ cepa: r.Muestra, medio, placa: p.nombre, y: fx(r.Media, odc) }) })
-    a.estado.forEach((e) => { if (e.Usado && !e.EsBlanco && !D.ocultos.has(D.clave(p.id, e.Muestra))) obsPozo.push({ cepa: e.Muestra, medio, placa: p.nombre, y: fx(e.OD, odc) }) })
+    a.resumen.forEach((r) => { if (!D.ocultos.has(D.clave(p.id, r.Muestra)) && finito(r.Media)) obsPlaca0.push({ cepa: r.Muestra, medio, placa: p.nombre, placaId: p.id, y: fx(r.Media, odc) }) })
+    a.estado.forEach((e) => { if (e.Usado && !e.EsBlanco && !D.ocultos.has(D.clave(p.id, e.Muestra))) obsPozo0.push({ cepa: e.Muestra, medio, placa: p.nombre, placaId: p.id, y: fx(e.OD, odc) }) })
   })
+  const obsPlaca = obsPlaca0.filter((x) => dentroDeSel(o, x)), obsPozo = obsPozo0.filter((x) => dentroDeSel(o, x))
   const obs = (nivel === 'placa' ? obsPlaca : obsPozo).filter((x) => finito(x.y))
   const cepas = [...new Set(obs.map((x) => x.cepa))], medios = [...new Set(obs.map((x) => x.medio))]
   const vals = (c, m, p) => obs.filter((x) => (c === null || x.cepa === c) && (m === null || x.medio === m) && (p === null || x.placa === p)).map((x) => x.y)
@@ -191,6 +192,7 @@ function prepararBloques(s, D, o) {
   const ctrlCepa = cepas.includes(o.ctrlCepa) ? o.ctrlCepa : cepas[0]
   let bloques = []
   if (obj === 'medios') bloques = cepas.map((c) => ({ titulo: `${c}: entre medios`, grupos: medios.map((m) => ({ nombre: m, v: vals(c, m, null) })), ctrl: comp === 'control' ? ctrlMedio : null }))
+  else if (obj === 'cepastodas') bloques = [{ titulo: 'Todos los medios: entre cepas', grupos: cepas.map((c) => ({ nombre: c, v: vals(c, null, null) })), ctrl: comp === 'control' ? ctrlCepa : null }]
   else if (obj === 'cepas') bloques = medios.map((m) => ({ titulo: `Medio ${m}: entre cepas`, grupos: cepas.map((c) => ({ nombre: c, v: vals(c, m, null) })), ctrl: comp === 'control' ? ctrlCepa : null }))
   else if (obj === 'placastodas') cepas.forEach((c) => {
     const pls = [...new Set(obs.filter((x) => x.cepa === c).map((x) => x.placa))]
