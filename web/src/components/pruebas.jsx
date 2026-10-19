@@ -25,46 +25,33 @@ export const OBJETIVOS = [
 ]
 
 // Hipótesis en el contexto del biofilm: la OD (cristal violeta) es la medida de biomasa de biofilm producida
-// Cada hipótesis es una pregunta con dos respuestas según el p (α = 0,05); si ya hay un p, se resalta la respuesta que corresponde
 function Hip({ items, titulo = 'Hipótesis' }) {
   return (
     <div className="hipotesis">
       <b>{titulo}</b>
-      {items.map((h, i) => {
-        const sig = Number.isFinite(h.p) ? h.p < 0.05 : null
-        const si = h.inv ? 'No' : 'Sí', no = h.inv ? 'Sí' : 'No'
-        return (
-          <div key={i} className="hip-fila">
-            <span className="hip-pregunta">{h.nombre && <em>{h.nombre} · </em>}{h.q || h.nombre}{sig !== null && <span className="hip-p">p {pTxt(h.p).startsWith('<') ? '' : '= '}{pTxt(h.p)}</span>}</span>
-            <div className="hip-resp">
-              <div className={`hip-op ${sig === true ? 'on' : sig === false ? 'off' : ''}`} data-tip={'Si p < 0,05 se rechaza H₀ y se acepta H₁\n' + h.h1}>
-                <span className="hip-cond">p &lt; 0,05 → <b>{si}</b></span>
-                <span>{h.h1}</span>
-              </div>
-              <div className={`hip-op ${sig === false ? 'on' : sig === true ? 'off' : ''}`} data-tip={'Si p ≥ 0,05 no se rechaza H₀\n' + h.h0}>
-                <span className="hip-cond">p ≥ 0,05 → <b>{no}</b></span>
-                <span>{h.h0}</span>
-              </div>
-            </div>
-          </div>
-        )
-      })}
+      {items.map((h, i) => (
+        <div key={i} className="hip-fila">
+          {h.nombre && <span className="hip-nombre">{h.nombre}</span>}
+          <span><b>H₀:</b> {h.h0}</span>
+          <span><b>H₁:</b> {h.h1}</span>
+        </div>
+      ))}
     </div>
   )
 }
 const lista = (g) => g.map((x) => x.nombre).join(', ')
 // hipótesis de una prueba entre grupos: sujeto = qué se compara (ej. «la producción de biofilm (OD) de L101B2»)
-function hipotesisGrupos(tipo, sujeto, factor, grupos, ctrl, dunnett, pG) {
+function hipotesisGrupos(tipo, sujeto, factor, grupos, ctrl, dunnett) {
   const n = lista(grupos)
   const base = ctrl ? `entre «${ctrl}» y cada uno de los otros grupos` : `entre ${factor}`
   if (tipo === 'kw') {
-    return [{ nombre: 'Global (Kruskal-Wallis)', q: `¿Tiende ${sujeto} a ser distinta entre los grupos comparados?`, p: pG, h0: `${sujeto} tiene la misma distribución en todos los grupos comparados (${n}).`, h1: `En al menos un grupo los valores tienden a ser mayores o menores que en otro.` },
-      { nombre: 'Pares (Dunn, Holm)', q: '¿Difieren dos grupos concretos? (se responde par por par en la tabla)', h0: 'Dos grupos tienen la misma distribución de OD.', h1: 'Las distribuciones difieren (bilateral).' }]
+    return [{ nombre: 'Global (Kruskal-Wallis)', h0: `${sujeto} tiene la misma distribución en todos los grupos comparados (${n}).`, h1: `En al menos un grupo los valores tienden a ser mayores o menores que en otro.` },
+      { nombre: 'Pares (Dunn, Holm)', h0: 'Dos grupos tienen la misma distribución de OD.', h1: 'Las distribuciones difieren (bilateral).' }]
   }
-  return [{ nombre: tipo === 'welch' ? 'Global (ANOVA de Welch)' : 'Global (ANOVA)', q: `¿Cambia la OD media (${sujeto}) entre ${ctrl ? 'los grupos y el control' : factor}?`, p: pG, h0: `La OD media (${sujeto}) es igual en todos los grupos comparados: μ(${grupos.map((x) => x.nombre).join(') = μ(')}).`, h1: `Al menos un grupo tiene una OD media distinta; es decir, hay diferencias ${base}.` },
+  return [{ nombre: tipo === 'welch' ? 'Global (ANOVA de Welch)' : 'Global (ANOVA)', h0: `La OD media (${sujeto}) es igual en todos los grupos comparados: μ(${grupos.map((x) => x.nombre).join(') = μ(')}).`, h1: `Al menos un grupo tiene una OD media distinta; es decir, hay diferencias ${base}.` },
     dunnett
-      ? { nombre: `Contra «${ctrl}» (Dunnett)`, q: `¿Difiere cada grupo del control «${ctrl}»? (par por par en la tabla)`, h0: `Cada grupo tiene la misma OD media que el control: μ(grupo) = μ(${ctrl}).`, h1: 'La OD media del grupo difiere de la del control: μ(grupo) ≠ μ(control) (bilateral).' }
-      : { nombre: tipo === 'welch' ? 'Pares (t de Welch, Holm)' : 'Pares (t, Holm)', q: '¿Difieren dos grupos concretos? (se responde par por par en la tabla)', h0: 'Dos grupos tienen la misma OD media: μA = μB.', h1: 'Las OD medias difieren: μA ≠ μB (bilateral).' }]
+      ? { nombre: `Contra «${ctrl}» (Dunnett)`, h0: `Cada grupo tiene la misma OD media que el control: μ(grupo) = μ(${ctrl}).`, h1: 'La OD media del grupo difiere de la del control: μ(grupo) ≠ μ(control) (bilateral).' }
+      : { nombre: tipo === 'welch' ? 'Pares (t de Welch, Holm)' : 'Pares (t, Holm)', h0: 'Dos grupos tienen la misma OD media: μA = μB.', h1: 'Las OD medias difieren: μA ≠ μB (bilateral).' }]
 }
 
 function Chip({ tipo, children, tip }) {
@@ -237,7 +224,7 @@ function Bloque({ titulo, sub, r, colorDe, ctrl, abierto, sujeto, factor, color,
         <Chip tipo={r.global.p < 0.05 ? 'dif' : 'ok'}>{r.global.p < 0.05 ? 'Hay diferencias' : 'Sin diferencias'}</Chip>
         <Chip tipo="prueba">{NOMBRE_TEST[r.tipo]}</Chip>
       </summary>
-      {sujeto && <Hip items={[...hipotesisGrupos(r.tipo, sujeto, factor, r.grupos, ctrl, r.pares[0]?.metodo === 'Dunnett', r.global.p), { nombre: 'Supuestos', q: '¿Se cumplen la normalidad y la igualdad de varianzas?', inv: true, p: Math.min(...[r.sw?.p, r.lev?.p].filter(Number.isFinite), Infinity) === Infinity ? NaN : Math.min(...[r.sw?.p, r.lev?.p].filter(Number.isFinite)), h0: 'Residuos normales (Shapiro-Wilk) y varianzas iguales entre grupos (Levene).', h1: 'Residuos no normales / varianzas distintas: se cambia a Kruskal-Wallis o ANOVA de Welch.' }]} />}
+      {sujeto && <Hip items={[...hipotesisGrupos(r.tipo, sujeto, factor, r.grupos, ctrl, r.pares[0]?.metodo === 'Dunnett'), { nombre: 'Supuestos', h0: 'Residuos normales (Shapiro-Wilk) y varianzas iguales entre grupos (Levene).', h1: 'Residuos no normales / varianzas distintas: se cambia a Kruskal-Wallis o ANOVA de Welch.' }]} />}
       <Indicadores r={r} />
       <p className="razon-test">{r.razon}{r.pares[0]?.metodo === 'Dunnett' && ` Contra el control se usó la prueba de Dunnett: cada grupo se compara con «${ctrl}» con la varianza común del ANOVA, y el p ya está ajustado por todas las comparaciones.`}</p>
       <div className="res-doble">
@@ -325,7 +312,7 @@ function infoDe(bloques, globales, etiquetaFila, colorMedios = {}) {
 }
 
 // cabecera: resumen gráfico de los resultados (−log₁₀ p de cada análisis frente al umbral de 0,05)
-function Infografia({ info, titulo }) {
+function Infografia({ info, titulo, hip }) {
   const filas = info.filas.filter((x) => finito(x.p))
   const MAXV = 5, X0 = 190, W = 330
   const v = (p) => Math.min(MAXV, -Math.log10(Math.max(p, 1e-5)))
@@ -365,12 +352,15 @@ function Infografia({ info, titulo }) {
         <h4>Resumen: ¿dónde hay diferencias? <Nota>Cada barra es un análisis. Cuanto más larga, más evidencia de diferencia (−log₁₀ de p). Si pasa la línea punteada (p = 0,05), la diferencia es significativa.{conMedio ? ' Cada medio de cultivo tiene su propio color y su fondo; la barra llena es significativa y la clara, no.' : ''}</Nota></h4>
         {filas.length > 0 ? (
           <svg viewBox={`0 0 ${X0 + W + 90} ${H}`} className="barras-grupo" role="img" aria-label="Resumen de los valores de p de cada análisis">
+            <rect x={X0} y="14" width={x(umbral) - X0} height={H - 34} fill="#9aa98f" fillOpacity="0.10" />
+            <rect x={x(umbral)} y="14" width={X0 + W - x(umbral)} height={H - 34} fill="#d9731f" fillOpacity="0.07" />
             {bandas.map((b, i) => <rect key={'b' + i} x="4" y={b.ini} width={X0 + W + 82} height={b.fin - b.ini} rx="8" fill={b.color} fillOpacity="0.10" />)}
             {[0, 1, 2, 3, 4, 5].map((t) => (
               <g key={t}><line x1={x(t)} x2={x(t)} y1="16" y2={H - 20} stroke="#ecdfcd" /><text x={x(t)} y={H - 6} textAnchor="middle" fontSize="10" fill="#8a7765">{t === 0 ? 'p = 1' : t === 1 ? '0,1' : t === 2 ? '0,01' : t === 3 ? '0,001' : t === 4 ? '1e-4' : '1e-5'}</text></g>
             ))}
             <line x1={x(umbral)} x2={x(umbral)} y1="10" y2={H - 20} stroke="#a2391a" strokeDasharray="4 3" strokeWidth="1.5" />
-            <text x={x(umbral)} y="9" textAnchor="middle" fontSize="10" fill="#a2391a" fontWeight="700">p = 0,05</text>
+            <text x={x(umbral) - 5} y="9" textAnchor="end" fontSize="10" fill="#5f6f55" fontWeight="700">← p ≥ 0,05: No</text>
+            <text x={x(umbral) + 5} y="9" textAnchor="start" fontSize="10" fill="#a2391a" fontWeight="700">p &lt; 0,05: Sí →</text>
             {items.map((it, i) => {
               if (it.cab) return <text key={'c' + i} x="12" y={it.y + 14} fontSize="12" fontWeight="800" fill="#3a2a1e">Medio {it.cab}</text>
               const fi = it.fi
@@ -388,6 +378,20 @@ function Infografia({ info, titulo }) {
           </svg>
         ) : <p className="ayuda">Sin análisis para resumir.</p>}
       </div>
+      {hip && (
+        <div className="zonas-p">
+          <div className="zona-no">
+            <b>A la izquierda de la línea · p ≥ 0,05 · No</b>
+            <span>No se rechaza H₀: {hip.h0}</span>
+            <small>No equivale a demostrar igualdad: con pocas réplicas el análisis solo detecta diferencias grandes.</small>
+          </div>
+          <div className="zona-si">
+            <b>A la derecha de la línea · p &lt; 0,05 · Sí</b>
+            <span>Se rechaza H₀ y se acepta H₁: {hip.h1}</span>
+            <small>Los pares y las letras de cada análisis indican qué grupos difieren.</small>
+          </div>
+        </div>
+      )}
       <div className="info-frases">
         <h4>Conclusiones</h4>
         {info.frases.length ? <ul>{info.frases.map((t, i) => <li key={i}>{t}</li>)}</ul>
@@ -454,7 +458,6 @@ export function ResultadosPruebas({ s, D, o }) {
   const titulo = { medios: '¿Hay más OD en un medio que en otro?', placas: '¿Cada cepa da lo mismo en todas las placas?', placastodas: '¿Cada cepa da lo mismo en todas las placas, sea cual sea el medio?', cepas: '¿Difieren las cepas dentro de cada medio?' }[obj]
   let cuerpo = null
   let info = null
-  let spG = null, pcG = null
 
   if (obj === 'medios') {
     const bloques = cepas.map((c) => {
@@ -463,7 +466,7 @@ export function ResultadosPruebas({ s, D, o }) {
       return { titulo: c, r, grupos, extra: [grupos.map((g) => `${g.nombre}: ${g.v.length ? f(media(g.v), 3) : '–'} (n ${g.v.length})`).join(' · ')] }
     })
     // efecto global (todas las cepas juntas) con la placa como bloque
-    const sp = (spG = parcelasDivididas(obsPlaca.filter((x) => finito(x.y))))
+    const sp = parcelasDivididas(obsPlaca.filter((x) => finito(x.y)))
     info = infoDe(bloques, sp ? sp.filas.filter((x) => finito(x.p)).map((x) => ({ nombre: `Global · ${x.nombre}`, p: x.p })) : [], 'cepa')
     cuerpo = medios.length < 2 ? <p className="ayuda">Hacen falta placas de al menos 2 medios distintos (el medio de cada placa se elige en la pestaña «Placa»).</p> : (
       <>
@@ -510,7 +513,7 @@ export function ResultadosPruebas({ s, D, o }) {
       const medsC = [...new Set(pls.map(medioDe))]
       bloques.push({ titulo: c, r, grupos, extra: [pls.length, medsC.join(' · '), grupos.map((g) => f(media(g.v), 3)).join(' · '), f(cv, 1)], an: anidada(pocillos.filter((x) => x.cepa === c)) })
     })
-    const pc = (pcG = placaCepa(pocillos))
+    const pc = placaCepa(pocillos)
     info = infoDe(bloques, pc ? pc.filas.filter((x) => finito(x.p)).map((x) => ({ nombre: `Global · ${x.nombre}`, p: x.p })) : [], 'cepa')
     const filasSp = (sp) => sp.filas.map((x) => [x.nombre, f(x.ss, 5), x.df, f(x.ms, 5), f(x.F, 3), pTxt(x.p), x.error, finito(x.p) ? (x.p < 0.05 ? `Significativo (${marcaSig(x.p)})` : 'Sin diferencia clara') : ''])
     const colsSp = ['Fuente', 'Suma de cuadrados', 'gl', 'Cuadrado medio', 'F', 'p', 'Se prueba contra', 'Resultado']
@@ -574,18 +577,23 @@ export function ResultadosPruebas({ s, D, o }) {
           {!esPl && <Chip tipo="neutro">{comp === 'control' ? 'contra un control' : 'todos los pares'}</Chip>}
         </div>
       </div>
-      {info && <Infografia info={info} titulo={titulo} />}
+      {info && <Infografia info={info} titulo={titulo} hip={{
+        medios: { h0: 'la OD de cada cepa es la misma en todos los medios.', h1: 'la OD de la cepa cambia según el medio (al menos un medio difiere).' },
+        placas: { h0: 'la OD de la cepa es la misma en todas las placas del mismo medio (el resultado se reproduce).', h1: 'la OD cambia entre placas: el resultado no se reproduce igual.' },
+        placastodas: { h0: 'la OD de la cepa es la misma en todas las placas, sea cual sea el medio.', h1: 'la OD cambia entre placas (por la placa, por el medio o por ambos).' },
+        cepas: { h0: 'todas las cepas producen lo mismo en ese medio.', h1: 'al menos una cepa produce más o menos que otra en ese medio.' },
+      }[obj]} />}
       <DiagnosticoGlobal d={diagnosticoGlobal(obsPozo.filter((x) => finito(x.y)))} unidad={unidad} />
       <Hip titulo={`Hipótesis del objetivo · α = 0,05 · ${nivel === 'placa' ? 'cada placa es una réplica' : 'cada pocillo es una réplica'}`} items={{
-        medios: [{ nombre: 'Cada cepa', q: '¿Cambia la producción de biofilm de cada cepa según el medio?', h0: 'La producción de biofilm (OD de cristal violeta) de la cepa es la misma en todos los medios de cultivo.', h1: 'La producción de biofilm de la cepa cambia según el medio (al menos un medio difiere).' },
-          { nombre: 'Medio (todas las cepas)', q: '¿Afecta el medio a la OD media de las cepas?', p: spG?.filas.find((x) => x.nombre === 'Medio')?.p, h0: 'El medio de cultivo no afecta la producción de biofilm (OD media de las cepas).', h1: 'Hay un efecto del medio sobre la producción de biofilm.' },
-          { nombre: 'Cepa', q: '¿Difieren las cepas entre sí?', p: spG?.filas.find((x) => x.nombre === 'Cepa')?.p, h0: 'Todas las cepas producen la misma cantidad de biofilm (OD).', h1: 'Al menos una cepa produce más o menos que otra.' },
-          { nombre: 'Cepa × medio', q: '¿Depende el efecto del medio de la cepa?', p: spG?.filas.find((x) => x.nombre === 'Cepa × medio')?.p, h0: 'El efecto del medio es el mismo para todas las cepas (sin interacción).', h1: 'El efecto del medio depende de la cepa: algunas crecen mejor en un medio y otras en otro.' }],
-        placas: [{ nombre: 'Cada cepa y medio', q: '¿Cambia la OD de la cepa entre placas del mismo medio?', h0: 'La OD media de la cepa es la misma en todas las placas: el resultado se reproduce entre réplicas.', h1: 'La OD media cambia entre placas (efecto placa): el resultado no se reproduce igual en cada placa.' }],
-        placastodas: [{ nombre: 'Cada cepa (todas las placas)', q: '¿Cambia la OD de la cepa entre placas, sea cual sea el medio?', h0: 'La OD media de la cepa es la misma en todas las placas, sin importar el medio.', h1: 'La OD media cambia entre placas (por la placa, por el medio o por ambos).' },
-          { nombre: 'Medio frente a placa (cada cepa)', q: '¿Cambia el medio la OD más de lo que varían las placas de un mismo medio?', h0: 'El medio no cambia la OD de la cepa una vez descontada la variación entre placas del mismo medio.', h1: 'El medio cambia la OD de la cepa más de lo que varían las placas de un mismo medio.' },
-          { nombre: 'Placa y cepa × placa (todas las cepas)', q: '¿Difieren las placas o cambian las cepas de orden entre placas?', p: pcG ? Math.min(...pcG.filas.filter((x) => x.nombre === 'Placa' || x.nombre === 'Cepa × placa').map((x) => x.p).filter(Number.isFinite), Infinity) : NaN, h0: 'Las placas dan la misma OD y las cepas conservan su orden en todas ellas.', h1: 'Hay un efecto de la placa o el orden de las cepas cambia entre placas.' }],
-        cepas: [{ nombre: 'Cada medio', q: '¿Difieren las cepas dentro de cada medio?', h0: 'Todas las cepas producen la misma cantidad de biofilm (OD) en el medio.', h1: 'Al menos una cepa produce más o menos biofilm que otra en ese medio.' }],
+        medios: [{ nombre: 'Cada cepa', h0: 'La producción de biofilm (OD de cristal violeta) de la cepa es la misma en todos los medios de cultivo.', h1: 'La producción de biofilm de la cepa cambia según el medio (al menos un medio difiere).' },
+          { nombre: 'Medio (todas las cepas)', h0: 'El medio de cultivo no afecta la producción de biofilm (OD media de las cepas).', h1: 'Hay un efecto del medio sobre la producción de biofilm.' },
+          { nombre: 'Cepa', h0: 'Todas las cepas producen la misma cantidad de biofilm (OD).', h1: 'Al menos una cepa produce más o menos que otra.' },
+          { nombre: 'Cepa × medio', h0: 'El efecto del medio es el mismo para todas las cepas (sin interacción).', h1: 'El efecto del medio depende de la cepa: algunas crecen mejor en un medio y otras en otro.' }],
+        placas: [{ nombre: 'Cada cepa y medio', h0: 'La OD media de la cepa es la misma en todas las placas: el resultado se reproduce entre réplicas.', h1: 'La OD media cambia entre placas (efecto placa): el resultado no se reproduce igual en cada placa.' }],
+        placastodas: [{ nombre: 'Cada cepa (todas las placas)', h0: 'La OD media de la cepa es la misma en todas las placas, sin importar el medio.', h1: 'La OD media cambia entre placas (por la placa, por el medio o por ambos).' },
+          { nombre: 'Medio frente a placa (cada cepa)', h0: 'El medio no cambia la OD de la cepa una vez descontada la variación entre placas del mismo medio.', h1: 'El medio cambia la OD de la cepa más de lo que varían las placas de un mismo medio.' },
+          { nombre: 'Placa · cepa × placa (todas las cepas)', h0: 'Las placas dan la misma OD y las cepas conservan su orden en todas ellas.', h1: 'Hay un efecto de la placa o el orden de las cepas cambia entre placas.' }],
+        cepas: [{ nombre: 'Cada medio', h0: 'Todas las cepas producen la misma cantidad de biofilm (OD) en el medio.', h1: 'Al menos una cepa produce más o menos biofilm que otra en ese medio.' }],
       }[obj]} />
       {nivel === 'pocillo' && !esPl && <p className="aviso-sel">Cada pocillo cuenta como una réplica: los pocillos de una misma placa no son independientes y los p pueden salir demasiado chicos. Para conclusiones usá «Placa».</p>}
       {cuerpo}

@@ -414,21 +414,21 @@ html { -webkit-text-size-adjust: 100%; }
 @media (max-width: 820px) { .objetivos { grid-template-columns: 1fr; } }
 
 /* hipótesis (H0 / H1) arriba de las tablas */
+.zonas-p { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 8px 0; }
+.zonas-p > div { display: flex; flex-direction: column; gap: 3px; padding: 8px 12px; border-radius: 10px; font-size: 12.5px; line-height: 1.4; }
+.zonas-p b { font-size: 12.5px; }
+.zonas-p small { color: var(--suave); }
+.zona-no { background: rgba(154, 169, 143, .14); border: 1px solid rgba(120, 140, 110, .35); }
+.zona-no b { color: #5f6f55; }
+.zona-si { background: rgba(217, 115, 31, .09); border: 1px solid rgba(217, 115, 31, .35); }
+.zona-si b { color: #a2391a; }
+@media (max-width: 700px) { .zonas-p { grid-template-columns: 1fr; } }
 .hipotesis { margin: 6px 0 10px; padding: 10px 14px; border-radius: 12px; background: #f6f0fb; border: 1px solid #e3d5f2; font-size: 12.5px; line-height: 1.45; }
 .hipotesis > b { display: block; margin-bottom: 4px; color: #5a3a82; font-size: 12.5px; }
-.hip-fila { display: grid; grid-template-columns: 1fr; gap: 5px; padding: 7px 0; border-top: 1px dashed #dccbee; }
+.hip-fila { display: grid; grid-template-columns: 170px minmax(0, 1fr) minmax(0, 1fr); gap: 4px 14px; padding: 4px 0; border-top: 1px dashed #dccbee; }
 .hip-fila:first-of-type { border-top: none; }
 .hip-nombre { font-weight: 650; color: #6b5440; }
-.hip-pregunta { font-weight: 650; color: #3a2a1e; font-size: 13px; }
-.hip-pregunta em { font-style: normal; color: #6b5440; font-weight: 600; }
-.hip-p { margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: #fff; border: 1px solid #dccbee; font-weight: 600; font-size: 11.5px; color: #5a3a82; }
-.hip-resp { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.hip-op { display: flex; flex-direction: column; gap: 2px; padding: 6px 10px; border-radius: 10px; border: 1.5px dashed #dccbee; background: #fcf9ff; color: #6b5440; }
-.hip-op .hip-cond { font-size: 11.5px; color: #7a6290; }
-.hip-op .hip-cond b { color: #5a3a82; font-size: 13px; }
-.hip-op.on { background: #fff; border: 1.5px solid #8b5fbf; box-shadow: 0 0 0 2px rgba(139,95,191,.18); color: #2b1d3d; }
-.hip-op.off { opacity: .5; }
-@media (max-width: 700px) { .hip-resp { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .hip-fila { grid-template-columns: 1fr; } }
 
 /* secciones del panel lateral de Comparar */
 .seccion-lateral { display: flex; align-items: center; gap: 8px; margin: 22px 0 10px; padding-top: 14px; border-top: 2px solid var(--borde); font-size: 14px; text-transform: none; letter-spacing: 0; color: #5a2e12; }
