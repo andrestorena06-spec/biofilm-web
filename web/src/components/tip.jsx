@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { siglaBajo } from '../siglas.js'
 
 // Información al pasar el mouse, inmediata y en todos lados:
 //  · cualquier elemento con data-tip="texto" (también dentro de gráficos SVG) muestra un globo con ese texto;
@@ -21,8 +22,15 @@ export function GloboInfo() {
       }
       return null
     }
+    // si no hay información propia, se busca una sigla o símbolo bajo el cursor (OD, ODc, DE, CV, ANOVA, gl, …)
+    const conSigla = (e) => {
+      const el = e.target
+      if (!el || el.nodeType !== 1 || el.closest('button, input, select, textarea, .globo-info')) return null
+      const txt = siglaBajo(e.clientX, e.clientY, !!el.closest('.metodo, table, pre'))
+      return txt ? { el, txt, sigla: true } : null
+    }
     const mover = (e) => {
-      const f = buscar(e.target)
+      const f = buscar(e.target) || conSigla(e)
       if (!f) { if (actual) { actual = null; setT(null) } return }
       actual = f.el
       setT({ txt: f.txt, x: e.clientX, y: e.clientY })

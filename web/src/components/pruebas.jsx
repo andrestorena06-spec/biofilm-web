@@ -1,6 +1,7 @@
+import { Fragment } from 'react'
 import { Campo, Select } from './ui.jsx'
 import { Nota } from './tip.jsx'
-import { analizar, levene, parcelasDivididas } from '../decision.js'
+import { anidada, placaCepa, analizar, levene, parcelasDivididas } from '../decision.js'
 import { shapiro, spearman } from '../reproducibilidad.js'
 import { desvio, marcaSig, media } from '../estadistica.js'
 import { paletaMuestras } from '../utils.js'
@@ -14,10 +15,11 @@ const NOMBRE_TEST = { anova: 'ANOVA', welch: 'ANOVA de Welch', kw: 'Kruskal-Wall
 // Objetivos (qué se quiere evaluar)
 // ---------------------------------------------------------------
 // el objetivo por defecto es «entre medios»: la estadística siempre se muestra
-export const objetivoDe = (o) => (['medios', 'placas', 'cepas', 'concordancia'].includes(o.objetivo) ? o.objetivo : 'medios')
+export const objetivoDe = (o) => (['medios', 'placas', 'placastodas', 'cepas', 'concordancia'].includes(o.objetivo) ? o.objetivo : 'medios')
 export const OBJETIVOS = [
   ['medios', 'Entre medios', '¿En qué medio hay más OD? Cada cepa se compara entre los medios.'],
   ['placas', 'Entre placas (réplicas)', '¿Una misma cepa da lo mismo en todas las placas? Reproducibilidad.'],
+  ['placastodas', 'Entre placas (todos los medios)', '¿Cada cepa da lo mismo en todas las placas, sin separar por medio? Incluye el modelo con medio y placa.'],
   ['cepas', 'Entre cepas', 'Dentro de cada medio, ¿qué cepas difieren?'],
   ['concordancia', 'Concordancia entre placas', '¿Las placas ordenan igual las cepas? ICC, correlaciones y CV.'],
 ]
@@ -61,6 +63,7 @@ function Chip({ tipo, children, tip }) {
 // ===============================================================
 export function PanelPruebas({ o, setO, D }) {
   const obj = objetivoDe(o)
+  const esPl = obj === 'placas' || obj === 'placastodas'
   const var_ = o.variable || 'od'
   const nivel = o.nivel || 'placa'
   const comp = o.comp || 'pares'
@@ -82,7 +85,7 @@ export function PanelPruebas({ o, setO, D }) {
                 data-tip={{ od: 'OD tal cual', ln: 'Logaritmo natural de la OD: estabiliza la varianza cuando la DE crece con la media', odc: 'Cada OD dividida por el ODc de su placa: reduce la diferencia entre placas' }[v]}>{t}</button>)}
             </div>
           </Campo>
-          {obj !== 'placas' && (
+          {!esPl && (
             <Campo label={<>Réplica<Nota>«Placa»: cada placa aporta un valor (la OD media de la cepa); es la réplica biológica y la opción correcta. «Pocillos»: cada pocillo cuenta como una réplica; da más datos pero los pocillos de una placa no son independientes (pseudo-replicación) y los p salen demasiado chicos.</Nota></>}>
               <div className="seg">
                 <button className={nivel === 'placa' ? 'on' : ''} onClick={() => setO('nivel', 'placa')}>Placa</button>
@@ -94,7 +97,7 @@ export function PanelPruebas({ o, setO, D }) {
             <Select value={o.prueba || 'auto'} onChange={(v) => setO('prueba', v)}
               opciones={[['auto', 'Automática (Levene y Shapiro)'], ['anova', 'ANOVA clásico'], ['welch', 'ANOVA de Welch'], ['kw', 'Kruskal-Wallis']]} />
           </Campo>
-          {obj !== 'placas' && (
+          {!esPl && (
             <>
               <Campo label={<>Comparaciones de a pares<Nota>Todos los pares: t con ajuste de Holm (Welch o Dunn según la prueba). Contra un control: con ANOVA clásico se usa la prueba de Dunnett (p ajustado exacto); con ANOVA de Welch, t de Welch con Holm; con Kruskal-Wallis, Dunn con Holm. Dunnett supone varianzas iguales, por eso la selección automática no lo usa si Levene las encuentra distintas.</Nota></>}>
                 <div className="seg">
@@ -407,7 +410,8 @@ export function ResultadosPruebas({ s, D, o }) {
   const obj = objetivoDe(o)
   if (obj === 'concordancia') return null
   const variable = o.variable || 'od'
-  const nivel = obj === 'placas' ? 'pocillo' : o.nivel || 'placa'
+  const esPl = obj === 'placas' || obj === 'placastodas'
+  const nivel = esPl ? 'pocillo' : o.nivel || 'placa'
   const forzado = o.prueba || 'auto'
   const comp = o.comp || 'pares'
   const fx = (y, odc) => (variable === 'ln' ? (y > 0 ? Math.log(y) : NaN) : variable === 'odc' ? (odc > 0 ? y / odc : NaN) : y)
@@ -434,7 +438,7 @@ export function ResultadosPruebas({ s, D, o }) {
   const colorMedios = paletaMuestras(medios), colorCepas = paletaMuestras(cepas), colorPlacas = paletaMuestras(placas)
   const ctrlMedio = medios.includes(o.ctrlMedio) ? o.ctrlMedio : medios[0]
   const ctrlCepa = cepas.includes(o.ctrlCepa) ? o.ctrlCepa : cepas[0]
-  const titulo = { medios: '¿Hay más OD en un medio que en otro?', placas: '¿Cada cepa da lo mismo en todas las placas?', cepas: '¿Difieren las cepas dentro de cada medio?' }[obj]
+  const titulo = { medios: '¿Hay más OD en un medio que en otro?', placas: '¿Cada cepa da lo mismo en todas las placas?', placastodas: '¿Cada cepa da lo mismo en todas las placas, sea cual sea el medio?', cepas: '¿Difieren las cepas dentro de cada medio?' }[obj]
   let cuerpo = null
   let info = null
 
@@ -477,6 +481,52 @@ export function ResultadosPruebas({ s, D, o }) {
         {bloques.map((b) => <Bloque key={b.titulo} color={colorMedios[b.medio]} medioTag={b.medio} titulo={`Medio «${b.titulo}»`} sub={`entre cepas · ${unidad}`} sujeto={`la producción de biofilm en el medio «${b.titulo}»`} factor="las cepas" r={b.r} colorDe={(n) => colorCepas[n]} ctrl={comp === 'control' ? ctrlCepa : null} />)}
       </>
     )
+  } else if (obj === 'placastodas') {
+    // para cada cepa, todas las placas juntas (sin separar por medio) y, aparte, el modelo con medio y placa anidada
+    const pocillos = obsPozo.filter((x) => finito(x.y))
+    const bloques = []
+    cepas.forEach((c) => {
+      const pls = [...new Set(obs.filter((x) => x.cepa === c).map((x) => x.placa))]
+      if (pls.length < 2) return
+      const medioDe = (p) => obs.find((x) => x.placa === p)?.medio
+      const grupos = pls.map((p) => ({ nombre: `${p} · ${medioDe(p)}`, v: vals(c, null, p) }))
+      const r = analizar(grupos, forzado, null)
+      const mm = grupos.map((g) => media(g.v)), M = media(mm), sd = desvio(mm)
+      const cv = finito(sd) && M !== 0 ? (100 * sd) / Math.abs(M) : NaN
+      const medsC = [...new Set(pls.map(medioDe))]
+      bloques.push({ titulo: c, r, grupos, extra: [pls.length, medsC.join(' · '), grupos.map((g) => f(media(g.v), 3)).join(' · '), f(cv, 1)], an: anidada(pocillos.filter((x) => x.cepa === c)) })
+    })
+    const pc = placaCepa(pocillos)
+    info = infoDe(bloques, pc ? pc.filas.filter((x) => finito(x.p)).map((x) => ({ nombre: `Global · ${x.nombre}`, p: x.p })) : [], 'cepa')
+    const filasSp = (sp) => sp.filas.map((x) => [x.nombre, f(x.ss, 5), x.df, f(x.ms, 5), f(x.F, 3), pTxt(x.p), x.error, finito(x.p) ? (x.p < 0.05 ? `Significativo (${marcaSig(x.p)})` : 'Sin diferencia clara') : ''])
+    const colsSp = ['Fuente', 'Suma de cuadrados', 'gl', 'Cuadrado medio', 'F', 'p', 'Se prueba contra', 'Resultado']
+    cuerpo = !bloques.length ? <p className="ayuda">Hacen falta al menos 2 placas con la misma cepa.</p> : (
+      <>
+        <p className="aviso-sel">Cada placa tiene un solo medio: si dos placas de distinto medio difieren, no se puede separar el efecto de la placa (día, cultivo) del efecto del medio. Para una reproducibilidad limpia usá «Entre placas (réplicas)», que compara placas del mismo medio; el modelo de medio y placa de cada cepa separa ambos efectos.</p>
+        {pc && (
+          <div className="bloque-res global-sp">
+            <h4>Todas las cepas juntas: placa, cepa y cepa × placa <Nota>Se ajustan modelos anidados sobre los pocillos. La placa se prueba contra los pocillos (¿difieren las placas?); la cepa se prueba contra cepa × placa (las placas son una muestra de las posibles); cepa × placa se prueba contra los pocillos y responde si las cepas conservan su orden en todas las placas.</Nota></h4>
+            <Tabla cols={colsSp} filas={filasSp(pc)} />
+            <p className="conclusion"><b>Lectura:</b> {pc.filas.filter((x) => finito(x.p) && x.p < 0.05).length
+              ? pc.filas.filter((x) => finito(x.p) && x.p < 0.05).map((x) => ({ Placa: 'las placas difieren entre sí', Cepa: 'las cepas difieren entre sí', 'Cepa × placa': 'el orden o la magnitud de las cepas cambia entre placas' }[x.nombre])).join('; ') + '.'
+              : 'Ningún efecto es significativo (p ≥ 0,05).'}</p>
+          </div>
+        )}
+        <h4 className="sub-res">Cada cepa entre todas las placas</h4>
+        <Resumen titulo="Cepa" bloques={bloques} etiquetas={['Placas', 'Medios', 'Media de cada placa', 'CV entre placas (%)']} />
+        {bloques.map((b) => (
+          <Fragment key={b.titulo}>
+            <Bloque titulo={b.titulo} sub={`entre placas, todos los medios · ${unidad}`} sujeto={`la producción de biofilm de «${b.titulo}»`} factor="las placas (sin separar por medio)" r={b.r} colorDe={(n) => colorPlacas[n.split(' · ')[0]]} ctrl={null} />
+            {b.an && (
+              <div className="bloque-res">
+                <h4>{b.titulo}: medio y placa dentro del medio <Nota>Modelo anidado con los pocillos. El medio se prueba contra la variación entre placas del mismo medio (F = CM medio / CM placas dentro de medio); las placas dentro del medio se prueban contra los pocillos. Así el efecto del medio no se confunde con el de la placa.</Nota></h4>
+                <Tabla cols={colsSp} filas={filasSp(b.an)} />
+              </div>
+            )}
+          </Fragment>
+        ))}
+      </>
+    )
   } else {
     // entre placas: para cada cepa y medio, las placas son los grupos y los pocillos las réplicas
     const bloques = []
@@ -505,9 +555,9 @@ export function ResultadosPruebas({ s, D, o }) {
         <h2>{titulo}</h2>
         <div className="fila-chips">
           <Chip tipo="neutro">{unidad}</Chip>
-          <Chip tipo="neutro">{obj === 'placas' ? 'pocillos por placa' : nivel === 'placa' ? 'un valor por placa' : 'pocillos'}</Chip>
+          <Chip tipo="neutro">{esPl ? 'pocillos por placa' : nivel === 'placa' ? 'un valor por placa' : 'pocillos'}</Chip>
           <Chip tipo="neutro">prueba {forzado === 'auto' ? 'automática' : NOMBRE_TEST[forzado]}</Chip>
-          {obj !== 'placas' && <Chip tipo="neutro">{comp === 'control' ? 'contra un control' : 'todos los pares'}</Chip>}
+          {!esPl && <Chip tipo="neutro">{comp === 'control' ? 'contra un control' : 'todos los pares'}</Chip>}
         </div>
       </div>
       {info && <Infografia info={info} titulo={titulo} />}
@@ -518,9 +568,12 @@ export function ResultadosPruebas({ s, D, o }) {
           { nombre: 'Cepa', h0: 'Todas las cepas producen la misma cantidad de biofilm (OD).', h1: 'Al menos una cepa produce más o menos que otra.' },
           { nombre: 'Cepa × medio', h0: 'El efecto del medio es el mismo para todas las cepas (sin interacción).', h1: 'El efecto del medio depende de la cepa: algunas crecen mejor en un medio y otras en otro.' }],
         placas: [{ nombre: 'Cada cepa y medio', h0: 'La OD media de la cepa es la misma en todas las placas: el resultado se reproduce entre réplicas.', h1: 'La OD media cambia entre placas (efecto placa): el resultado no se reproduce igual en cada placa.' }],
+        placastodas: [{ nombre: 'Cada cepa (todas las placas)', h0: 'La OD media de la cepa es la misma en todas las placas, sin importar el medio.', h1: 'La OD media cambia entre placas (por la placa, por el medio o por ambos).' },
+          { nombre: 'Medio frente a placa (cada cepa)', h0: 'El medio no cambia la OD de la cepa una vez descontada la variación entre placas del mismo medio.', h1: 'El medio cambia la OD de la cepa más de lo que varían las placas de un mismo medio.' },
+          { nombre: 'Placa · cepa × placa (todas las cepas)', h0: 'Las placas dan la misma OD y las cepas conservan su orden en todas ellas.', h1: 'Hay un efecto de la placa o el orden de las cepas cambia entre placas.' }],
         cepas: [{ nombre: 'Cada medio', h0: 'Todas las cepas producen la misma cantidad de biofilm (OD) en el medio.', h1: 'Al menos una cepa produce más o menos biofilm que otra en ese medio.' }],
       }[obj]} />
-      {nivel === 'pocillo' && obj !== 'placas' && <p className="aviso-sel">Cada pocillo cuenta como una réplica: los pocillos de una misma placa no son independientes y los p pueden salir demasiado chicos. Para conclusiones usá «Placa».</p>}
+      {nivel === 'pocillo' && !esPl && <p className="aviso-sel">Cada pocillo cuenta como una réplica: los pocillos de una misma placa no son independientes y los p pueden salir demasiado chicos. Para conclusiones usá «Placa».</p>}
       {cuerpo}
     </section>
   )

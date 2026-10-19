@@ -248,3 +248,75 @@ function dunnettCalc(d, lam, df) {
   }
   return Math.min(1, Math.max(0, 1 - total))
 }
+
+// ============================================================
+// Placas con distinto medio (variante cruzada)
+// ============================================================
+const colDum = (lista, key) => (x) => lista.slice(1).map((v) => (x[key] === v ? 1 : 0))
+const filaF = (nombre, ss, df, msError, dfError, errorTxt) => {
+  const ms = df > 0 ? ss / df : NaN
+  const F = df > 0 && msError > 0 ? ms / msError : NaN
+  return { nombre, ss, df, ms, F, p: finito(F) && dfError > 0 ? 1 - fCdf(F, df, dfError) : NaN, error: errorTxt }
+}
+
+// Una cepa, pocillos de todas las placas: medio y placa anidada en el medio (cada placa lleva un solo medio).
+//   medio             → se prueba contra la variación entre placas del mismo medio
+//   placa (en medio)  → se prueba contra la variación entre pocillos de la misma placa
+export function anidada(obs) {
+  const d = obs.filter((x) => finito(x.y))
+  const placas = [...new Set(d.map((x) => x.placa))], medios = [...new Set(d.map((x) => x.medio))]
+  if (placas.length < 3 || medios.length < 2) return null
+  const y = d.map((x) => x.y)
+  const dP = colDum(placas, 'placa'), dM = colDum(medios, 'medio')
+  const M = (fs) => d.map((x) => [1, ...fs.flatMap((f) => f(x))])
+  const m0 = rssRango(M([]), y), mM = rssRango(M([dM]), y), mP = rssRango(M([dP]), y)
+  const dfRes = d.length - mP.rango, dfPl = mP.rango - mM.rango
+  if (dfRes < 1 || dfPl < 1) return null
+  const msRes = mP.rss / dfRes, msPl = (mM.rss - mP.rss) / dfPl
+  return {
+    n: d.length, placas: placas.length, medios: medios.length,
+    modelos: [
+      { nombre: 'OD ~ 1 (solo la media general)', rss: m0.rss, rango: m0.rango },
+      { nombre: 'OD ~ medio', rss: mM.rss, rango: mM.rango },
+      { nombre: 'OD ~ placa (cada placa dentro de su medio)', rss: mP.rss, rango: mP.rango },
+    ],
+    filas: [
+      filaF('Medio', m0.rss - mM.rss, mM.rango - m0.rango, msPl, dfPl, 'placas dentro de cada medio'),
+      filaF('Placas dentro de cada medio', mM.rss - mP.rss, dfPl, msRes, dfRes, 'pocillos dentro de la placa'),
+      { nombre: 'Residual (pocillos dentro de la placa)', ss: mP.rss, df: dfRes, ms: msRes, F: NaN, p: NaN, error: '' },
+    ],
+  }
+}
+
+// Todas las cepas, pocillos de todas las placas: ¿difieren las placas?, ¿difieren las cepas?, ¿el orden de las cepas cambia entre placas?
+//   placa → contra el residual (pocillos); cepa → contra cepa × placa (las placas son una muestra de las posibles); cepa × placa → contra el residual
+export function placaCepa(obs) {
+  const d = obs.filter((x) => finito(x.y))
+  const placas = [...new Set(d.map((x) => x.placa))], cepas = [...new Set(d.map((x) => x.cepa))]
+  if (placas.length < 2 || cepas.length < 2) return null
+  const y = d.map((x) => x.y)
+  const dP = colDum(placas, 'placa'), dC = colDum(cepas, 'cepa')
+  const dPC = (x) => dP(x).flatMap((u) => dC(x).map((w) => u * w))
+  const M = (fs) => d.map((x) => [1, ...fs.flatMap((f) => f(x))])
+  const m0 = rssRango(M([]), y), mP = rssRango(M([dP]), y), mPC = rssRango(M([dP, dC]), y), mF = rssRango(M([dP, dC, dPC]), y)
+  const dfRes = d.length - mF.rango
+  if (dfRes < 1) return null
+  const msRes = mF.rss / dfRes
+  const dfInt = mF.rango - mPC.rango, ssInt = mPC.rss - mF.rss
+  const msInt = dfInt > 0 ? ssInt / dfInt : NaN
+  return {
+    n: d.length, placas: placas.length, cepas: cepas.length,
+    modelos: [
+      { nombre: 'OD ~ 1 (solo la media general)', rss: m0.rss, rango: m0.rango },
+      { nombre: 'OD ~ placa', rss: mP.rss, rango: mP.rango },
+      { nombre: 'OD ~ placa + cepa', rss: mPC.rss, rango: mPC.rango },
+      { nombre: 'OD ~ placa + cepa + cepa × placa', rss: mF.rss, rango: mF.rango },
+    ],
+    filas: [
+      filaF('Placa', m0.rss - mP.rss, mP.rango - m0.rango, msRes, dfRes, 'residual (pocillos)'),
+      filaF('Cepa', mP.rss - mPC.rss, mPC.rango - mP.rango, msInt, dfInt, 'cepa × placa'),
+      filaF('Cepa × placa', ssInt, dfInt, msRes, dfRes, 'residual (pocillos)'),
+      { nombre: 'Residual (pocillos)', ss: mF.rss, df: dfRes, ms: msRes, F: NaN, p: NaN, error: '' },
+    ],
+  }
+}

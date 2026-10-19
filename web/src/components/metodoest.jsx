@@ -3,7 +3,7 @@ import { Campo, Select } from './ui.jsx'
 import { Nota } from './tip.jsx'
 import { objetivoDe } from './pruebas.jsx'
 import { armarComparacion } from '../comparacion.js'
-import { analizar, levene, parcelasDivididas, razonSD } from '../decision.js'
+import { analizar, anidada, levene, parcelasDivididas, placaCepa, razonSD } from '../decision.js'
 import { anovaTabla, desvio, holm, marcaSig, media, varianza } from '../estadistica.js'
 import { chi2Sup, qnorm, rangos, shapiro } from '../reproducibilidad.js'
 
@@ -172,7 +172,8 @@ function prepararBloques(s, D, o) {
   const obj0 = objetivoDe(o)
   const obj = obj0 === 'concordancia' ? 'placas' : obj0
   const variable = o.variable || 'od'
-  const nivel = obj === 'placas' ? 'pocillo' : o.nivel || 'placa'
+  const esPl = obj === 'placas' || obj === 'placastodas'
+  const nivel = esPl ? 'pocillo' : o.nivel || 'placa'
   const fx = (y, odc) => (variable === 'ln' ? (y > 0 ? Math.log(y) : NaN) : variable === 'odc' ? (odc > 0 ? y / odc : NaN) : y)
   const obsPlaca = [], obsPozo = []
   D.placasSel.forEach((p) => {
@@ -191,11 +192,15 @@ function prepararBloques(s, D, o) {
   let bloques = []
   if (obj === 'medios') bloques = cepas.map((c) => ({ titulo: `${c}: entre medios`, grupos: medios.map((m) => ({ nombre: m, v: vals(c, m, null) })), ctrl: comp === 'control' ? ctrlMedio : null }))
   else if (obj === 'cepas') bloques = medios.map((m) => ({ titulo: `Medio ${m}: entre cepas`, grupos: cepas.map((c) => ({ nombre: c, v: vals(c, m, null) })), ctrl: comp === 'control' ? ctrlCepa : null }))
+  else if (obj === 'placastodas') cepas.forEach((c) => {
+    const pls = [...new Set(obs.filter((x) => x.cepa === c).map((x) => x.placa))]
+    if (pls.length >= 2) bloques.push({ titulo: `${c}: entre todas las placas`, grupos: pls.map((p) => ({ nombre: `${p} · ${obs.find((x) => x.placa === p).medio}`, v: vals(c, null, p) })), ctrl: null, cepa: c })
+  })
   else medios.forEach((m) => cepas.forEach((c) => {
     const pls = [...new Set(obs.filter((x) => x.cepa === c && x.medio === m).map((x) => x.placa))]
     if (pls.length >= 2) bloques.push({ titulo: `${c} · ${m}: entre placas`, grupos: pls.map((p) => ({ nombre: p, v: vals(c, m, p) })), ctrl: null })
   }))
-  return { obj, variable, nivel, forzado: o.prueba || 'auto', bloques, obsPlaca, unidad: variable === 'ln' ? 'ln(OD)' : variable === 'odc' ? 'OD ÷ ODc' : 'OD' }
+  return { obj, variable, nivel, forzado: o.prueba || 'auto', bloques, obsPlaca, obsPozo, unidad: variable === 'ln' ? 'ln(OD)' : variable === 'odc' ? 'OD ÷ ODc' : 'OD' }
 }
 
 // ---------------------------------------------------------------
@@ -284,7 +289,7 @@ function Ejemplo({ s }) {
         <Campo label={`Análisis a desarrollar (${P.bloques.length})`}>
           <Select value={b.titulo} onChange={setSel} opciones={P.bloques.map((x) => [x.titulo, x.titulo])} />
         </Campo>
-        <p className="ayuda" style={{ margin: 0, maxWidth: 520 }}>Variable: <b>{P.unidad}</b> · réplica: <b>{P.obj === 'placas' ? 'pocillo (los grupos son las placas)' : P.nivel === 'placa' ? 'placa (un valor por placa)' : 'pocillo'}</b> · prueba: <b>{P.forzado === 'auto' ? 'automática' : NOMBRE[P.forzado]}</b>. Cambian con lo que elijas en la pestaña «Estadística».</p>
+        <p className="ayuda" style={{ margin: 0, maxWidth: 520 }}>Variable: <b>{P.unidad}</b> · réplica: <b>{P.obj === 'placas' || P.obj === 'placastodas' ? 'pocillo (los grupos son las placas)' : P.nivel === 'placa' ? 'placa (un valor por placa)' : 'pocillo'}</b> · prueba: <b>{P.forzado === 'auto' ? 'automática' : NOMBRE[P.forzado]}</b>. Cambian con lo que elijas en la pestaña «Estadística».</p>
       </div>
 
       <H4>A. Los datos de cada grupo</H4>
@@ -347,6 +352,31 @@ function Ejemplo({ s }) {
       ) : <p className="ayuda">No hay comparaciones de a pares.</p>}
       {r.letras && <Tabla cols={['Grupo', 'Media', 'Letra de significancia']} filas={[...g].sort((x, y) => media(y.v) - media(x.v)).map((x) => [x.nombre, f(media(x.v)), r.letras[x.nombre]])} />}
 
+      {P.obj === 'placastodas' && (() => {
+        const filasT = (sp) => sp.filas.map((x) => [x.nombre, f(x.ss, 6), x.df, f(x.ms, 6), f(x.F, 3), pTxt(x.p), x.error])
+        const colsT = ['Fuente', 'Suma de cuadrados', 'gl', 'Cuadrado medio', 'F', 'p', 'Se prueba contra']
+        const an = anidada(P.obsPozo.filter((x) => x.cepa === b.cepa && finito(x.y)))
+        const pc = placaCepa(P.obsPozo.filter((x) => finito(x.y)))
+        return (
+          <>
+            {an && (
+              <>
+                <H4>G. {b.cepa}: medio y placa dentro del medio (variante cruzada)</H4>
+                <p className="ayuda">Cada placa lleva un solo medio, de modo que la placa está anidada en el medio. El medio se prueba contra la variación entre placas del mismo medio (F = CM medio / CM placas dentro de medio, con {an.filas[0].df} y {an.filas[1].df} gl); las placas dentro del medio, contra los pocillos.</p>
+                <Tabla cols={['Modelo', 'Rango (parámetros)', 'RSS (suma de cuadrados residual)']} filas={an.modelos.map((x) => [x.nombre, x.rango, f(x.rss, 6)])} />
+                <Tabla cols={colsT} filas={filasT(an)} />
+              </>
+            )}
+            {pc && (
+              <>
+                <H4>H. Todas las cepas: placa, cepa y cepa × placa</H4>
+                <Tabla cols={['Modelo', 'Rango (parámetros)', 'RSS (suma de cuadrados residual)']} filas={pc.modelos.map((x) => [x.nombre, x.rango, f(x.rss, 6)])} />
+                <Tabla cols={colsT} filas={filasT(pc)} />
+              </>
+            )}
+          </>
+        )
+      })()}
       {P.obj === 'medios' && (() => {
         const sp = parcelasDivididas(P.obsPlaca)
         if (!sp) return null
@@ -381,7 +411,8 @@ export function MetodoEstadistico({ s }) {
         <ul>
           <li><b>Entre medios:</b> cada placa se hace en un solo medio (BHI o TSBye), así que el medio varía <i>entre placas</i>. Para una cepa se compara su OD entre medios con un valor por placa.</li>
           <li><b>Entre cepas:</b> todas las cepas están en cada placa, así que se comparan <i>dentro de la placa</i> (más precisión, porque el efecto de la placa se cancela).</li>
-          <li><b>Entre placas:</b> para una misma cepa y medio, los grupos son las placas y los datos son sus pocillos: pregunta si el resultado se reproduce.</li>
+          <li><b>Entre placas (réplicas):</b> para una misma cepa y medio, los grupos son las placas y los datos son sus pocillos: pregunta si el resultado se reproduce.</li>
+          <li><b>Entre placas (todos los medios):</b> para una misma cepa, los grupos son todas las placas sin separar por medio. Como la placa y el medio van juntos, esa diferencia mezcla ambos efectos; por eso se acompaña con el modelo de medio y placa anidada (sección 9) y con el modelo placa, cepa y cepa × placa.</li>
         </ul>
         <p>Usar cada pocillo como réplica para comparar medios sería <b>pseudo-replicación</b>: los pocillos de una misma placa se parecen entre sí más que a los de otra, y los p saldrían demasiado chicos. Por eso la opción por defecto es «Placa».</p>
       </Sec>
@@ -482,6 +513,17 @@ Cepa:         F = CM(cepa) / CM(residual)                           ← variaci�
 Cepa × medio: F = CM(cepa × medio) / CM(residual)`}</Formula>
         <p>Las sumas de cuadrados se obtienen ajustando modelos anidados por mínimos cuadrados (QR de Householder) y restando sus RSS: medio = RSS(~1) − RSS(~medio); placas dentro de medio = RSS(~medio) − RSS(~placa); cepa = RSS(~placa) − RSS(~placa + cepa); interacción = RSS(~placa + cepa) − RSS(completo). Con datos balanceados equivale al modelo mixto con la placa como efecto aleatorio. Usa un valor por cepa y placa (réplica biológica) y exige al menos 3 placas, 2 medios y 2 cepas.</p>
         <p>Por qué importa: si el medio se probara contra el error de los pocillos, la significancia del medio estaría inflada, porque las placas de un medio difieren entre sí más de lo que difieren los pocillos de una placa.</p>
+      </Sec>
+
+      <Sec id="e9b" n="9b" t="Placas de distinto medio: modelo anidado y modelo placa × cepa">
+        <p>Para una cepa con pocillos de placas en distintos medios se ajusta una jerarquía: medio → placa dentro del medio → pocillo.</p>
+        <Formula>{`Medio:                F = CM(medio) / CM(placas dentro de medio)     gl: (m − 1; P − m)
+Placas en el medio:   F = CM(placas dentro de medio) / CM(residual)   gl: (P − m; N − P)
+m = medios, P = placas, N = pocillos.   SC medio = RSS(~1) − RSS(~medio);  SC placas = RSS(~medio) − RSS(~placa)`}</Formula>
+        <p>Con todas las cepas se ajusta además <b>placa + cepa + cepa × placa</b> sobre los pocillos: la placa se prueba contra los pocillos; la cepa, contra cepa × placa (porque las placas son una muestra de las posibles); y cepa × placa, contra los pocillos. Un cepa × placa significativo indica que las cepas no conservan su orden o su magnitud entre placas.</p>
+        <Formula>{`Cepa:         F = CM(cepa) / CM(cepa × placa)
+Cepa × placa: F = CM(cepa × placa) / CM(residual)
+SC cepa × placa = RSS(~placa + cepa) − RSS(~placa + cepa + cepa × placa)`}</Formula>
       </Sec>
 
       <Sec id="e10" n="10" t="Entre placas y concordancia (reproducibilidad)">

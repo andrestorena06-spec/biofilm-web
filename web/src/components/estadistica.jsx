@@ -36,7 +36,7 @@ export function EstadisticaTab({ s }) {
         </div>
       </Panel>
       <div className="principal">
-        <h1>Estadística <span className="sub">· {({ medios: 'entre medios', placas: 'entre placas', cepas: 'entre cepas' })[objetivoDe(o)]}</span></h1>
+        <h1>Estadística <span className="sub">· {({ medios: 'entre medios', placas: 'entre placas', placastodas: 'entre placas (todos los medios)', cepas: 'entre cepas' })[objetivoDe(o)]}</span></h1>
         <ResultadosPruebas s={s} D={D} o={o} />
       </div>
     </div>
