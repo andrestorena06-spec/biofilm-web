@@ -111,12 +111,15 @@ export function analizar(grupos, forzado = 'auto', ctrl = null) {
   const N = vs.reduce((a, v) => a + v.length, 0)
   if (g.length < 2 || N - g.length < 1) return { ok: false, grupos: g, motivo: g.length < 2 ? 'Hace falta más de un grupo con datos.' : 'Hacen falta más datos que grupos (al menos un grupo con 2 o más datos).' }
   const resid = vs.flatMap((v) => { const m = media(v); return v.map((x) => x - m) })
+  // con menos de 8 datos Shapiro-Wilk casi no tiene poder: no se usa para decidir
   const sw = resid.length >= 3 && resid.some((x) => x !== 0) ? shapiro(resid) : null
+  const swUtil = !!sw && resid.length >= 8
+  const nMin = Math.min(...vs.map((v) => v.length))
   const lev = levene(vs)
   let tipo = forzado, razon = 'Elegida por vos.'
   const puedeWelch = vs.every((v) => v.length >= 2) && vs.every((v) => varianza(v) > 0)
   if (forzado === 'auto') {
-    if (sw && sw.p < 0.05) { tipo = 'kw'; razon = `Los residuos no son normales (Shapiro-Wilk p = ${sw.p.toFixed(3)}): Kruskal-Wallis, que no asume normalidad.` }
+    if (swUtil && sw.p < 0.05 && nMin >= 3) { tipo = 'kw'; razon = `Los residuos no son normales (Shapiro-Wilk p = ${sw.p.toFixed(3)}, con ${resid.length} datos): Kruskal-Wallis, que compara rangos y no asume normalidad.` }
     else if (lev && lev.p < 0.05) { tipo = 'welch'; razon = `Varianzas distintas (Levene p = ${lev.p.toFixed(3)}): ANOVA de Welch, que no asume varianzas iguales.` }
     else if (lev) { tipo = 'anova'; razon = `Varianzas parecidas (Levene p = ${lev.p.toFixed(3)}) y residuos sin evidencia de no normalidad: ANOVA clásico.` }
     else { tipo = 'welch'; razon = 'Con tan pocas réplicas (menos de 3 por grupo) no se pueden comparar las varianzas con Levene: se usa el ANOVA de Welch, que no asume varianzas iguales. Tomalo con cautela.' }

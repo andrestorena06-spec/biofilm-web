@@ -59,7 +59,7 @@ export function PanelPruebas({ o, setO, D }) {
               </div>
             </Campo>
           )}
-          <Campo label={<>Prueba<Nota>Automática: si los residuos no son normales (Shapiro-Wilk) usa Kruskal-Wallis; si las varianzas son distintas (Levene) usa el ANOVA de Welch; si no, el ANOVA clásico. Podés forzar una.</Nota></>}>
+          <Campo label={<>Prueba<Nota>Automática: si hay 8 o más datos y los residuos no son normales (Shapiro-Wilk), con al menos 3 por grupo, usa Kruskal-Wallis (compara rangos; la variable puede ser continua como la OD); si las varianzas son distintas (Levene) usa el ANOVA de Welch; si no, el ANOVA clásico. Podés forzar una.</Nota></>}>
             <Select value={o.prueba || 'auto'} onChange={(v) => setO('prueba', v)}
               opciones={[['auto', 'Automática (Levene y Shapiro)'], ['anova', 'ANOVA clásico'], ['welch', 'ANOVA de Welch'], ['kw', 'Kruskal-Wallis']]} />
           </Campo>
