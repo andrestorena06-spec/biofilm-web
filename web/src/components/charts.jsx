@@ -1,14 +1,14 @@
 import { forwardRef, useEffect, useRef, useState } from 'react'
 import { dBarra } from '../calculos.js'
 import { calcularLayout, estiloTexto } from '../layout.js'
-import { CLASES, COLOR_CLASE, FUENTE, fmt, fmtTick, medir, tCuantil, ticksBonitos } from '../utils.js'
+import { CLASES, COLOR_CLASE, FUENTE, ejeConRango, escalaY, fmt, fmtTick, medir, tCuantil, ticksBonitos } from '../utils.js'
 
 export function useAncho() {
   const ref = useRef(null)
   const [w, setW] = useState(900)
   useEffect(() => {
     if (!ref.current) return
-    const ro = new ResizeObserver((es) => setW(Math.max(420, Math.floor(es[0].contentRect.width))))
+    const ro = new ResizeObserver((es) => setW(Math.min(1000, Math.max(420, Math.floor(es[0].contentRect.width)))))
     ro.observe(ref.current)
     return () => ro.disconnect()
   }, [])
@@ -99,8 +99,7 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
   if (o.medias) tope *= 1 + (est.valores.size * (apilar ? 2.8 : 1.6)) / 340
   if (lineas) tope = Math.max(tope * 1.05, odc * 4.9)
   if (!(tope > 0)) tope = 1
-  const eY = ticksBonitos(0, tope, 6)
-  const yMax = eY.max
+  const eY = ejeConRango(ticksBonitos(0, tope, 6), est)
   const yLabels = eY.ticks.map((t) => fmtTick(t, eY.paso))
 
   const clasesTxt = lineas
@@ -118,11 +117,11 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
   const L = calcularLayout({
     W, etiquetas: labels, ang: o.rotar, est, yLabels,
     derecha: lineas ? wClases + 28 : 16,
-    titulo: !!est.titulo.texto, tituloX: !!est.leyendaX.texto, altoPlot: 340 + est.valores.size * 2,
+    titulo: !!est.titulo.texto, tituloX: !!est.leyendaX.texto, altoPlot: 280 + est.valores.size * 2,
     extraAbajo: (leyenda || hayBlanco ? 30 : 0) + (leyendaPuntos?.length ? 26 : 0) + 22, fijoH: tam ? tam.h : 0,
     anchoTituloY: medir(est.leyendaY.texto || eje, est.leyendaY.size, est.leyendaY.bold, est.leyendaY.italic),
   })
-  const y = (v) => L.top + L.plotH - (v / yMax) * L.plotH
+  const y = escalaY(L, eY)
   const cx = (i) => L.left + L.band * (i + 0.5)
   const bw = Math.min(L.band * 0.62, 140)
   const COLOR_BLANCO = '#cfc8bc'
@@ -268,15 +267,15 @@ export const ExcluirChart = forwardRef(function ExcluirChart({ estado, orden, o,
   let hi = Math.max(...valores, 0.1)
   if (o.medias) hi += (hi - lo) * (est.valores.size * (o.errores ? 2.8 : 1.8)) / 340
   hi += (hi - lo) * 0.04
-  const eY = ticksBonitos(lo, hi, 6)
+  const eY = ejeConRango(ticksBonitos(lo, hi, 6), est)
   const yLabels = eY.ticks.map((t) => fmtTick(t, eY.paso))
   const L = calcularLayout({
     W, etiquetas: labels, ang: o.rotar, est, yLabels,
     titulo: !!est.titulo.texto, tituloX: !!est.leyendaX.texto,
-    altoPlot: 340 + est.valores.size * 2, extraAbajo: 40, fijoH: tam ? tam.h : 0,
+    altoPlot: 280 + est.valores.size * 2, extraAbajo: 40, fijoH: tam ? tam.h : 0,
     anchoTituloY: medir(est.leyendaY.texto || eje, est.leyendaY.size, est.leyendaY.bold, est.leyendaY.italic),
   })
-  const y = (v) => L.top + L.plotH - ((v - eY.min) / (eY.max - eY.min)) * L.plotH
+  const y = escalaY(L, eY)
   const cx = (i) => L.left + L.band * (i + 0.5)
 
   const px = (e) => {
@@ -364,7 +363,7 @@ export const GroupedBarChart = forwardRef(function GroupedBarChart({ grupos, pla
   let tope = Math.max(0, ...todas.map((b) => Math.max(b.media + (Number.isFinite(b.err) ? b.err : 0), ...(o.puntos ? b.pts : []))))
   if (o.valores) tope *= 1 + ((girado ? wValor + 12 : est.valores.size * (o.errores ? 2.7 : 1.5) + 6)) / 340
   if (!(tope > 0)) tope = 1
-  const eY = ticksBonitos(0, tope, 6)
+  const eY = ejeConRango(ticksBonitos(0, tope, 6), est)
   const yLabels = eY.ticks.map((t) => fmtTick(t, eY.paso))
 
   // leyenda de placas (color), en varias filas si no cabe
@@ -379,11 +378,11 @@ export const GroupedBarChart = forwardRef(function GroupedBarChart({ grupos, pla
 
   const L = calcularLayout({
     W, etiquetas: labels, ang: o.rotar, est, yLabels, derecha: 16,
-    titulo: !!est.titulo.texto, tituloX: !!est.leyendaX.texto, altoPlot: 340 + est.valores.size * 2,
+    titulo: !!est.titulo.texto, tituloX: !!est.leyendaX.texto, altoPlot: 280 + est.valores.size * 2,
     extraAbajo: filasLey.length * 22 + 28, fijoH: tam ? tam.h : 0,
     anchoTituloY: medir(est.leyendaY.texto || eje, est.leyendaY.size, est.leyendaY.bold, est.leyendaY.italic),
   })
-  const y = (v) => L.top + L.plotH - (v / eY.max) * L.plotH
+  const y = escalaY(L, eY)
   const cx = (i) => L.left + L.band * (i + 0.5)
   const bw = Math.max(Math.min((L.band * 0.86) / nmax, 60), 4)
   const yLey = L.top + L.plotH + L.altoEtiquetas + L.altoLeyX + 34

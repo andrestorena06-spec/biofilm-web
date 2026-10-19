@@ -213,5 +213,23 @@ export function normalizarEstilo(e = {}) {
   if (e.ejes && !e.leyendaY) { out.leyendaY = { ...base.leyendaY, ...e.ejes }; out.leyendaX = { ...base.leyendaX, ...e.ejes } }
   if (e.etiquetas && !e.nombresX) { out.nombresX = { ...base.nombresX, ...e.etiquetas }; out.numerosY = { ...base.numerosY, ...e.etiquetas } }
   for (const k of Object.keys(base)) if (e[k] && typeof e[k] === 'object' && 'size' in e[k]) out[k] = { ...base[k], ...e[k] }
+  if (e.rango && (Number.isFinite(e.rango.min) || Number.isFinite(e.rango.max))) out.rango = { min: Number.isFinite(e.rango.min) ? e.rango.min : null, max: Number.isFinite(e.rango.max) ? e.rango.max : null }
   return out
+}
+
+// Rango del eje Y elegido a mano (clic derecho › Rango del eje Y). Los extremos vacíos quedan automáticos.
+export function ejeConRango(eY, est) {
+  const r = est && est.rango
+  if (!r) return eY
+  const min = Number.isFinite(r.min) ? r.min : eY.min
+  const max = Number.isFinite(r.max) ? r.max : eY.max
+  if (!(max > min)) return eY
+  const t = ticksBonitos(min, max, 6)
+  const ticks = t.ticks.filter((v) => v >= min - t.paso * 1e-6 && v <= max + t.paso * 1e-6)
+  return { ticks: ticks.length ? ticks : [min, max], min, max, paso: t.paso || (max - min) }
+}
+// Escala vertical; lo que queda fuera del rango se apoya en el borde del gráfico
+export const escalaY = (L, eY) => (v) => {
+  const f = (v - eY.min) / (eY.max - eY.min)
+  return L.top + L.plotH - Math.min(Math.max(f, 0), 1) * L.plotH
 }

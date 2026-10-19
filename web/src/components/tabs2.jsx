@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { BarChart, ExcluirChart } from './charts.jsx'
-import { Campo, Check, EstiloDialog, MenuContextual, Num, Panel, Select, useMenuContextual } from './ui.jsx'
+import { Campo, Check, EstiloDialog, MenuContextual, Num, Panel, RangoDialog, Select, useMenuContextual } from './ui.jsx'
 import { ExportDialog } from './exportar.jsx'
 import { dCV, dClase, dDE, dIC, dMedia, dRazon, dSEM } from '../calculos.js'
 import { Nota } from './tip.jsx'
@@ -26,6 +26,7 @@ export function ExcluirTab({ s }) {
   const svg = useRef()
   const [menu, abrirMenu, cerrarMenu] = useMenuContextual()
   const [dlg, setDlg] = useState(false)
+  const [rng, setRng] = useState(false)
   const [exp, setExp] = useState(false)
   const o = s.opts.excluir
   const setO = (k, v) => s.setOpts({ ...s.opts, excluir: { ...o, [k]: v } })
@@ -76,15 +77,17 @@ export function ExcluirTab({ s }) {
           onClickPunto={s.alternarPocillo} onContext={abrirMenu} />
         <div className="fila-ctrl">
           <button className="primario" onClick={() => setExp(true)}>Descargar imagen…</button>
-          <span className="ayuda">Clic derecho sobre el gráfico: estilo de todos los textos.</span>
+          <span className="ayuda">Clic derecho sobre el gráfico: estilo de los textos y rango del eje Y.</span>
         </div>
         {excluidos.length ? <p><b>Excluidos: </b>{excluidos.map((e) => `${e.Pocillo} (${e.Muestra} R${e.Replica})`).join(', ')}</p>
           : <p className="ayuda">No hay puntos excluidos.</p>}
       </div>
       <MenuContextual menu={menu} items={[
         ['Estilo de texto…', () => { cerrarMenu(); setDlg(true) }],
+        ['Rango del eje Y…', () => { cerrarMenu(); setRng(true) }],
         ['Restablecer estilo de texto', () => { cerrarMenu(); s.setEstilos({ ...s.estilos, excluir: estiloDefecto() }) }],
       ]} />
+      {rng && <RangoDialog est={s.estilos.excluir} onClose={() => setRng(false)} onGuardar={(e) => { s.setEstilos({ ...s.estilos, excluir: e }); setRng(false) }} />}
       {dlg && <EstiloDialog estilo={s.estilos.excluir} conClases={false} ejeDefecto={s.ejeOD} onClose={() => setDlg(false)}
         onGuardar={(e) => { s.setEstilos({ ...s.estilos, excluir: e }); setDlg(false) }} />}
       {exp && svg.current && (
@@ -103,6 +106,7 @@ export function GraficoTab({ s }) {
   const svg = useRef()
   const [menu, abrirMenu, cerrarMenu] = useMenuContextual()
   const [dlg, setDlg] = useState(false)
+  const [rng, setRng] = useState(false)
   const [exp, setExp] = useState(false)
   const o = s.opts.barras
   const setO = (k, v) => s.setOpts({ ...s.opts, barras: { ...o, [k]: v } })
@@ -170,13 +174,15 @@ export function GraficoTab({ s }) {
         {filas.length ? (
           <BarChart ref={svg} filas={filas} puntos={puntos} odc={a.odc.odc} o={o} est={s.estilos.barras} eje={s.ejeOD} onContext={abrirMenu} />
         ) : <Vacio texto="Seleccioná al menos una muestra con réplicas aceptadas." />}
-        <p className="ayuda"><Nota titulo="Ayuda">Clic derecho sobre el gráfico: estilo de todos los textos (título, leyendas, etiquetas, números, valores y clasificaciones).</Nota></p>
+        <p className="ayuda"><Nota titulo="Ayuda">Clic derecho sobre el gráfico: estilo de los textos y rango del eje Y.</Nota></p>
         {!Number.isFinite(a.odc.odc) && <p className="ayuda">Sin ODc (faltan blancos): las barras no se pueden clasificar.</p>}
       </div>
       <MenuContextual menu={menu} items={[
         ['Estilo de texto…', () => { cerrarMenu(); setDlg(true) }],
+        ['Rango del eje Y…', () => { cerrarMenu(); setRng(true) }],
         ['Restablecer estilo de texto', () => { cerrarMenu(); s.setEstilos({ ...s.estilos, barras: estiloDefecto() }) }],
       ]} />
+      {rng && <RangoDialog est={s.estilos.barras} onClose={() => setRng(false)} onGuardar={(e) => { s.setEstilos({ ...s.estilos, barras: e }); setRng(false) }} />}
       {dlg && <EstiloDialog estilo={s.estilos.barras} conClases ejeDefecto={s.ejeOD} onClose={() => setDlg(false)}
         onGuardar={(e) => { s.setEstilos({ ...s.estilos, barras: e }); setDlg(false) }} />}
       {exp && svg.current && (

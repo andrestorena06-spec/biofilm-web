@@ -1,7 +1,7 @@
 import { forwardRef } from 'react'
 import { dBigotes, dCaja, dError, dMedia, dMediana } from '../calculos.js'
 import { calcularLayout } from '../layout.js'
-import { FUENTE, fmt, fmtTick, medir, ticksBonitos } from '../utils.js'
+import { FUENTE, ejeConRango, escalaY, fmt, fmtTick, medir, ticksBonitos } from '../utils.js'
 import { EjeY, EtiquetaFondo, EtiquetasX, LeyendaX, Titulo, useAncho } from './charts.jsx'
 
 // ---------------------------------------------------------------
@@ -42,7 +42,7 @@ export const CompararChart = forwardRef(function CompararChart({ grupos, leyenda
   const lo = Math.min(0, ...todosPisos)
   let hi = Math.max(0.1, ...todasCimas)
   hi += (hi - lo) * (o.valores ? (o.errores ? 0.2 : 0.13) : 0.05)
-  const eY = ticksBonitos(lo, hi, 6)
+  const eY = ejeConRango(ticksBonitos(lo, hi, 6), est)
   const yLabels = eY.ticks.map((t) => fmtTick(t, eY.paso))
 
   const itemsLey = leyenda.map((p) => ({ ...p, w: 26 + medir(p.nombre, 12) + 18 }))
@@ -57,11 +57,11 @@ export const CompararChart = forwardRef(function CompararChart({ grupos, leyenda
   const L = calcularLayout({
     W, etiquetas: labels, ang: o.rotar, est, yLabels, derecha: 18,
     titulo: !!est.titulo.texto, tituloX: !!est.leyendaX.texto,
-    altoPlot: Math.round(Math.min(Math.max(W * 0.42, 360), 540)) + est.valores.size * 2,
+    altoPlot: Math.round(Math.min(Math.max(W * 0.3, 280), 380)) + est.valores.size * 2,
     extraAbajo: filasLey.length * 24 + 30, fijoH: tam ? tam.h : 0,
     anchoTituloY: medir(est.leyendaY.texto || eje, est.leyendaY.size, est.leyendaY.bold, est.leyendaY.italic),
   })
-  const y = (v) => L.top + L.plotH - ((v - eY.min) / (eY.max - eY.min)) * L.plotH
+  const y = escalaY(L, eY)
   const cx = (i) => L.left + L.band * (i + 0.5)
   const sw = Math.max(Math.min((L.band * 0.84) / nmax, 78), 9)    // ancho de cada columna
   const bw = sw * 0.8

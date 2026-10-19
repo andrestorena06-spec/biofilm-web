@@ -3,7 +3,7 @@ import { CompararChart } from './compararchart.jsx'
 import { Nota } from './tip.jsx'
 import { ExportDialog } from './exportar.jsx'
 import { Vacio } from './tabs.jsx'
-import { Campo, Check, EstiloDialog, MenuContextual, Num, Panel, Select, useMenuContextual } from './ui.jsx'
+import { Campo, Check, EstiloDialog, MenuContextual, Num, Panel, RangoDialog, Select, useMenuContextual } from './ui.jsx'
 import { anova1, holm, marcaSig, resumenGrupo, welch } from '../estadistica.js'
 import { armarComparacion } from '../comparacion.js'
 import { estiloDefecto, fmt } from '../utils.js'
@@ -14,6 +14,7 @@ const pTxt = (p) => (p === null || p === undefined || !Number.isFinite(p) ? '–
 export function CompararTab({ s }) {
   const svg = useRef()
   const [menu, abrirMenu, cerrarMenu] = useMenuContextual()
+  const [rng, setRng] = useState(false)
   const [dlg, setDlg] = useState(false)
   const [exp, setExp] = useState(false)
   const o = s.opts.comparar
@@ -260,8 +261,10 @@ export function CompararTab({ s }) {
 
       <MenuContextual menu={menu} items={[
         ['Estilo de texto…', () => { cerrarMenu(); setDlg(true) }],
+        ['Rango del eje Y…', () => { cerrarMenu(); setRng(true) }],
         ['Restablecer estilo de texto', () => { cerrarMenu(); s.setEstilos({ ...s.estilos, comparar: estiloDefecto() }) }],
       ]} />
+      {rng && <RangoDialog est={s.estilos.comparar} onClose={() => setRng(false)} onGuardar={(e) => { s.setEstilos({ ...s.estilos, comparar: e }); setRng(false) }} />}
       {dlg && <EstiloDialog estilo={s.estilos.comparar} conClases={false} ejeDefecto={s.ejeOD} onClose={() => setDlg(false)}
         onGuardar={(e) => { s.setEstilos({ ...s.estilos, comparar: e }); setDlg(false) }} />}
       {exp && svg.current && (

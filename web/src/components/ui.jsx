@@ -67,6 +67,28 @@ export function useMenuContextual() {
   return [menu, abrir, () => setMenu(null)]
 }
 
+
+// Rango del eje Y (clic derecho sobre el gráfico). Un extremo vacío queda automático.
+export function RangoDialog({ est, onGuardar, onClose }) {
+  const [mn, setMn] = useState(est?.rango && Number.isFinite(est.rango.min) ? String(est.rango.min) : '')
+  const [mx, setMx] = useState(est?.rango && Number.isFinite(est.rango.max) ? String(est.rango.max) : '')
+  const num = (s) => { const v = parseFloat(String(s).replace(',', '.')); return Number.isFinite(v) ? v : null }
+  const a = num(mn), b = num(mx)
+  const mal = a !== null && b !== null && !(b > a)
+  const aplicar = () => { if (mal) return; const r = { ...(est || {}) }; if (a === null && b === null) delete r.rango; else r.rango = { min: a, max: b }; onGuardar(r) }
+  return (
+    <Modal titulo="Rango del eje Y" onClose={onClose} ancho={380}
+      pie={<><button onClick={() => { const r = { ...(est || {}) }; delete r.rango; onGuardar(r) }}>Automático</button><button className="primario" disabled={mal} onClick={aplicar}>Aplicar</button></>}>
+      <div className="fila-ctrl">
+        <label className="campo"><span>Mínimo</span><input value={mn} inputMode="decimal" placeholder="automático" onChange={(e) => setMn(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && aplicar()} /></label>
+        <label className="campo"><span>Máximo</span><input value={mx} inputMode="decimal" placeholder="automático" onChange={(e) => setMx(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && aplicar()} /></label>
+      </div>
+      {mal && <p className="aviso-sel">El máximo debe ser mayor que el mínimo.</p>}
+      <p className="ayuda">Dejá un campo vacío para que ese extremo se ajuste solo. Los valores fuera del rango se apoyan en el borde del gráfico.</p>
+    </Modal>
+  )
+}
+
 export function MenuContextual({ menu, items }) {
   if (!menu) return null
   return (
