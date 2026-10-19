@@ -35,15 +35,17 @@ function Hip({ items, titulo = 'Hipótesis' }) {
 }
 const lista = (g) => g.map((x) => x.nombre).join(', ')
 // hipótesis de una prueba entre grupos: sujeto = qué se compara (ej. «la producción de biofilm (OD) de L101B2»)
-function hipotesisGrupos(tipo, sujeto, factor, grupos, ctrl) {
+function hipotesisGrupos(tipo, sujeto, factor, grupos, ctrl, dunnett) {
   const n = lista(grupos)
-  const base = ctrl ? `entre «${ctrl}» y cada uno de los otros ${factor}` : `entre ${factor}`
+  const base = ctrl ? `entre «${ctrl}» y cada uno de los otros grupos` : `entre ${factor}`
   if (tipo === 'kw') {
-    return [{ nombre: 'Global (Kruskal-Wallis)', h0: `${sujeto} tiene la misma distribución en todos los ${factor} (${n}).`, h1: `En al menos un grupo los valores tienden a ser mayores o menores que en otro.` },
+    return [{ nombre: 'Global (Kruskal-Wallis)', h0: `${sujeto} tiene la misma distribución en todos los grupos comparados (${n}).`, h1: `En al menos un grupo los valores tienden a ser mayores o menores que en otro.` },
       { nombre: 'Pares (Dunn, Holm)', h0: 'Dos grupos tienen la misma distribución de OD.', h1: 'Las distribuciones difieren (bilateral).' }]
   }
-  return [{ nombre: tipo === 'welch' ? 'Global (ANOVA de Welch)' : 'Global (ANOVA)', h0: `La OD media (${sujeto}) es igual en todos los ${factor}: μ(${grupos.map((x) => x.nombre).join(') = μ(')}).`, h1: `Al menos un grupo tiene una OD media distinta; es decir, hay diferencias ${base}.` },
-    { nombre: tipo === 'welch' ? 'Pares (t de Welch, Holm)' : 'Pares (t, Holm)', h0: 'Dos grupos tienen la misma OD media: μA = μB.', h1: 'Las OD medias difieren: μA ≠ μB (bilateral).' }]
+  return [{ nombre: tipo === 'welch' ? 'Global (ANOVA de Welch)' : 'Global (ANOVA)', h0: `La OD media (${sujeto}) es igual en todos los grupos comparados: μ(${grupos.map((x) => x.nombre).join(') = μ(')}).`, h1: `Al menos un grupo tiene una OD media distinta; es decir, hay diferencias ${base}.` },
+    dunnett
+      ? { nombre: `Contra «${ctrl}» (Dunnett)`, h0: `Cada grupo tiene la misma OD media que el control: μ(grupo) = μ(${ctrl}).`, h1: 'La OD media del grupo difiere de la del control: μ(grupo) ≠ μ(control) (bilateral).' }
+      : { nombre: tipo === 'welch' ? 'Pares (t de Welch, Holm)' : 'Pares (t, Holm)', h0: 'Dos grupos tienen la misma OD media: μA = μB.', h1: 'Las OD medias difieren: μA ≠ μB (bilateral).' }]
 }
 
 function Chip({ tipo, children, tip }) {
@@ -60,7 +62,7 @@ export function PanelPruebas({ o, setO, D }) {
   const comp = o.comp || 'pares'
   return (
     <div className="panel-pruebas">
-      <h3>Pruebas estadísticas <Nota>Elegí qué querés evaluar. El programa revisa los datos (normalidad y varianzas) y elige solo la prueba adecuada; los resultados aparecen debajo del gráfico. Cada placa cuenta como una réplica biológica.</Nota></h3>
+      <h3 className="sub-seccion">¿Qué querés evaluar? <Nota>Elegí qué querés evaluar. El programa revisa los datos (normalidad y varianzas) y elige solo la prueba adecuada; los resultados aparecen debajo del gráfico. Cada placa cuenta como una réplica biológica.</Nota></h3>
       <div className="objetivos">
         <button type="button" className={`objetivo ${obj === 'ninguno' ? 'on' : ''}`} onClick={() => setO('objetivo', 'ninguno')}>
           <b>Solo el gráfico</b><span>Sin pruebas</span>
@@ -93,7 +95,7 @@ export function PanelPruebas({ o, setO, D }) {
           </Campo>
           {obj !== 'placas' && (
             <>
-              <Campo label="Comparaciones de a pares">
+              <Campo label={<>Comparaciones de a pares<Nota>Todos los pares: t con ajuste de Holm (Welch o Dunn según la prueba). Contra un control: con ANOVA clásico se usa la prueba de Dunnett (p ajustado exacto); con ANOVA de Welch, t de Welch con Holm; con Kruskal-Wallis, Dunn con Holm. Dunnett supone varianzas iguales, por eso la selección automática no lo usa si Levene las encuentra distintas.</Nota></>}>
                 <div className="seg">
                   <button className={comp === 'pares' ? 'on' : ''} onClick={() => setO('comp', 'pares')}>Todos los pares</button>
                   <button className={comp === 'control' ? 'on' : ''} onClick={() => setO('comp', 'control')}>Contra un control</button>
@@ -217,9 +219,9 @@ function Bloque({ titulo, sub, r, colorDe, ctrl, abierto, sujeto, factor }) {
         <Chip tipo={r.global.p < 0.05 ? 'dif' : 'ok'}>{r.global.p < 0.05 ? 'Hay diferencias' : 'Sin diferencias'}</Chip>
         <Chip tipo="prueba">{NOMBRE_TEST[r.tipo]}</Chip>
       </summary>
-      {sujeto && <Hip items={[...hipotesisGrupos(r.tipo, sujeto, factor, r.grupos, ctrl), { nombre: 'Supuestos', h0: 'Residuos normales (Shapiro-Wilk) y varianzas iguales entre grupos (Levene).', h1: 'Residuos no normales / varianzas distintas: se cambia a Kruskal-Wallis o ANOVA de Welch.' }]} />}
+      {sujeto && <Hip items={[...hipotesisGrupos(r.tipo, sujeto, factor, r.grupos, ctrl, r.pares[0]?.metodo === 'Dunnett'), { nombre: 'Supuestos', h0: 'Residuos normales (Shapiro-Wilk) y varianzas iguales entre grupos (Levene).', h1: 'Residuos no normales / varianzas distintas: se cambia a Kruskal-Wallis o ANOVA de Welch.' }]} />}
       <Indicadores r={r} />
-      <p className="razon-test">{r.razon}</p>
+      <p className="razon-test">{r.razon}{r.pares[0]?.metodo === 'Dunnett' && ` Contra el control se usó la prueba de Dunnett: cada grupo se compara con «${ctrl}» con la varianza común del ANOVA, y el p ya está ajustado por todas las comparaciones.`}</p>
       <div className="res-doble">
         <BarrasGrupo r={r} colorDe={colorDe} />
         <div>
@@ -235,7 +237,7 @@ function Bloque({ titulo, sub, r, colorDe, ctrl, abierto, sujeto, factor }) {
       )}
       {r.pares.length > 0 && (
         <>
-          <Tabla cols={[ctrl ? `Contra «${ctrl}»` : 'Par', 'Media A', 'Media B', 'Diferencia (A − B)', r.tipo === 'kw' ? 'z (Dunn)' : 't', 'gl', 'p', 'p ajustado (Holm)', 'Resultado']}
+          <Tabla cols={[ctrl ? `Contra «${ctrl}»` : 'Par', 'Media A', 'Media B', 'Diferencia (A − B)', r.tipo === 'kw' ? 'z (Dunn)' : 't', 'gl', 'p', `p ajustado (${r.pares[0]?.metodo || 'Holm'})`, 'Resultado']}
             filas={r.pares.map((p) => [`${p.a} vs ${p.b}`, f(p.ma, 4), f(p.mb, 4), f(p.dif, 4), f(p.est, 3), finito(p.df) ? f(p.df, 2) : '–', pTxt(p.p), pTxt(p.pa), !finito(p.p) ? 'Hacen falta 2 o más datos' : p.pa < 0.05 ? `Distinto (${marcaSig(p.pa)})` : 'Sin diferencia clara'])} />
           {!ctrl && <MatrizP r={r} />}
         </>
@@ -323,7 +325,7 @@ export function ResultadosPruebas({ s, D, o }) {
         )}
         <h4 className="sub-res">Cada cepa entre medios</h4>
         <Resumen titulo="Cepa" bloques={bloques} etiquetas={['Media de OD por medio']} />
-        {bloques.map((b) => <Bloque key={b.titulo} titulo={b.titulo} sub={`entre medios · ${unidad}`} sujeto={`la producción de biofilm de «${b.titulo}»`} factor="medios de cultivo" r={b.r} colorDe={(n) => colorMedios[n]} ctrl={comp === 'control' ? ctrlMedio : null} />)}
+        {bloques.map((b) => <Bloque key={b.titulo} titulo={b.titulo} sub={`entre medios · ${unidad}`} sujeto={`la producción de biofilm de «${b.titulo}»`} factor="los medios de cultivo" r={b.r} colorDe={(n) => colorMedios[n]} ctrl={comp === 'control' ? ctrlMedio : null} />)}
       </>
     )
   } else if (obj === 'cepas') {
@@ -335,7 +337,7 @@ export function ResultadosPruebas({ s, D, o }) {
     cuerpo = cepas.length < 2 ? <p className="ayuda">Hacen falta al menos 2 cepas con datos.</p> : (
       <>
         <Resumen titulo="Medio" bloques={bloques} etiquetas={['Datos']} />
-        {bloques.map((b) => <Bloque key={b.titulo} titulo={`Medio «${b.titulo}»`} sub={`entre cepas · ${unidad}`} sujeto={`la producción de biofilm en el medio «${b.titulo}»`} factor="cepas" r={b.r} colorDe={(n) => colorCepas[n]} ctrl={comp === 'control' ? ctrlCepa : null} />)}
+        {bloques.map((b) => <Bloque key={b.titulo} titulo={`Medio «${b.titulo}»`} sub={`entre cepas · ${unidad}`} sujeto={`la producción de biofilm en el medio «${b.titulo}»`} factor="las cepas" r={b.r} colorDe={(n) => colorCepas[n]} ctrl={comp === 'control' ? ctrlCepa : null} />)}
       </>
     )
   } else {
@@ -353,7 +355,7 @@ export function ResultadosPruebas({ s, D, o }) {
     cuerpo = !bloques.length ? <p className="ayuda">Hacen falta al menos 2 placas con la misma cepa y el mismo medio.</p> : (
       <>
         <Resumen titulo="Cepa · medio" bloques={bloques} etiquetas={['Placas', 'Media de cada placa', 'CV entre placas (%)', 'Reproducibilidad']} />
-        {bloques.map((b) => <Bloque key={b.titulo} titulo={b.titulo} sub={`entre placas · ${unidad}`} sujeto={`la producción de biofilm de «${b.titulo}»`} factor="placas (réplicas)" r={b.r} colorDe={(n) => colorPlacas[n]} ctrl={null} />)}
+        {bloques.map((b) => <Bloque key={b.titulo} titulo={b.titulo} sub={`entre placas · ${unidad}`} sujeto={`la producción de biofilm de «${b.titulo}»`} factor="las placas (réplicas)" r={b.r} colorDe={(n) => colorPlacas[n]} ctrl={null} />)}
         <p className="ayuda">Los grupos son las placas y los datos de cada una son sus pocillos. Si p &lt; 0,05 la placa influye: la cepa no se repite igual. Para ICC y correlaciones entre experimentos usá el modo «Reproducibilidad entre experimentos».</p>
       </>
     )

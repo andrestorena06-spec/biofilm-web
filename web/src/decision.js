@@ -80,8 +80,14 @@ export function pares(grupos, tipo, ctrl) {
     }
     return { a: a.nombre, b: b.nombre, ma: media(a.v), mb: media(b.v), dif, est, df, p }
   })
+  // contra un control con ANOVA clásico: prueba de Dunnett (p ajustado exacto); en los demás casos, Holm
+  const usaDunnett = !!ctrl && tipo === 'anova' && mse > 0 && finito(dfe) && lista.length > 0
+  if (usaDunnett) {
+    const lam = lista.map(([a, b]) => Math.sqrt(a.v.length / (a.v.length + b.v.length)))
+    return filas.map((f) => ({ ...f, pa: finito(f.est) ? dunnettP(Math.abs(f.est), lam, dfe) : NaN, metodo: 'Dunnett' }))
+  }
   const aj = holm(filas.map((f) => f.p))
-  return filas.map((f, i) => ({ ...f, pa: aj[i] }))
+  return filas.map((f, i) => ({ ...f, pa: aj[i], metodo: 'Holm' }))
 }
 
 // letras de significancia (grupos con la misma letra no difieren): insertar y absorber
@@ -168,4 +174,70 @@ export function parcelasDivididas(obs) {
       { nombre: 'Residual (cepa × placa)', ss: mF.rss, df: dfRes, ms: msRes, F: NaN, p: NaN, error: '' },
     ],
   }
+}
+
+// ============================================================
+// Prueba de Dunnett: cada grupo contra un control, con p ajustado exacto por la distribución t multivariada.
+// Supone varianza común (ANOVA clásico). Con T_i = (media_i − media_control) / (s · √(1/n_i + 1/n_c)), las T_i se correlacionan
+// por el control; condicionando en la desviación del control (z) y en s son independientes, y se integra numéricamente.
+// ============================================================
+const erfcFast = (z) => {   // erfc de Numerical Recipes (error relativo < 1.2e-7)
+  const a = Math.abs(z), t = 1 / (1 + 0.5 * a)
+  const r = t * Math.exp(-a * a - 1.26551223 + t * (1.00002368 + t * (0.37409196 + t * (0.09678418 + t * (-0.18628806 + t * (0.27886807 + t * (-1.13520398 + t * (1.48851587 + t * (-0.82215223 + t * 0.17087277)))))))))
+  return z >= 0 ? r : 2 - r
+}
+const Phi = (x) => 0.5 * erfcFast(-x / Math.SQRT2)
+const lgam = (z) => {
+  const c = [0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7]
+  if (z < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * z)) - lgam(1 - z)
+  z -= 1
+  let x = c[0]
+  for (let i = 1; i < 9; i++) x += c[i] / (z + i)
+  const t = z + 7.5
+  return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(x)
+}
+// P(max_i |T_i| ≥ d) con λ_i = √(n_i / (n_i + n_c)) y df grados de libertad del error
+const cacheDunnett = new Map()
+export function dunnettP(d, lam, df) {
+  const k = d.toFixed(6) + '|' + lam.map((x) => x.toFixed(5)).join(',') + '|' + df.toFixed(4)
+  if (!cacheDunnett.has(k)) { if (cacheDunnett.size > 5000) cacheDunnett.clear(); cacheDunnett.set(k, dunnettCalc(d, lam, df)) }
+  return cacheDunnett.get(k)
+}
+function dunnettCalc(d, lam, df) {
+  if (!(d >= 0) || !lam.length) return NaN
+  const a = lam.map((l) => Math.sqrt(Math.max(1 - l * l, 1e-12)))
+  // nodos de s = χ/√ν (distribución de la desviación estándar relativa)
+  const sNodos = []
+  if (df > 2000) sNodos.push([1, 1])
+  else {
+    const sd = 1 / Math.sqrt(2 * df)
+    const lo = Math.max(0.005, 1 - 8 * sd), hi = 1 + 9 * sd
+    const N = 96, h = (hi - lo) / N
+    const logC = Math.log(2) + (df / 2) * Math.log(df / 2) - lgam(df / 2)
+    let tot = 0
+    for (let i = 0; i <= N; i++) {
+      const s = lo + i * h
+      const w = (i === 0 || i === N ? 1 : i % 2 ? 4 : 2) * Math.exp(logC + (df - 1) * Math.log(s) - (df * s * s) / 2)
+      sNodos.push([s, w]); tot += w
+    }
+    sNodos.forEach((x) => { x[1] /= tot })
+  }
+  const M = 80, zl = -7, zh = 7, hz = (zh - zl) / M
+  let total = 0
+  for (const [s, ws] of sNodos) {
+    const c = d * s
+    let acc = 0
+    for (let j = 0; j <= M; j++) {
+      const z = zl + j * hz
+      let prod = 1
+      for (let i = 0; i < lam.length; i++) {
+        const u = (c + lam[i] * z) / a[i], v = (-c + lam[i] * z) / a[i]
+        prod *= Phi(u) - Phi(v)
+        if (prod < 1e-14) break
+      }
+      acc += (j === 0 || j === M ? 1 : j % 2 ? 4 : 2) * Math.exp(-z * z / 2) * prod
+    }
+    total += ws * acc * (hz / 3) / Math.sqrt(2 * Math.PI)
+  }
+  return Math.min(1, Math.max(0, 1 - total))
 }

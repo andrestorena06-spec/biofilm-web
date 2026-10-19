@@ -420,3 +420,9 @@ html { -webkit-text-size-adjust: 100%; }
 .hip-fila:first-of-type { border-top: none; }
 .hip-nombre { font-weight: 650; color: #6b5440; }
 @media (max-width: 900px) { .hip-fila { grid-template-columns: 1fr; } }
+
+/* secciones del panel lateral de Comparar */
+.seccion-lateral { display: flex; align-items: center; gap: 8px; margin: 22px 0 10px; padding-top: 14px; border-top: 2px solid var(--borde); font-size: 14px; text-transform: none; letter-spacing: 0; color: #5a2e12; }
+.seccion-lateral:first-of-type { margin-top: 4px; padding-top: 0; border-top: none; }
+.seccion-lateral i { font-style: normal; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--acento); color: #fff; font-size: 12px; font-weight: 700; }
+.panel-pruebas .sub-seccion { margin: 0 0 6px; font-size: 13px; color: var(--suave); text-transform: none; letter-spacing: 0; }

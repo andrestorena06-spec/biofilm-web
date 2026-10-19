@@ -49,9 +49,9 @@ export function CompararTab({ s }) {
   ]
   const poner = (cambios) => setVarios({ ...cambios, cajas: undefined })
   const selectorModo = (
-    <Campo label={<>Cómo comparar<Nota>El medio de cultivo de cada placa se elige en la pestaña «Placa»; las placas con el mismo medio quedan juntas y del mismo color. «Reproducibilidad» toma cada placa como una repetición del experimento.</Nota></>}>
+    <Campo label={<>Qué mostrar<Nota>El medio de cultivo de cada placa se elige en la pestaña «Placa»; las placas con el mismo medio quedan juntas y del mismo color. «Reproducibilidad» toma cada placa como una repetición del experimento.</Nota></>}>
       <Select value={modo} onChange={(v) => setO('modo', v)}
-        opciones={[['placas', 'Por placa'], ['medio', 'Por medio de cultivo'], ['pocillo', 'Por pocillo'], ['repro', 'Reproducibilidad entre experimentos']]} />
+        opciones={[['placas', 'Una columna por placa'], ['medio', 'Una columna por medio de cultivo'], ['pocillo', 'Una columna por pocillo'], ['repro', 'Reproducibilidad entre experimentos']]} />
     </Campo>
   )
 
@@ -158,9 +158,8 @@ export function CompararTab({ s }) {
   return (
     <div className="con-lateral">
       <Panel titulo="Comparar placas">
+        <h3 className="seccion-lateral"><i>1</i> Gráfico</h3>
         {selectorModo}
-        <PanelPruebas o={o} setO={setO} D={D} />
-        <hr />
         {modo === 'medio' && sinMedio.length > 0 && (
           <p className="aviso-sel">Placas sin medio indicado (no se muestran): {sinMedio.map((p) => p.nombre).join(', ')}. Elegí su medio en la pestaña «Placa».</p>
         )}
@@ -199,8 +198,11 @@ export function CompararTab({ s }) {
           </Campo>
         )}
         <Campo label="Rotación (°)"><Num value={o.rotar} min={0} max={90} step={15} onChange={(v) => setO('rotar', v === '' ? 0 : v)} /></Campo>
+        <button className="ancho" onClick={() => setExp(true)} disabled={!grupos.length || sinElementos}>Descargar imagen…</button>
 
-        <Campo label="Placas">
+        <h3 className="seccion-lateral"><i>2</i> Placas</h3>
+
+        <Campo label="Placas a incluir">
           <div className="fila-ctrl" style={{ margin: '0 0 4px' }}>
             <button className="chico" onClick={() => setO('placasSel', conAnalisis.map((p) => p.id))}>Todas</button>
             <button className="chico" onClick={() => setO('placasSel', [])}>Ninguna</button>
@@ -215,7 +217,8 @@ export function CompararTab({ s }) {
         </Campo>
         <Check label="Incluir blancos" checked={D.verBlancos} onChange={(v) => setO('blancos', v)} />
 
-        <Campo label={<>Muestras por placa<Nota>Cada columna es una placa (mismo color que en el gráfico). Destildá una celda para ocultar esa muestra solo en esa placa, o la casilla de la izquierda para ocultarla en todas.</Nota></>}>
+        <h3 className="seccion-lateral"><i>3</i> Muestras</h3>
+        <Campo label={<>Qué muestra se ve en cada placa<Nota>Cada columna es una placa (mismo color que en el gráfico). Destildá una celda para ocultar esa muestra solo en esa placa, o la casilla de la izquierda para ocultarla en todas.</Nota></>}>
           <div className="fila-ctrl" style={{ margin: '0 0 4px' }}>
             <button className="chico" onClick={() => todoVisible(true)}>Mostrar todas</button>
             <button className="chico" onClick={() => todoVisible(false)}>Ocultar todas</button>
@@ -250,7 +253,8 @@ export function CompararTab({ s }) {
             </table>
           </div>
         </Campo>
-        <button className="primario ancho" onClick={() => setExp(true)} disabled={!grupos.length || sinElementos}>Descargar imagen…</button>
+        <h3 className="seccion-lateral"><i>4</i> Estadística</h3>
+        <PanelPruebas o={o} setO={setO} D={D} />
       </Panel>
 
       <div className="principal">
