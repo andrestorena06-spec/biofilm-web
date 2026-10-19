@@ -1,6 +1,7 @@
 import { Campo, Select } from './ui.jsx'
 import { Nota } from './tip.jsx'
-import { analizar, parcelasDivididas } from '../decision.js'
+import { analizar, levene, parcelasDivididas } from '../decision.js'
+import { shapiro, spearman } from '../reproducibilidad.js'
 import { desvio, marcaSig, media } from '../estadistica.js'
 import { paletaMuestras } from '../utils.js'
 
@@ -247,6 +248,51 @@ function Bloque({ titulo, sub, r, colorDe, ctrl, abierto, sujeto, factor }) {
   )
 }
 
+// Diagnóstico global de los supuestos: con todos los pocillos juntos hay muchos más datos que dentro de cada grupo.
+// Residuos = cada pocillo menos la media de su celda (cepa × medio × placa). Shapiro-Wilk sobre todos los residuos juntos y
+// Levene entre todas las celdas; además se mira si la DE crece con la media (en ese caso conviene el logaritmo).
+function diagnosticoGlobal(obsPozo) {
+  const celdas = new Map()
+  obsPozo.forEach((x) => { const k = `${x.cepa}|${x.medio}|${x.placa}`; if (!celdas.has(k)) celdas.set(k, []); celdas.get(k).push(x.y) })
+  const cs = [...celdas.values()].filter((v) => v.length >= 2)
+  const resid = cs.flatMap((v) => { const m = media(v); return v.map((y) => y - m) })
+  const sw = resid.length >= 8 && resid.some((x) => x !== 0) ? shapiro(resid) : null
+  const lev = levene(cs.filter((v) => v.length >= 3))
+  const medias = cs.map((v) => media(v)), sds = cs.map((v) => desvio(v))
+  const rho = cs.length >= 6 ? spearman(medias, sds) : null
+  return { nResid: resid.length, nCeldas: cs.length, sw, lev, rho }
+}
+
+function DiagnosticoGlobal({ d, unidad }) {
+  const { sw, lev, rho } = d
+  const sdCrece = rho && rho.r > 0.5 && rho.p < 0.05
+  const hayDiag = sw || lev
+  if (!hayDiag) return null
+  return (
+    <div className="diag-global">
+      <h4>Diagnóstico global de supuestos <Nota>Con todos los pocillos juntos hay muchos más datos que dentro de cada grupo (n = 4), así que estas pruebas son mucho más confiables. Residuo = cada pocillo menos la media de su cepa, medio y placa. Shapiro-Wilk evalúa si todos los residuos juntos son normales; Levene, si todas las celdas varían parecido.</Nota></h4>
+      <div className="indicadores">
+        <div className="ind" data-tip={sw ? `Normalidad de los ${d.nResid} residuos juntos (Shapiro-Wilk)\nW = ${f(sw.W, 3)}, p = ${pTxt(sw.p)}` : 'Hacen falta al menos 8 residuos'}>
+          <small>Normalidad ({d.nResid} residuos)</small>{sw ? <Chip tipo={sw.p < 0.05 ? 'alerta' : 'ok'}>{sw.p < 0.05 ? 'No normal' : 'Normal'} · p {pTxt(sw.p)}</Chip> : <Chip tipo="neutro">sin datos</Chip>}
+        </div>
+        <div className="ind" data-tip={lev ? `Varianzas de las ${lev.k} celdas con 3 o más pocillos (Levene)\nF = ${f(lev.F, 3)}, p = ${pTxt(lev.p)}\nmayor DE / menor DE = ${f(lev.razonSD, 1)}` : 'Hacen falta celdas con 3 o más pocillos'}>
+          <small>Varianzas ({lev ? lev.k : 0} celdas)</small>{lev ? <Chip tipo={lev.p < 0.05 ? 'alerta' : 'ok'}>{lev.p < 0.05 ? 'Distintas' : 'Parecidas'} · p {pTxt(lev.p)}</Chip> : <Chip tipo="neutro">sin datos</Chip>}
+        </div>
+        <div className="ind" data-tip={rho ? `Relación entre la media y la DE de cada celda (Spearman)\nρ = ${f(rho.r, 2)}, p = ${pTxt(rho.p)}\nSi la DE crece con la media, el logaritmo estabiliza las varianzas` : 'Hacen falta al menos 6 celdas'}>
+          <small>DE vs media</small>{rho ? <Chip tipo={sdCrece ? 'alerta' : 'ok'}>{sdCrece ? 'La DE crece con la media' : 'Sin relación'} · ρ {f(rho.r, 2)}</Chip> : <Chip tipo="neutro">sin datos</Chip>}
+        </div>
+      </div>
+      <p className="razon-test">
+        {[
+          sdCrece && unidad === 'OD' ? 'La dispersión aumenta con la media (típico de la OD): probá «ln(OD)» en «Datos» para estabilizar las varianzas.' : '',
+          lev && lev.p < 0.05 && !(sdCrece && unidad === 'OD') ? 'Las varianzas son distintas entre celdas: el programa usa el ANOVA de Welch cuando corresponde.' : '',
+          sw && sw.p < 0.05 ? 'Los residuos no son del todo normales. Con tantos datos Shapiro-Wilk detecta desvíos pequeños y el ANOVA tolera desvíos leves; revisá los valores extremos en «Excluir puntos». Con pocas réplicas por grupo, el ANOVA de Welch o Kruskal-Wallis son alternativas.' : '',
+        ].filter(Boolean).join(' ') || 'Los residuos son compatibles con la normalidad y las varianzas son parecidas: el ANOVA clásico es adecuado.'}
+      </p>
+    </div>
+  )
+}
+
 // datos del resumen: una fila por análisis, con su p
 function infoDe(bloques, globales, etiquetaFila) {
   const ok = bloques.filter((b) => b.r.ok)
@@ -440,6 +486,7 @@ export function ResultadosPruebas({ s, D, o }) {
         </div>
       </div>
       {info && <Infografia info={info} titulo={titulo} />}
+      <DiagnosticoGlobal d={diagnosticoGlobal(obsPozo.filter((x) => finito(x.y)))} unidad={unidad} />
       <Hip titulo={`Hipótesis del objetivo · α = 0,05 · ${nivel === 'placa' ? 'cada placa es una réplica' : 'cada pocillo es una réplica'}`} items={{
         medios: [{ nombre: 'Cada cepa', h0: 'La producción de biofilm (OD de cristal violeta) de la cepa es la misma en todos los medios de cultivo.', h1: 'La producción de biofilm de la cepa cambia según el medio (al menos un medio difiere).' },
           { nombre: 'Medio (todas las cepas)', h0: 'El medio de cultivo no afecta la producción de biofilm (OD media de las cepas).', h1: 'Hay un efecto del medio sobre la producción de biofilm.' },

@@ -447,3 +447,6 @@ html { -webkit-text-size-adjust: 100%; }
 .info-frases ul { margin: 0; padding-left: 20px; }
 .info-frases li { margin: 3px 0; }
 @media (max-width: 900px) { .infografia { grid-template-columns: 1fr; } .info-kpis { grid-template-columns: repeat(4, 1fr); } }
+
+.diag-global { padding: 10px 14px; border-radius: 12px; background: #fffdf9; border: 1px solid var(--borde); }
+.diag-global h4 { margin: 0 0 4px; font-size: 14px; color: #5a2e12; }
