@@ -364,3 +364,7 @@ html { -webkit-text-size-adjust: 100%; }
   .nota-cont { position: fixed; left: 12px; right: 12px; top: auto; bottom: 14px; width: auto; max-width: none; }
 }
 @media (display-mode: standalone) { body { overscroll-behavior-y: contain; } }
+
+.pruebas-resultados { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; }
+.bloque-prueba { margin: 10px 0 18px; padding-top: 6px; border-top: 1px dashed var(--borde); }
+.bloque-prueba h4 { margin: 4px 0 6px; font-size: 14px; }

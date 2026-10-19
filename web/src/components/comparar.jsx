@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { CompararChart } from './compararchart.jsx'
 import { ReproTab } from './repro.jsx'
+import { ListaPruebas, ResultadosPruebas } from './pruebas.jsx'
 import { Nota } from './tip.jsx'
 import { ExportDialog } from './exportar.jsx'
 import { Vacio } from './tabs.jsx'
@@ -196,6 +197,7 @@ export function CompararTab({ s }) {
           </Campo>
         )}
         <Campo label="Rotación (°)"><Num value={o.rotar} min={0} max={90} step={15} onChange={(v) => setO('rotar', v === '' ? 0 : v)} /></Campo>
+        <ListaPruebas o={o} setO={setO} />
 
         <Campo label="Placas">
           <div className="fila-ctrl" style={{ margin: '0 0 4px' }}>
@@ -285,7 +287,8 @@ export function CompararTab({ s }) {
       <div className="principal">
         <h1>Comparación entre placas <span className="sub">· {modo === 'medio' ? 'por medio de cultivo' : modo === 'pocillo' ? 'pocillo por pocillo' : 'placa por placa'}</span></h1>
         {grupos.length && !sinElementos ? grafico(svg, undefined, abrirMenu) : <Vacio texto={sinElementos ? 'Activá barras, mediana, media o puntos para ver el gráfico.' : 'Elegí al menos una placa y una muestra para mostrar.'} />}
-        <p className="ayuda"><Nota titulo="Ayuda">{nCols} columnas <Nota>Pasá el mouse por una barra, caja o punto para ver su valor y el cálculo. Clic derecho sobre el gráfico: estilo de los textos.</Nota></Nota></p>
+        <p className="ayuda">{nCols} columnas <Nota>Pasá el mouse por una barra, caja o punto para ver su valor y el cálculo. Clic derecho sobre el gráfico: estilo de los textos.</Nota></p>
+        <ResultadosPruebas s={s} D={D} o={o} />
 
         {modo === 'medio' && testG === 'medio' && (
           <section className="resultado-test">
