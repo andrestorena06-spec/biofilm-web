@@ -190,19 +190,28 @@ function prepararBloques(s, D, o) {
   const comp = o.comp || 'pares'
   const ctrlMedio = medios.includes(o.ctrlMedio) ? o.ctrlMedio : medios[0]
   const ctrlCepa = cepas.includes(o.ctrlCepa) ? o.ctrlCepa : cepas[0]
+  // comparaciones definidas a mano en la barra de Estadística: cada una es un ANOVA aparte
+  const factorComp = obj === 'medios' ? 'medios' : obj === 'cepas' || obj === 'cepastodas' ? 'cepas' : 'placas'
+  const placasIds = [...new Set(obs.map((x) => x.placaId))]
+  const nivelesComp = factorComp === 'medios' ? medios : factorComp === 'cepas' ? cepas : placasIds
+  const personal = o.sets && o.sets[factorComp]
+  const conjuntos = personal ? personal.map((S) => S.filter((x) => nivelesComp.includes(x))).filter((S) => S.length >= 2) : [nivelesComp]
+  const nomP = (id) => obs.find((x) => x.placaId === id)?.placa || id
+  const sfx = (S) => (personal ? ' · ' + S.map((x) => (factorComp === 'placas' ? nomP(x) : x)).join(' vs ') : '')
+  const ctrlEn = (S, c) => (comp === 'control' && S.includes(c) ? c : null)
   let bloques = []
-  if (obj === 'medios') bloques = cepas.map((c) => ({ titulo: `${c}: entre medios`, grupos: medios.map((m) => ({ nombre: m, v: vals(c, m, null) })), ctrl: comp === 'control' ? ctrlMedio : null }))
-  else if (obj === 'cepastodas') bloques = [{ titulo: 'Todos los medios: entre cepas', grupos: cepas.map((c) => ({ nombre: c, v: vals(c, null, null) })), ctrl: comp === 'control' ? ctrlCepa : null }]
-  else if (obj === 'cepas') bloques = medios.map((m) => ({ titulo: `Medio ${m}: entre cepas`, grupos: cepas.map((c) => ({ nombre: c, v: vals(c, m, null) })), ctrl: comp === 'control' ? ctrlCepa : null }))
-  else if (obj === 'placastodas') cepas.forEach((c) => {
-    const pls = [...new Set(obs.filter((x) => x.cepa === c).map((x) => x.placa))]
-    if (pls.length >= 2) bloques.push({ titulo: `${c}: entre todas las placas`, grupos: pls.map((p) => ({ nombre: `${p} · ${obs.find((x) => x.placa === p).medio}`, v: vals(c, null, p) })), ctrl: null, cepa: c })
-  })
-  else medios.forEach((m) => cepas.forEach((c) => {
-    const pls = [...new Set(obs.filter((x) => x.cepa === c && x.medio === m).map((x) => x.placa))]
-    if (pls.length >= 2) bloques.push({ titulo: `${c} · ${m}: entre placas`, grupos: pls.map((p) => ({ nombre: p, v: vals(c, m, p) })), ctrl: null })
+  if (obj === 'medios') bloques = conjuntos.flatMap((S) => cepas.map((c) => ({ titulo: `${c}${sfx(S)}: entre medios`, grupos: S.map((m) => ({ nombre: m, v: vals(c, m, null) })), ctrl: ctrlEn(S, ctrlMedio) })))
+  else if (obj === 'cepastodas') bloques = conjuntos.map((S) => ({ titulo: `Todos los medios${sfx(S)}: entre cepas`, grupos: S.map((c) => ({ nombre: c, v: vals(c, null, null) })), ctrl: ctrlEn(S, ctrlCepa) }))
+  else if (obj === 'cepas') bloques = conjuntos.flatMap((S) => medios.map((m) => ({ titulo: `Medio ${m}${sfx(S)}: entre cepas`, grupos: S.map((c) => ({ nombre: c, v: vals(c, m, null) })), ctrl: ctrlEn(S, ctrlCepa) })))
+  else if (obj === 'placastodas') cepas.forEach((c) => conjuntos.forEach((S) => {
+    const pls = [...new Set(obs.filter((x) => x.cepa === c && S.includes(x.placaId)).map((x) => x.placa))]
+    if (pls.length >= 2) bloques.push({ titulo: `${c}${sfx(S)}: entre todas las placas`, grupos: pls.map((p) => ({ nombre: `${p} · ${obs.find((x) => x.placa === p).medio}`, v: vals(c, null, p) })), ctrl: null, cepa: c, placaIds: S })
   }))
-  return { obj, variable, nivel, forzado: o.prueba || 'auto', bloques, obsPlaca, obsPozo, unidad: variable === 'ln' ? 'ln(OD)' : variable === 'odc' ? 'OD ÷ ODc' : 'OD' }
+  else medios.forEach((m) => cepas.forEach((c) => conjuntos.forEach((S) => {
+    const pls = [...new Set(obs.filter((x) => x.cepa === c && x.medio === m && S.includes(x.placaId)).map((x) => x.placa))]
+    if (pls.length >= 2) bloques.push({ titulo: `${c} · ${m}${sfx(S)}: entre placas`, grupos: pls.map((p) => ({ nombre: p, v: vals(c, m, p) })), ctrl: null })
+  })))
+  return { obj, variable, nivel, forzado: o.prueba || 'auto', ajuste: o.ajuste === 'lsd' ? 'lsd' : 'holm', bloques, obsPlaca, obsPozo, unidad: variable === 'ln' ? 'ln(OD)' : variable === 'odc' ? 'OD ÷ ODc' : 'OD' }
 }
 
 // ---------------------------------------------------------------
@@ -218,7 +227,7 @@ function Ejemplo({ s }) {
   const g = b.grupos.filter((x) => x.v.length > 0)
   const vs = g.map((x) => x.v)
   const N = vs.reduce((a, v) => a + v.length, 0), k = g.length
-  const r = analizar(b.grupos, P.forzado, b.ctrl)
+  const r = analizar(b.grupos, P.forzado, b.ctrl, P.ajuste)
   if (!r.ok) return <p className="ayuda">{b.titulo}: {r.motivo}</p>
   const gm = media(vs.flat())
   const resid = g.flatMap((x) => { const m = media(x.v); return x.v.map((y) => ({ g: x.nombre, y, m, e: y - m })) })
@@ -357,7 +366,7 @@ function Ejemplo({ s }) {
       {P.obj === 'placastodas' && (() => {
         const filasT = (sp) => sp.filas.map((x) => [x.nombre, f(x.ss, 6), x.df, f(x.ms, 6), f(x.F, 3), pTxt(x.p), x.error])
         const colsT = ['Fuente', 'Suma de cuadrados', 'gl', 'Cuadrado medio', 'F', 'p', 'Se prueba contra']
-        const an = anidada(P.obsPozo.filter((x) => x.cepa === b.cepa && finito(x.y)))
+        const an = anidada(P.obsPozo.filter((x) => x.cepa === b.cepa && (!b.placaIds || b.placaIds.includes(x.placaId)) && finito(x.y)))
         const pc = placaCepa(P.obsPozo.filter((x) => finito(x.y)))
         return (
           <>

@@ -114,6 +114,12 @@ export function PanelPruebas({ o, setO, D, sinObjetivos, horizontal }) {
                   <button className={comp === 'control' ? 'on' : ''} onClick={() => setO('comp', 'control')}>Contra un control</button>
                 </div>
               </Campo>
+              <Campo label={<>Ajuste de los pares<Nota>Holm: controla el error de todas las comparaciones juntas (recomendado). LSD de Fisher: t con el error común del ANOVA y sin ajuste; solo se interpreta si el ANOVA global es significativo y con pocos grupos (3 o menos protege bien el error; con más, da falsos positivos). Aplica solo con ANOVA clásico.</Nota></>}>
+                <div className="seg">
+                  <button className={o.ajuste !== 'lsd' ? 'on' : ''} onClick={() => setO('ajuste', 'holm')}>Holm / Dunnett</button>
+                  <button className={o.ajuste === 'lsd' ? 'on' : ''} onClick={() => setO('ajuste', 'lsd')}>LSD de Fisher</button>
+                </div>
+              </Campo>
               {comp === 'control' && obj === 'medios' && (
                 <Campo label="Medio control"><Select value={D.mediosPres.includes(o.ctrlMedio) ? o.ctrlMedio : D.mediosPres[0] || ''} onChange={(v) => setO('ctrlMedio', v)} opciones={D.mediosPres.map((x) => [x, x])} /></Campo>
               )}
@@ -251,8 +257,8 @@ function Bloque({ titulo, sub, r, colorDe, ctrl, abierto, sujeto, factor, color,
       )}
       {r.pares.length > 0 && (
         <>
-          <Tabla cols={[ctrl ? `Contra «${ctrl}»` : 'Par', 'Media A', 'Media B', 'Diferencia (A − B)', r.tipo === 'kw' ? 'z (Dunn)' : 't', 'gl', 'p', `p ajustado (${r.pares[0]?.metodo || 'Holm'})`, 'Resultado']}
-            filas={r.pares.map((p) => [`${p.a} vs ${p.b}`, f(p.ma, 4), f(p.mb, 4), f(p.dif, 4), f(p.est, 3), finito(p.df) ? f(p.df, 2) : '–', pTxt(p.p), pTxt(p.pa), !finito(p.p) ? 'Hacen falta 2 o más datos' : p.pa < 0.05 ? `Distinto (${marcaSig(p.pa)})` : 'Sin diferencia clara'])} />
+          <Tabla cols={[ctrl ? `Contra «${ctrl}»` : 'Par', 'Media A', 'Media B', 'Diferencia (A − B)', r.tipo === 'kw' ? 'z (Dunn)' : 't', 'gl', 'p', `p ajustado (${r.pares[0]?.metodo || 'Holm'})`, ...(r.pares[0]?.metodo === 'LSD' ? ['Dif. mínima (LSD)'] : []), 'Resultado']}
+            filas={r.pares.map((p) => [`${p.a} vs ${p.b}`, f(p.ma, 4), f(p.mb, 4), f(p.dif, 4), f(p.est, 3), finito(p.df) ? f(p.df, 2) : '–', pTxt(p.p), pTxt(p.pa), ...(p.metodo === 'LSD' ? [f(p.lsd, 4)] : []), !finito(p.p) ? 'Hacen falta 2 o más datos' : p.pa < 0.05 ? `Distinto (${marcaSig(p.pa)})` : 'Sin diferencia clara'])} />
           {!ctrl && <MatrizP r={r} />}
         </>
       )}
@@ -467,15 +473,32 @@ export function ResultadosPruebas({ s, D, o }) {
   const ctrlCepa = cepas.includes(o.ctrlCepa) ? o.ctrlCepa : cepas[0]
   const titulo = { cepastodas: '¿Difieren las cepas, sin separar por medio?', medios: '¿Hay más OD en un medio que en otro?', placas: '¿Cada cepa da lo mismo en todas las placas?', placastodas: '¿Cada cepa da lo mismo en todas las placas, sea cual sea el medio?', cepas: '¿Difieren las cepas dentro de cada medio?' }[obj]
   const l = (a) => a.join(', ')
+  // comparaciones definidas a mano en la barra (cada una es un ANOVA aparte); sin definir, un solo ANOVA con todos los seleccionados
+  const ajuste = o.ajuste === 'lsd' ? 'lsd' : 'holm'
+  const factorComp = obj === 'medios' ? 'medios' : obj === 'cepas' || obj === 'cepastodas' ? 'cepas' : 'placas'
+  const placasIds = [...new Set(obs.map((x) => x.placaId))]
+  const nomP = (id) => obs.find((x) => x.placaId === id)?.placa || id
+  const personal = o.sets && o.sets[factorComp]
+  const nivelesComp = factorComp === 'medios' ? medios : factorComp === 'cepas' ? cepas : placasIds
+  const conjuntos = personal ? personal.map((S) => S.filter((x) => nivelesComp.includes(x))).filter((S) => S.length >= 2) : [nivelesComp]
+  const nomS = (S) => S.map((x) => (factorComp === 'placas' ? nomP(x) : x)).join(' vs ')
+  const ctrlEn = (S, c) => (comp === 'control' && S.includes(c) ? c : null)
+  const hipPersonal = conjuntos.map((S, i) => ({
+    nombre: `Comparación ${i + 1}: ${nomS(S)}`,
+    h0: factorComp === 'cepas' ? `Las cepas ${S.join(' y ')} producen la misma cantidad de biofilm (OD)${obj === 'cepas' ? ' en cada medio' : ' (medios juntos)'}.`
+      : factorComp === 'medios' ? `La OD de cada cepa es la misma en ${S.join(' y ')}.`
+        : `La OD de la cepa es la misma en las placas ${S.map(nomP).join(' y ')}${obj === 'placas' ? ' (mismo medio)' : ''}.`,
+    h1: 'Hay diferencia: la OD media no es la misma en todos los grupos de esta comparación.',
+  }))
   let cuerpo = null
   let info = null
 
   if (obj === 'medios') {
-    const bloques = cepas.map((c) => {
-      const grupos = medios.map((m) => ({ nombre: m, v: vals(c, m, null) }))
-      const r = analizar(grupos, forzado, comp === 'control' ? ctrlMedio : null)
-      return { titulo: c, r, grupos, extra: [grupos.map((g) => `${g.nombre}: ${g.v.length ? f(media(g.v), 3) : '–'} (n ${g.v.length})`).join(' · ')] }
-    })
+    const bloques = conjuntos.flatMap((S) => cepas.map((c) => {
+      const grupos = S.map((m) => ({ nombre: m, v: vals(c, m, null) }))
+      const r = analizar(grupos, forzado, ctrlEn(S, ctrlMedio), ajuste)
+      return { titulo: personal ? `${c} · ${nomS(S)}` : c, ctrl: ctrlEn(S, ctrlMedio), r, grupos, extra: [grupos.map((g) => `${g.nombre}: ${g.v.length ? f(media(g.v), 3) : '–'} (n ${g.v.length})`).join(' · ')] }
+    }))
     // efecto global (todas las cepas juntas) con la placa como bloque
     const sp = parcelasDivididas(obsPlaca.filter((x) => finito(x.y)))
     info = infoDe(bloques, sp ? sp.filas.filter((x) => finito(x.p)).map((x) => ({ nombre: `Global · ${x.nombre}`, p: x.p })) : [], 'cepa')
@@ -493,48 +516,50 @@ export function ResultadosPruebas({ s, D, o }) {
         )}
         <h4 className="sub-res">Cada cepa entre medios</h4>
         <Resumen titulo="Cepa" bloques={bloques} etiquetas={['Media de OD por medio']} />
-        {bloques.map((b) => <Bloque key={b.titulo} titulo={b.titulo} sub={`entre medios · ${unidad}`} sujeto={`la producción de biofilm de «${b.titulo}»`} factor="los medios de cultivo" r={b.r} colorDe={(n) => colorMedios[n]} ctrl={comp === 'control' ? ctrlMedio : null} />)}
+        {bloques.map((b) => <Bloque key={b.titulo} titulo={b.titulo} sub={`entre medios · ${unidad}`} sujeto={`la producción de biofilm de «${b.titulo}»`} factor="los medios de cultivo" r={b.r} colorDe={(n) => colorMedios[n]} ctrl={b.ctrl} />)}
       </>
     )
   } else if (obj === 'cepastodas') {
-    const grupos = cepas.map((c) => ({ nombre: c, v: vals(c, null, null) }))
-    const r = analizar(grupos, forzado, comp === 'control' ? ctrlCepa : null)
-    const bloques = [{ titulo: 'Todos los medios', r, grupos, extra: [`${grupos.filter((g) => g.v.length).length} cepas · ${medios.length} ${medios.length === 1 ? 'medio' : 'medios'} · ${placas.length} placas`] }]
+    const bloques = conjuntos.map((S) => {
+      const grupos = S.map((c) => ({ nombre: c, v: vals(c, null, null) }))
+      const r = analizar(grupos, forzado, ctrlEn(S, ctrlCepa), ajuste)
+      return { titulo: personal ? nomS(S) : 'Todos los medios', ctrl: ctrlEn(S, ctrlCepa), r, grupos, extra: [`${grupos.filter((g) => g.v.length).length} cepas · ${medios.length} ${medios.length === 1 ? 'medio' : 'medios'} · ${placas.length} placas`] }
+    })
     info = infoDe(bloques, [], 'análisis')
-    cuerpo = cepas.length < 2 ? <p className="ayuda">Elegí al menos 2 cepas con datos.</p> : (
+    cuerpo = !bloques.length ? <p className="ayuda">Elegí al menos 2 cepas con datos.</p> : (
       <>
         <p className="aviso-sel">Las cepas se comparan juntando los datos de {medios.join(' y ')}: si las placas de un medio rinden distinto que las del otro, esa diferencia entra en el error. Para compararlas dentro de cada medio activá «Separar por medio».</p>
-        <Bloque abierto titulo="Todos los medios" sub={`entre cepas · ${unidad}`} sujeto={`la producción de biofilm (medios: ${medios.join(', ')})`} factor="las cepas" r={r} colorDe={(n) => colorCepas[n]} ctrl={comp === 'control' ? ctrlCepa : null} />
+        {bloques.map((b) => <Bloque key={b.titulo} abierto titulo={b.titulo} sub={`entre cepas · ${unidad}`} sujeto={`la producción de biofilm (medios: ${medios.join(', ')})`} factor="las cepas" r={b.r} colorDe={(n) => colorCepas[n]} ctrl={b.ctrl} />)}
       </>
     )
   } else if (obj === 'cepas') {
-    const bloques = medios.map((m) => {
-      const grupos = cepas.map((c) => ({ nombre: c, v: vals(c, m, null) }))
-      const r = analizar(grupos, forzado, comp === 'control' ? ctrlCepa : null)
-      return { titulo: m, medio: m, r, grupos, extra: [`${grupos.filter((g) => g.v.length).length} cepas · ${[...new Set(obs.filter((x) => x.medio === m).map((x) => x.placa))].length} placas`] }
-    })
+    const bloques = conjuntos.flatMap((S) => medios.map((m) => {
+      const grupos = S.map((c) => ({ nombre: c, v: vals(c, m, null) }))
+      const r = analizar(grupos, forzado, ctrlEn(S, ctrlCepa), ajuste)
+      return { titulo: personal ? `${m} · ${nomS(S)}` : m, ctrl: ctrlEn(S, ctrlCepa), etq: personal ? nomS(S) : '', medio: m, r, grupos, extra: [`${grupos.filter((g) => g.v.length).length} cepas · ${[...new Set(obs.filter((x) => x.medio === m).map((x) => x.placa))].length} placas`] }
+    }))
     info = infoDe(bloques, [], 'medio', colorMedios)
-    cuerpo = cepas.length < 2 ? <p className="ayuda">Hacen falta al menos 2 cepas con datos.</p> : (
+    cuerpo = !bloques.length ? <p className="ayuda">Hacen falta al menos 2 cepas con datos.</p> : (
       <>
         <Resumen titulo="Medio" bloques={bloques} etiquetas={['Datos']} />
-        {bloques.map((b) => <Bloque key={b.titulo} color={colorMedios[b.medio]} medioTag={b.medio} titulo={`Medio «${b.titulo}»`} sub={`entre cepas · ${unidad}`} sujeto={`la producción de biofilm en el medio «${b.titulo}»`} factor="las cepas" r={b.r} colorDe={(n) => colorCepas[n]} ctrl={comp === 'control' ? ctrlCepa : null} />)}
+        {bloques.map((b) => <Bloque key={b.titulo} color={colorMedios[b.medio]} medioTag={b.medio} titulo={`Medio «${b.medio}»${b.etq ? ' · ' + b.etq : ''}`} sub={`entre cepas · ${unidad}`} sujeto={`la producción de biofilm en el medio «${b.medio}»`} factor="las cepas" r={b.r} colorDe={(n) => colorCepas[n]} ctrl={b.ctrl} />)}
       </>
     )
   } else if (obj === 'placastodas') {
     // para cada cepa, todas las placas juntas (sin separar por medio) y, aparte, el modelo con medio y placa anidada
     const pocillos = obsPozo.filter((x) => finito(x.y))
     const bloques = []
-    cepas.forEach((c) => {
-      const pls = [...new Set(obs.filter((x) => x.cepa === c).map((x) => x.placa))]
+    cepas.forEach((c) => conjuntos.forEach((S) => {
+      const pls = [...new Set(obs.filter((x) => x.cepa === c && S.includes(x.placaId)).map((x) => x.placa))]
       if (pls.length < 2) return
       const medioDe = (p) => obs.find((x) => x.placa === p)?.medio
       const grupos = pls.map((p) => ({ nombre: `${p} · ${medioDe(p)}`, v: vals(c, null, p) }))
-      const r = analizar(grupos, forzado, null)
+      const r = analizar(grupos, forzado, null, ajuste)
       const mm = grupos.map((g) => media(g.v)), M = media(mm), sd = desvio(mm)
       const cv = finito(sd) && M !== 0 ? (100 * sd) / Math.abs(M) : NaN
       const medsC = [...new Set(pls.map(medioDe))]
-      bloques.push({ titulo: c, r, grupos, extra: [pls.length, medsC.join(' · '), grupos.map((g) => f(media(g.v), 3)).join(' · '), f(cv, 1)], an: anidada(pocillos.filter((x) => x.cepa === c)) })
-    })
+      bloques.push({ titulo: personal ? `${c} · ${nomS(S)}` : c, r, grupos, extra: [pls.length, medsC.join(' · '), grupos.map((g) => f(media(g.v), 3)).join(' · '), f(cv, 1)], an: anidada(pocillos.filter((x) => x.cepa === c && S.includes(x.placaId))) })
+    }))
     const pc = placaCepa(pocillos)
     info = infoDe(bloques, pc ? pc.filas.filter((x) => finito(x.p)).map((x) => ({ nombre: `Global · ${x.nombre}`, p: x.p })) : [], 'cepa')
     const filasSp = (sp) => sp.filas.map((x) => [x.nombre, f(x.ss, 5), x.df, f(x.ms, 5), f(x.F, 3), pTxt(x.p), x.error, finito(x.p) ? (x.p < 0.05 ? `Significativo (${marcaSig(x.p)})` : 'Sin diferencia clara') : ''])
@@ -569,15 +594,15 @@ export function ResultadosPruebas({ s, D, o }) {
   } else {
     // entre placas: para cada cepa y medio, las placas son los grupos y los pocillos las réplicas
     const bloques = []
-    medios.forEach((m) => cepas.forEach((c) => {
-      const pls = [...new Set(obs.filter((x) => x.cepa === c && x.medio === m).map((x) => x.placa))]
+    medios.forEach((m) => cepas.forEach((c) => conjuntos.forEach((S) => {
+      const pls = [...new Set(obs.filter((x) => x.cepa === c && x.medio === m && S.includes(x.placaId)).map((x) => x.placa))]
       if (pls.length < 2) return
       const grupos = pls.map((p) => ({ nombre: p, v: vals(c, m, p) }))
-      const r = analizar(grupos, forzado, null)
+      const r = analizar(grupos, forzado, null, ajuste)
       const mm = grupos.map((g) => media(g.v)), M = media(mm), sd = desvio(mm)
       const cv = finito(sd) && M !== 0 ? (100 * sd) / Math.abs(M) : NaN
-      bloques.push({ titulo: `${c} · ${m}`, medio: m, r, grupos, extra: [pls.length, grupos.map((g) => f(media(g.v), 3)).join(' · '), f(cv, 1), !finito(cv) ? '–' : cv <= 20 ? 'Buena' : cv <= 30 ? 'Aceptable' : 'Alta variabilidad'] })
-    }))
+      bloques.push({ titulo: personal ? `${c} · ${m} · ${nomS(S)}` : `${c} · ${m}`, medio: m, r, grupos, extra: [pls.length, grupos.map((g) => f(media(g.v), 3)).join(' · '), f(cv, 1), !finito(cv) ? '–' : cv <= 20 ? 'Buena' : cv <= 30 ? 'Aceptable' : 'Alta variabilidad'] })
+    })))
     info = infoDe(bloques, [], 'cepa · medio', colorMedios)
     cuerpo = !bloques.length ? <p className="ayuda">Hacen falta al menos 2 placas con la misma cepa y el mismo medio.</p> : (
       <>
@@ -606,7 +631,7 @@ export function ResultadosPruebas({ s, D, o }) {
         cepas: { h0: 'todas las cepas producen lo mismo en ese medio.', h1: 'al menos una cepa produce más o menos que otra en ese medio.' },
       }[obj]} />}
       <DiagnosticoGlobal d={diagnosticoGlobal(obsPozo.filter((x) => finito(x.y)))} unidad={unidad} />
-      <Hip titulo={`Hipótesis del objetivo · α = 0,05 · ${nivel === 'placa' ? 'cada placa es una réplica' : 'cada pocillo es una réplica'}`} items={{
+      <Hip titulo={`Hipótesis ${personal ? 'de cada comparación' : 'del objetivo'} · α = 0,05 · ${nivel === 'placa' ? 'cada placa es una réplica' : 'cada pocillo es una réplica'}`} items={personal ? hipPersonal : {
         medios: [{ nombre: 'Cada cepa', h0: `La producción de biofilm (OD) de cada cepa (${l(cepas)}) es la misma en ${l(medios)}.`, h1: `La producción de biofilm de la cepa cambia según el medio (${l(medios)}): al menos un medio difiere.` },
           { nombre: 'Medio (todas las cepas)', h0: 'El medio de cultivo no afecta la producción de biofilm (OD media de las cepas).', h1: 'Hay un efecto del medio sobre la producción de biofilm.' },
           { nombre: 'Cepa', h0: 'Todas las cepas producen la misma cantidad de biofilm (OD).', h1: 'Al menos una cepa produce más o menos que otra.' },

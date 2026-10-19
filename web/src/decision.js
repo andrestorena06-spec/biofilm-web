@@ -6,6 +6,7 @@
 // Comparaciones de a pares con corrección de Holm: t con varianza común (ANOVA), t de Welch (Welch) o Dunn (Kruskal-Wallis).
 // ============================================================
 import { anovaTabla, desvio, holm, media, varianza, welch } from './estadistica.js'
+import { tCuantil } from './utils.js'
 import { fCdf, kruskal, pnorm, rangos, rssRango, shapiro, tSup2 } from './reproducibilidad.js'
 
 const finito = Number.isFinite
@@ -48,7 +49,7 @@ export function welchAnova(grupos) {
 }
 
 // Comparaciones de a pares. grupos: [{ nombre, v }]; ctrl: nombre del control o null (todos los pares)
-export function pares(grupos, tipo, ctrl) {
+export function pares(grupos, tipo, ctrl, ajuste = 'holm') {
   const g = grupos.filter((x) => x.v.length > 0)
   const lista = []
   for (let i = 0; i < g.length; i++) for (let j = i + 1; j < g.length; j++) {
@@ -80,6 +81,11 @@ export function pares(grupos, tipo, ctrl) {
     }
     return { a: a.nombre, b: b.nombre, ma: media(a.v), mb: media(b.v), dif, est, df, p }
   })
+  // LSD de Fisher (solo con ANOVA clásico): t con el error común y sin ajuste por comparaciones múltiples
+  if (ajuste === 'lsd' && tipo === 'anova' && mse > 0 && finito(dfe)) {
+    const tc = tCuantil(0.975, dfe)
+    return filas.map((f, i) => ({ ...f, pa: f.p, metodo: 'LSD', lsd: tc * Math.sqrt(mse * (1 / lista[i][0].v.length + 1 / lista[i][1].v.length)) }))
+  }
   // contra un control con ANOVA clásico: prueba de Dunnett (p ajustado exacto); en los demás casos, Holm
   const usaDunnett = !!ctrl && tipo === 'anova' && mse > 0 && finito(dfe) && lista.length > 0
   if (usaDunnett) {
@@ -111,7 +117,7 @@ export function letras(grupos, filas) {
 }
 
 // Elige la prueba y la ejecuta. forzado: 'auto' | 'anova' | 'welch' | 'kw'
-export function analizar(grupos, forzado = 'auto', ctrl = null) {
+export function analizar(grupos, forzado = 'auto', ctrl = null, ajuste = 'holm') {
   const g = grupos.filter((x) => x.v.length > 0)
   const vs = g.map((x) => x.v)
   const N = vs.reduce((a, v) => a + v.length, 0)
@@ -136,7 +142,11 @@ export function analizar(grupos, forzado = 'auto', ctrl = null) {
   else if (tipo === 'welch') { const a = welchAnova(vs); global = a && { nombre: 'ANOVA de Welch', est: 'F', valor: a.F, df1: a.df1, df2: a.df2, p: a.p } }
   else { const a = kruskal(vs); global = a && { nombre: 'Kruskal-Wallis', est: 'H', valor: a.H, df1: a.df, df2: null, p: a.p } }
   if (!global) return { ok: false, grupos: g, motivo: 'No se pudo calcular la prueba con estos datos.' }
-  const pr = pares(g, tipo, ctrl)
+  let pr = pares(g, tipo, ctrl, ajuste)
+  // LSD protegido: si el ANOVA global no es significativo, los pares no se interpretan
+  const lsdProtegido = pr[0]?.metodo === 'LSD' && global.p >= 0.05
+  if (lsdProtegido) pr = pr.map((x) => ({ ...x, pa: 1, protegido: true }))
+  if (pr[0]?.metodo === 'LSD') razon += lsdProtegido ? ' LSD de Fisher: como el ANOVA global no es significativo, no se interpretan las comparaciones de a pares.' : ' Pares con LSD de Fisher (sin ajuste por comparaciones múltiples).'
   return { ok: true, tipo, razon, sw, lev, global, grupos: g, pares: pr, letras: ctrl ? null : letras(g, pr), razonSD: razonSD(vs) }
 }
 

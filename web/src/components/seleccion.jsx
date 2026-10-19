@@ -1,4 +1,5 @@
 import { Desplegable } from './desplegable.jsx'
+import { Select } from './ui.jsx'
 import { Check } from './ui.jsx'
 import { Nota } from './tip.jsx'
 import { PanelPruebas, juntarDe } from './pruebas.jsx'
@@ -44,6 +45,39 @@ function Multi({ titulo, tip, todos, sel, onSel, comparado, colores }) {
   )
 }
 
+// Cada comparación es un ANOVA aparte entre los elementos que elijas (p. ej. L100A1 vs L100A1 Rug, y por otro lado L100A1 vs L100A1 SCV)
+function Comparaciones({ pool, sets, onSets, nombreFactor }) {
+  const nombre = (id) => pool.find((x) => x.id === id)?.nombre || id
+  const ids = pool.map((x) => x.id)
+  const actuales = (sets || []).map((S) => S.filter((x) => ids.includes(x)))
+  const cambiar = (i, S) => onSets(actuales.map((x, k) => (k === i ? S : x)))
+  return (
+    <div className="comparaciones">
+      <span className="multi-t">ANOVAs a realizar<Nota>{'Cada comparación es un ANOVA separado entre los elementos que elijas. Con dos elementos equivale a una prueba t. Al ser pruebas separadas, el error no se ajusta entre ellas: para controlar el error de todas contra un mismo control usá un solo ANOVA con «Contra un control».'}</Nota></span>
+      <div className="comp-lista">
+        {!sets && <span className="comp-chip" data-tip={`Un solo ANOVA con todas las ${nombreFactor} seleccionadas`}>Todas juntas (un ANOVA)</span>}
+        {actuales.map((S, i) => (
+          <span key={i} className="comp-chip">
+            <Desplegable etiqueta={`ANOVA ${i + 1}`} resumen={S.map(nombre).join(' vs ') || '(vacío)'} ancho={260}>
+              <div className="lista-check">
+                {pool.map((x) => <Check key={x.id} label={x.nombre} checked={S.includes(x.id)} onChange={(v) => cambiar(i, v ? [...S, x.id] : S.filter((y) => y !== x.id))} />)}
+              </div>
+              <button className="chico" onClick={() => onSets(actuales.filter((_, k) => k !== i))}>Quitar este ANOVA</button>
+            </Desplegable>
+          </span>
+        ))}
+        <button className="chico" onClick={() => onSets([...actuales, ids.slice(0, 2)])} disabled={ids.length < 2}>+ Agregar ANOVA</button>
+        {sets && <button className="chico" onClick={() => onSets(undefined)}>Todas juntas</button>}
+        {ids.length > 2 && (
+          <span className="comp-ctrl" data-tip={'Crea un ANOVA por cada par: el elemento que elijas contra cada uno de los demás'}>
+            <Select value="" onChange={(c) => c && onSets(ids.filter((x) => x !== c).map((x) => [c, x]))} opciones={[['', 'Un ANOVA por par con…'], ...pool.map((x) => [x.id, x.nombre])]} />
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // Barra horizontal debajo de las placas: qué grupos se comparan y con qué datos. Las hipótesis de abajo se arman con esta selección.
 export function BarraSeleccion({ s, D, o, setO }) {
   const modo = modoBase(o)
@@ -80,6 +114,10 @@ export function BarraSeleccion({ s, D, o, setO }) {
       </div>
       {modo !== 'concordancia' && (
         <>
+          {(() => {
+            const pool = { cepas: cepasTodas, medios: mediosTodos, placas: placasTodas }[modo].filter((x) => ({ cepas: nomsC, medios: nomsM, placas: nomsP })[modo].includes(x.nombre))
+            return <Comparaciones pool={pool} nombreFactor={modo} sets={o.sets && o.sets[modo]} onSets={(v) => setO('sets', { ...(o.sets || {}), [modo]: v })} />
+          })()}
           <PanelPruebas o={o} setO={setO} D={D} sinObjetivos horizontal />
           {frase && <p className="frase-sel">{frase}</p>}
         </>
