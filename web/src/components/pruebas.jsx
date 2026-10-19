@@ -211,11 +211,12 @@ function lecturaDe(r, ctrl) {
 }
 
 // un análisis completo (indicadores, barras, tablas y conclusión) plegable
-function Bloque({ titulo, sub, r, colorDe, ctrl, abierto, sujeto, factor }) {
+function Bloque({ titulo, sub, r, colorDe, ctrl, abierto, sujeto, factor, color, medioTag }) {
   if (!r.ok) return <div className="bloque-res"><b>{titulo}</b> <span className="ayuda">{r.motivo}</span></div>
   return (
-    <details className="bloque-res" open={abierto || r.global.p < 0.05}>
+    <details className="bloque-res" open={abierto || r.global.p < 0.05} style={color ? { borderLeft: `6px solid ${color}` } : undefined}>
       <summary>
+        {medioTag && <span className="medio-tag" style={{ background: color }}>{medioTag}</span>}
         <b>{titulo}</b> {sub && <small>{sub}</small>}
         <Chip tipo={r.global.p < 0.05 ? 'dif' : 'ok'}>{r.global.p < 0.05 ? 'Hay diferencias' : 'Sin diferencias'}</Chip>
         <Chip tipo="prueba">{NOMBRE_TEST[r.tipo]}</Chip>
@@ -294,11 +295,11 @@ function DiagnosticoGlobal({ d, unidad }) {
 }
 
 // datos del resumen: una fila por análisis, con su p
-function infoDe(bloques, globales, etiquetaFila) {
+function infoDe(bloques, globales, etiquetaFila, colorMedios = {}) {
   const ok = bloques.filter((b) => b.r.ok)
   const sig = ok.filter((b) => b.r.global.p < 0.05)
   const filas = [...globales.map((g) => ({ ...g, tipo: 'ANOVA de parcelas divididas', global: true })),
-    ...bloques.map((b) => ({ nombre: b.titulo, p: b.r.ok ? b.r.global.p : NaN, tipo: b.r.ok ? NOMBRE_TEST[b.r.tipo] : '' }))]
+    ...bloques.map((b) => ({ nombre: b.titulo, p: b.r.ok ? b.r.global.p : NaN, tipo: b.r.ok ? NOMBRE_TEST[b.r.tipo] : '', medio: b.medio, color: b.medio ? colorMedios[b.medio] : undefined }))]
   const frases = sig.slice(0, 6).map((b) => `${b.titulo}: ${lecturaDe(b.r, null)}`)
   globales.filter((g) => g.p < 0.05).forEach((g) => frases.unshift(`${g.nombre.replace('Global · ', 'Efecto global de ')}: significativo (p = ${pTxt(g.p)}).`))
   return {
@@ -313,8 +314,29 @@ function Infografia({ info, titulo }) {
   const MAXV = 5, X0 = 190, W = 330
   const v = (p) => Math.min(MAXV, -Math.log10(Math.max(p, 1e-5)))
   const x = (val) => X0 + (val / MAXV) * W
-  const H = filas.length * 26 + 44
   const umbral = -Math.log10(0.05)
+  // con medios de cultivo: las filas se agrupan por medio, cada uno con su fondo, su título y su color
+  const conMedio = filas.some((r) => r.medio)
+  const cuentaMedio = {}
+  filas.forEach((r) => { if (r.medio) cuentaMedio[r.medio] = (cuentaMedio[r.medio] || 0) + 1 })
+  const items = []
+  let y = 22
+  let medioAct = null
+  filas.forEach((r) => {
+    if (conMedio && r.medio && r.medio !== medioAct && cuentaMedio[r.medio] > 1) { medioAct = r.medio; items.push({ cab: r.medio, color: r.color, y }); y += 22 }
+    else if (r.medio !== medioAct) medioAct = r.medio
+    items.push({ fi: r, y }); y += 26
+  })
+  const H = y + 24
+  // fondos por medio (de la primera a la última fila del mismo medio)
+  const bandas = []
+  items.forEach((it) => {
+    const m = it.cab || it.fi?.medio
+    if (!m || !conMedio) return
+    const ult = bandas[bandas.length - 1]
+    if (ult && ult.medio === m) ult.fin = it.y + (it.cab ? 22 : 26)
+    else bandas.push({ medio: m, color: it.color || it.fi?.color, ini: it.y - 3, fin: it.y + (it.cab ? 22 : 26) })
+  })
   return (
     <div className="infografia">
       <div className="info-kpis">
@@ -324,23 +346,26 @@ function Infografia({ info, titulo }) {
         <div className="kpi-info" data-tip="Análisis con Kruskal-Wallis porque los residuos no son normales (Shapiro-Wilk)"><b>{info.kpis.kw}</b><small>Kruskal-Wallis</small></div>
       </div>
       <div className="info-grafico">
-        <h4>Resumen: ¿dónde hay diferencias? <Nota>Cada barra es un análisis. Cuanto más larga, más evidencia de diferencia (−log₁₀ de p). Si pasa la línea punteada (p = 0,05), la diferencia es significativa.</Nota></h4>
+        <h4>Resumen: ¿dónde hay diferencias? <Nota>Cada barra es un análisis. Cuanto más larga, más evidencia de diferencia (−log₁₀ de p). Si pasa la línea punteada (p = 0,05), la diferencia es significativa.{conMedio ? ' Cada medio de cultivo tiene su propio color y su fondo; la barra llena es significativa y la clara, no.' : ''}</Nota></h4>
         {filas.length > 0 ? (
           <svg viewBox={`0 0 ${X0 + W + 90} ${H}`} className="barras-grupo" role="img" aria-label="Resumen de los valores de p de cada análisis">
+            {bandas.map((b, i) => <rect key={'b' + i} x="4" y={b.ini} width={X0 + W + 82} height={b.fin - b.ini} rx="8" fill={b.color} fillOpacity="0.10" />)}
             {[0, 1, 2, 3, 4, 5].map((t) => (
               <g key={t}><line x1={x(t)} x2={x(t)} y1="16" y2={H - 20} stroke="#ecdfcd" /><text x={x(t)} y={H - 6} textAnchor="middle" fontSize="10" fill="#8a7765">{t === 0 ? 'p = 1' : t === 1 ? '0,1' : t === 2 ? '0,01' : t === 3 ? '0,001' : t === 4 ? '1e-4' : '1e-5'}</text></g>
             ))}
             <line x1={x(umbral)} x2={x(umbral)} y1="10" y2={H - 20} stroke="#a2391a" strokeDasharray="4 3" strokeWidth="1.5" />
             <text x={x(umbral)} y="9" textAnchor="middle" fontSize="10" fill="#a2391a" fontWeight="700">p = 0,05</text>
-            {filas.map((fi, i) => {
-              const y = 20 + i * 26
+            {items.map((it, i) => {
+              if (it.cab) return <text key={'c' + i} x="12" y={it.y + 14} fontSize="12" fontWeight="800" fill="#3a2a1e">Medio {it.cab}</text>
+              const fi = it.fi
               const val = v(fi.p)
               const sg = fi.p < 0.05
+              const relleno = fi.color || (sg ? '#d9731f' : '#b9c9ae')
               return (
                 <g key={fi.nombre + i} data-tip={`${fi.nombre}\n${fi.tipo}\np = ${pTxt(fi.p)} ${marcaSig(fi.p)}\n${sg ? 'Hay diferencias' : 'Sin diferencia clara'}`}>
-                  <text x={X0 - 8} y={y + 13} textAnchor="end" fontSize="11.5" fill="#3a2a1e" fontWeight={fi.global ? 700 : 400}>{fi.nombre.length > 28 ? fi.nombre.slice(0, 27) + '…' : fi.nombre}</text>
-                  <rect x={X0} y={y} width={Math.max((val / MAXV) * W, 2)} height="18" rx="4" fill={sg ? '#d9731f' : '#b9c9ae'} />
-                  <text x={x(val) + 6} y={y + 13} fontSize="11" fontWeight="700" fill={sg ? '#a2391a' : '#6b7a62'}>{pTxt(fi.p)} {marcaSig(fi.p) === 'ns' ? '' : marcaSig(fi.p)}</text>
+                  <text x={X0 - 8} y={it.y + 13} textAnchor="end" fontSize="11.5" fill="#3a2a1e" fontWeight={fi.global ? 700 : 400}>{fi.nombre.length > 28 ? fi.nombre.slice(0, 27) + '…' : fi.nombre}</text>
+                  <rect x={X0} y={it.y} width={Math.max((val / MAXV) * W, 2)} height="18" rx="4" fill={relleno} fillOpacity={fi.color ? (sg ? 0.95 : 0.35) : 1} stroke={fi.color && sg ? '#3a2a1e' : 'none'} strokeWidth="0.8" />
+                  <text x={x(val) + 6} y={it.y + 13} fontSize="11" fontWeight="700" fill={sg ? '#a2391a' : '#6b7a62'}>{pTxt(fi.p)} {marcaSig(fi.p) === 'ns' ? '' : marcaSig(fi.p)}</text>
                 </g>
               )
             })}
@@ -443,32 +468,32 @@ export function ResultadosPruebas({ s, D, o }) {
     const bloques = medios.map((m) => {
       const grupos = cepas.map((c) => ({ nombre: c, v: vals(c, m, null) }))
       const r = analizar(grupos, forzado, comp === 'control' ? ctrlCepa : null)
-      return { titulo: m, r, grupos, extra: [`${grupos.filter((g) => g.v.length).length} cepas · ${[...new Set(obs.filter((x) => x.medio === m).map((x) => x.placa))].length} placas`] }
+      return { titulo: m, medio: m, r, grupos, extra: [`${grupos.filter((g) => g.v.length).length} cepas · ${[...new Set(obs.filter((x) => x.medio === m).map((x) => x.placa))].length} placas`] }
     })
-    info = infoDe(bloques, [], 'medio')
+    info = infoDe(bloques, [], 'medio', colorMedios)
     cuerpo = cepas.length < 2 ? <p className="ayuda">Hacen falta al menos 2 cepas con datos.</p> : (
       <>
         <Resumen titulo="Medio" bloques={bloques} etiquetas={['Datos']} />
-        {bloques.map((b) => <Bloque key={b.titulo} titulo={`Medio «${b.titulo}»`} sub={`entre cepas · ${unidad}`} sujeto={`la producción de biofilm en el medio «${b.titulo}»`} factor="las cepas" r={b.r} colorDe={(n) => colorCepas[n]} ctrl={comp === 'control' ? ctrlCepa : null} />)}
+        {bloques.map((b) => <Bloque key={b.titulo} color={colorMedios[b.medio]} medioTag={b.medio} titulo={`Medio «${b.titulo}»`} sub={`entre cepas · ${unidad}`} sujeto={`la producción de biofilm en el medio «${b.titulo}»`} factor="las cepas" r={b.r} colorDe={(n) => colorCepas[n]} ctrl={comp === 'control' ? ctrlCepa : null} />)}
       </>
     )
   } else {
     // entre placas: para cada cepa y medio, las placas son los grupos y los pocillos las réplicas
     const bloques = []
-    cepas.forEach((c) => medios.forEach((m) => {
+    medios.forEach((m) => cepas.forEach((c) => {
       const pls = [...new Set(obs.filter((x) => x.cepa === c && x.medio === m).map((x) => x.placa))]
       if (pls.length < 2) return
       const grupos = pls.map((p) => ({ nombre: p, v: vals(c, m, p) }))
       const r = analizar(grupos, forzado, null)
       const mm = grupos.map((g) => media(g.v)), M = media(mm), sd = desvio(mm)
       const cv = finito(sd) && M !== 0 ? (100 * sd) / Math.abs(M) : NaN
-      bloques.push({ titulo: `${c} · ${m}`, r, grupos, extra: [pls.length, grupos.map((g) => f(media(g.v), 3)).join(' · '), f(cv, 1), !finito(cv) ? '–' : cv <= 20 ? 'Buena' : cv <= 30 ? 'Aceptable' : 'Alta variabilidad'] })
+      bloques.push({ titulo: `${c} · ${m}`, medio: m, r, grupos, extra: [pls.length, grupos.map((g) => f(media(g.v), 3)).join(' · '), f(cv, 1), !finito(cv) ? '–' : cv <= 20 ? 'Buena' : cv <= 30 ? 'Aceptable' : 'Alta variabilidad'] })
     }))
-    info = infoDe(bloques, [], 'cepa · medio')
+    info = infoDe(bloques, [], 'cepa · medio', colorMedios)
     cuerpo = !bloques.length ? <p className="ayuda">Hacen falta al menos 2 placas con la misma cepa y el mismo medio.</p> : (
       <>
         <Resumen titulo="Cepa · medio" bloques={bloques} etiquetas={['Placas', 'Media de cada placa', 'CV entre placas (%)', 'Reproducibilidad']} />
-        {bloques.map((b) => <Bloque key={b.titulo} titulo={b.titulo} sub={`entre placas · ${unidad}`} sujeto={`la producción de biofilm de «${b.titulo}»`} factor="las placas (réplicas)" r={b.r} colorDe={(n) => colorPlacas[n]} ctrl={null} />)}
+        {bloques.map((b) => <Bloque key={b.titulo} color={colorMedios[b.medio]} medioTag={b.medio} titulo={b.titulo} sub={`entre placas · ${unidad}`} sujeto={`la producción de biofilm de «${b.titulo}»`} factor="las placas (réplicas)" r={b.r} colorDe={() => colorMedios[b.medio]} ctrl={null} />)}
         <p className="ayuda">Los grupos son las placas y los datos de cada una son sus pocillos. Si p &lt; 0,05 la placa influye: la cepa no se repite igual. Para ICC y correlaciones entre experimentos usá el modo «Reproducibilidad entre experimentos».</p>
       </>
     )

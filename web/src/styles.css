@@ -450,3 +450,5 @@ html { -webkit-text-size-adjust: 100%; }
 
 .diag-global { padding: 10px 14px; border-radius: 12px; background: #fffdf9; border: 1px solid var(--borde); }
 .diag-global h4 { margin: 0 0 4px; font-size: 14px; color: #5a2e12; }
+
+.medio-tag { display: inline-block; padding: 1px 10px; border-radius: 999px; color: #fff; font-size: 11.5px; font-weight: 700; text-shadow: 0 1px 1px rgba(0, 0, 0, .35); }
