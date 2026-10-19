@@ -173,7 +173,8 @@ function prepararBloques(s, D, o) {
   const obj = obj0 === 'concordancia' ? 'placas' : obj0
   const variable = o.variable || 'od'
   const esPl = obj === 'placas' || obj === 'placastodas'
-  const nivel = esPl ? 'pocillo' : o.nivel || 'placa'
+  const libres = obj === 'libre' ? (o.libres || []).filter((c) => c.grupos.length >= 2) : []
+  const nivel = esPl || libres.some((c) => c.grupos.some((g) => g.placa)) ? 'pocillo' : o.nivel || 'placa'
   const fx = (y, odc) => (variable === 'ln' ? (y > 0 ? Math.log(y) : NaN) : variable === 'odc' ? (odc > 0 ? y / odc : NaN) : y)
   const obsPlaca0 = [], obsPozo0 = []
   D.placasSel.forEach((p) => {
@@ -183,7 +184,8 @@ function prepararBloques(s, D, o) {
     a.resumen.forEach((r) => { if (!D.ocultos.has(D.clave(p.id, r.Muestra)) && finito(r.Media)) obsPlaca0.push({ cepa: r.Muestra, medio, placa: p.nombre, placaId: p.id, y: fx(r.Media, odc) }) })
     a.estado.forEach((e) => { if (e.Usado && !e.EsBlanco && !D.ocultos.has(D.clave(p.id, e.Muestra))) obsPozo0.push({ cepa: e.Muestra, medio, placa: p.nombre, placaId: p.id, y: fx(e.OD, odc) }) })
   })
-  const obsPlaca = obsPlaca0.filter((x) => dentroDeSel(o, x)), obsPozo = obsPozo0.filter((x) => dentroDeSel(o, x))
+  const sel = (x) => obj === 'libre' || dentroDeSel(o, x)
+  const obsPlaca = obsPlaca0.filter(sel), obsPozo = obsPozo0.filter(sel)
   const obs = (nivel === 'placa' ? obsPlaca : obsPozo).filter((x) => finito(x.y))
   const cepas = [...new Set(obs.map((x) => x.cepa))], medios = [...new Set(obs.map((x) => x.medio))]
   const vals = (c, m, p) => obs.filter((x) => (c === null || x.cepa === c) && (m === null || x.medio === m) && (p === null || x.placa === p)).map((x) => x.y)
@@ -199,8 +201,15 @@ function prepararBloques(s, D, o) {
   const nomP = (id) => obs.find((x) => x.placaId === id)?.placa || id
   const sfx = (S) => (personal ? ' · ' + S.map((x) => (factorComp === 'placas' ? nomP(x) : x)).join(' vs ') : '')
   const ctrlEn = (S, c) => (comp === 'control' && S.includes(c) ? c : null)
+  const nombreG = (g) => [g.cepa || null, g.medio || null, g.placa ? (D.placasSel.find((p) => p.id === g.placa)?.nombre || g.placa) : null].filter(Boolean).join(' · ') || 'Todos los datos'
+  const valsG = (g) => obs.filter((x) => (!g.cepa || x.cepa === g.cepa) && (!g.medio || x.medio === g.medio) && (!g.placa || x.placaId === g.placa)).map((x) => x.y)
   let bloques = []
-  if (obj === 'medios') bloques = conjuntos.flatMap((S) => cepas.map((c) => ({ titulo: `${c}${sfx(S)}: entre medios`, grupos: S.map((m) => ({ nombre: m, v: vals(c, m, null) })), ctrl: ctrlEn(S, ctrlMedio) })))
+  if (obj === 'libre') bloques = libres.map((c, i) => {
+    const vistos = new Set()
+    const grupos = c.grupos.filter((g) => { const k = nombreG(g); if (vistos.has(k)) return false; vistos.add(k); return true }).map((g) => ({ nombre: nombreG(g), v: valsG(g) }))
+    return { titulo: `ANOVA ${i + 1}: ${grupos.map((g) => g.nombre).join(' vs ')}`, grupos, ctrl: comp === 'control' ? grupos[0].nombre : null }
+  })
+  else if (obj === 'medios') bloques = conjuntos.flatMap((S) => cepas.map((c) => ({ titulo: `${c}${sfx(S)}: entre medios`, grupos: S.map((m) => ({ nombre: m, v: vals(c, m, null) })), ctrl: ctrlEn(S, ctrlMedio) })))
   else if (obj === 'cepastodas') bloques = conjuntos.map((S) => ({ titulo: `Todos los medios${sfx(S)}: entre cepas`, grupos: S.map((c) => ({ nombre: c, v: vals(c, null, null) })), ctrl: ctrlEn(S, ctrlCepa) }))
   else if (obj === 'cepas') bloques = conjuntos.flatMap((S) => medios.map((m) => ({ titulo: `Medio ${m}${sfx(S)}: entre cepas`, grupos: S.map((c) => ({ nombre: c, v: vals(c, m, null) })), ctrl: ctrlEn(S, ctrlCepa) })))
   else if (obj === 'placastodas') cepas.forEach((c) => conjuntos.forEach((S) => {

@@ -24,7 +24,7 @@ export function EstadisticaTab({ s }) {
   const nOcultas = (o.ocultos || []).length
   // pocillos que NO entran en las pruebas: excluidos a mano o por el criterio de valores atípicos
   const fuera = D.placasSel.flatMap((p) => (s.analisisMap[p.id]?.estado || []).filter((e) => !e.EsBlanco && !e.Usado).map((e) => ({ placa: p.nombre, ...e })))
-  const titulo = { medios: 'entre medios', placas: 'entre placas', placastodas: 'entre placas (todos los medios)', cepas: 'entre cepas', cepastodas: 'entre cepas (todos los medios)' }[objetivoDe(o)]
+  const titulo = { libre: 'a medida', medios: 'entre medios', placas: 'entre placas', placastodas: 'entre placas (todos los medios)', cepas: 'entre cepas', cepastodas: 'entre cepas (todos los medios)' }[objetivoDe(o)]
   return (
     <div className="estadistica-pag">
       <BarraSeleccion s={s} D={D} o={o} setO={setO} />

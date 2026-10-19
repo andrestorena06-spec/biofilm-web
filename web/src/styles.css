@@ -481,3 +481,11 @@ html { -webkit-text-size-adjust: 100%; }
 .comp-chip { display: inline-flex; padding: 4px 10px; border-radius: 999px; background: #fff; border: 1px dashed var(--borde); font-size: 12.5px; color: #6b5440; }
 .comp-chip .desplegable-btn { min-width: 0; padding: 4px 10px; }
 .comp-ctrl select { padding: 5px 8px; }
+.comparador { display: flex; flex-direction: column; gap: 8px; }
+.comp-card { border: 1px solid var(--borde); border-radius: 12px; background: #fff; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.comp-card-cab { display: flex; align-items: center; justify-content: space-between; }
+.comp-grupos { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; }
+.comp-grupo { display: flex; flex-direction: column; gap: 3px; padding: 6px 8px; border-radius: 10px; background: #fffaf2; border: 1px solid #f0e2c8; min-width: 150px; }
+.comp-grupo select { padding: 4px 6px; font-size: 12.5px; }
+.comp-grupo-t { font-size: 11.5px; font-weight: 650; color: #6b5440; display: flex; justify-content: space-between; align-items: center; }
+.icono-x { border: none; background: none; cursor: pointer; color: #a2391a; font-size: 14px; padding: 0 2px; }
