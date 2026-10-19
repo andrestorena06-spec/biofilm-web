@@ -101,9 +101,22 @@ export function abrirInforme(s) {
   if (/Android|iPhone|iPad/i.test(navigator.userAgent) || window.matchMedia('(pointer: coarse)').matches) {
     const barra = '<div class="no-imprimir" style="position:sticky;top:0;background:#4a2312;padding:10px;text-align:center;margin:-14mm -12mm 12px"><button onclick="window.print()" style="font-size:16px;padding:10px 18px;border-radius:10px;border:0;background:#f4a04c;color:#3b1c0a;font-weight:700">Imprimir o guardar como PDF</button></div>'
     const movil = html.replace('<body>', '<body>' + barra).replace('</style>', '@media print { .no-imprimir { display: none !important; } } body { max-width: 900px; margin: 0 auto; padding: 0 10px 20px; } </style>')
-    const url = URL.createObjectURL(new Blob([movil], { type: 'text/html;charset=utf-8' }))
-    const w = window.open(url, '_blank')
-    if (!w) window.location.href = url
+    // se escribe en una pestaña en blanco (no se navega a un Blob HTML: los antivirus del correo lo toman
+    // por «HTML smuggling» y bloquean el archivo); si el navegador no deja abrir pestañas, se muestra encima
+    const w = window.open('', '_blank')
+    if (w) {
+      w.document.open()
+      w.document.write(movil)
+      w.document.close()
+      return true
+    }
+    const capa = document.createElement('iframe')
+    capa.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:0;z-index:99999;background:#fff'
+    document.body.appendChild(capa)
+    const cerrar = '<button onclick="window.frameElement.remove()" style="font-size:16px;padding:10px 18px;border-radius:10px;border:0;background:#fff;color:#3b1c0a;font-weight:700;margin-left:8px">Cerrar</button>'
+    capa.contentDocument.open()
+    capa.contentDocument.write(movil.replace('Imprimir o guardar como PDF</button>', 'Imprimir o guardar como PDF</button>' + cerrar))
+    capa.contentDocument.close()
     return true
   }
 
