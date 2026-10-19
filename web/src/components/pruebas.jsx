@@ -18,6 +18,34 @@ export const OBJETIVOS = [
   ['cepas', 'Entre cepas', 'Dentro de cada medio, ¿qué cepas difieren?'],
 ]
 
+// Hipótesis en el contexto del biofilm: la OD (cristal violeta) es la medida de biomasa de biofilm producida
+function Hip({ items, titulo = 'Hipótesis' }) {
+  return (
+    <div className="hipotesis">
+      <b>{titulo}</b>
+      {items.map((h, i) => (
+        <div key={i} className="hip-fila">
+          {h.nombre && <span className="hip-nombre">{h.nombre}</span>}
+          <span><b>H₀:</b> {h.h0}</span>
+          <span><b>H₁:</b> {h.h1}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+const lista = (g) => g.map((x) => x.nombre).join(', ')
+// hipótesis de una prueba entre grupos: sujeto = qué se compara (ej. «la producción de biofilm (OD) de L101B2»)
+function hipotesisGrupos(tipo, sujeto, factor, grupos, ctrl) {
+  const n = lista(grupos)
+  const base = ctrl ? `entre «${ctrl}» y cada uno de los otros ${factor}` : `entre ${factor}`
+  if (tipo === 'kw') {
+    return [{ nombre: 'Global (Kruskal-Wallis)', h0: `${sujeto} tiene la misma distribución en todos los ${factor} (${n}).`, h1: `En al menos un grupo los valores tienden a ser mayores o menores que en otro.` },
+      { nombre: 'Pares (Dunn, Holm)', h0: 'Dos grupos tienen la misma distribución de OD.', h1: 'Las distribuciones difieren (bilateral).' }]
+  }
+  return [{ nombre: tipo === 'welch' ? 'Global (ANOVA de Welch)' : 'Global (ANOVA)', h0: `La OD media (${sujeto}) es igual en todos los ${factor}: μ(${grupos.map((x) => x.nombre).join(') = μ(')}).`, h1: `Al menos un grupo tiene una OD media distinta; es decir, hay diferencias ${base}.` },
+    { nombre: tipo === 'welch' ? 'Pares (t de Welch, Holm)' : 'Pares (t, Holm)', h0: 'Dos grupos tienen la misma OD media: μA = μB.', h1: 'Las OD medias difieren: μA ≠ μB (bilateral).' }]
+}
+
 function Chip({ tipo, children, tip }) {
   return <span className={`badge badge-${tipo}`} data-tip={tip}>{children}</span>
 }
@@ -180,7 +208,7 @@ function lecturaDe(r, ctrl) {
 }
 
 // un análisis completo (indicadores, barras, tablas y conclusión) plegable
-function Bloque({ titulo, sub, r, colorDe, ctrl, abierto }) {
+function Bloque({ titulo, sub, r, colorDe, ctrl, abierto, sujeto, factor }) {
   if (!r.ok) return <div className="bloque-res"><b>{titulo}</b> <span className="ayuda">{r.motivo}</span></div>
   return (
     <details className="bloque-res" open={abierto || r.global.p < 0.05}>
@@ -189,6 +217,7 @@ function Bloque({ titulo, sub, r, colorDe, ctrl, abierto }) {
         <Chip tipo={r.global.p < 0.05 ? 'dif' : 'ok'}>{r.global.p < 0.05 ? 'Hay diferencias' : 'Sin diferencias'}</Chip>
         <Chip tipo="prueba">{NOMBRE_TEST[r.tipo]}</Chip>
       </summary>
+      {sujeto && <Hip items={[...hipotesisGrupos(r.tipo, sujeto, factor, r.grupos, ctrl), { nombre: 'Supuestos', h0: 'Residuos normales (Shapiro-Wilk) y varianzas iguales entre grupos (Levene).', h1: 'Residuos no normales / varianzas distintas: se cambia a Kruskal-Wallis o ANOVA de Welch.' }]} />}
       <Indicadores r={r} />
       <p className="razon-test">{r.razon}</p>
       <div className="res-doble">
@@ -294,7 +323,7 @@ export function ResultadosPruebas({ s, D, o }) {
         )}
         <h4 className="sub-res">Cada cepa entre medios</h4>
         <Resumen titulo="Cepa" bloques={bloques} etiquetas={['Media de OD por medio']} />
-        {bloques.map((b) => <Bloque key={b.titulo} titulo={b.titulo} sub={`entre medios · ${unidad}`} r={b.r} colorDe={(n) => colorMedios[n]} ctrl={comp === 'control' ? ctrlMedio : null} />)}
+        {bloques.map((b) => <Bloque key={b.titulo} titulo={b.titulo} sub={`entre medios · ${unidad}`} sujeto={`la producción de biofilm de «${b.titulo}»`} factor="medios de cultivo" r={b.r} colorDe={(n) => colorMedios[n]} ctrl={comp === 'control' ? ctrlMedio : null} />)}
       </>
     )
   } else if (obj === 'cepas') {
@@ -306,7 +335,7 @@ export function ResultadosPruebas({ s, D, o }) {
     cuerpo = cepas.length < 2 ? <p className="ayuda">Hacen falta al menos 2 cepas con datos.</p> : (
       <>
         <Resumen titulo="Medio" bloques={bloques} etiquetas={['Datos']} />
-        {bloques.map((b) => <Bloque key={b.titulo} titulo={`Medio «${b.titulo}»`} sub={`entre cepas · ${unidad}`} r={b.r} colorDe={(n) => colorCepas[n]} ctrl={comp === 'control' ? ctrlCepa : null} />)}
+        {bloques.map((b) => <Bloque key={b.titulo} titulo={`Medio «${b.titulo}»`} sub={`entre cepas · ${unidad}`} sujeto={`la producción de biofilm en el medio «${b.titulo}»`} factor="cepas" r={b.r} colorDe={(n) => colorCepas[n]} ctrl={comp === 'control' ? ctrlCepa : null} />)}
       </>
     )
   } else {
@@ -324,7 +353,7 @@ export function ResultadosPruebas({ s, D, o }) {
     cuerpo = !bloques.length ? <p className="ayuda">Hacen falta al menos 2 placas con la misma cepa y el mismo medio.</p> : (
       <>
         <Resumen titulo="Cepa · medio" bloques={bloques} etiquetas={['Placas', 'Media de cada placa', 'CV entre placas (%)', 'Reproducibilidad']} />
-        {bloques.map((b) => <Bloque key={b.titulo} titulo={b.titulo} sub={`entre placas · ${unidad}`} r={b.r} colorDe={(n) => colorPlacas[n]} ctrl={null} />)}
+        {bloques.map((b) => <Bloque key={b.titulo} titulo={b.titulo} sub={`entre placas · ${unidad}`} sujeto={`la producción de biofilm de «${b.titulo}»`} factor="placas (réplicas)" r={b.r} colorDe={(n) => colorPlacas[n]} ctrl={null} />)}
         <p className="ayuda">Los grupos son las placas y los datos de cada una son sus pocillos. Si p &lt; 0,05 la placa influye: la cepa no se repite igual. Para ICC y correlaciones entre experimentos usá el modo «Reproducibilidad entre experimentos».</p>
       </>
     )
@@ -341,6 +370,14 @@ export function ResultadosPruebas({ s, D, o }) {
           {obj !== 'placas' && <Chip tipo="neutro">{comp === 'control' ? 'contra un control' : 'todos los pares'}</Chip>}
         </div>
       </div>
+      <Hip titulo={`Hipótesis del objetivo · α = 0,05 · ${nivel === 'placa' ? 'cada placa es una réplica' : 'cada pocillo es una réplica'}`} items={{
+        medios: [{ nombre: 'Cada cepa', h0: 'La producción de biofilm (OD de cristal violeta) de la cepa es la misma en todos los medios de cultivo.', h1: 'La producción de biofilm de la cepa cambia según el medio (al menos un medio difiere).' },
+          { nombre: 'Medio (todas las cepas)', h0: 'El medio de cultivo no afecta la producción de biofilm (OD media de las cepas).', h1: 'Hay un efecto del medio sobre la producción de biofilm.' },
+          { nombre: 'Cepa', h0: 'Todas las cepas producen la misma cantidad de biofilm (OD).', h1: 'Al menos una cepa produce más o menos que otra.' },
+          { nombre: 'Cepa × medio', h0: 'El efecto del medio es el mismo para todas las cepas (sin interacción).', h1: 'El efecto del medio depende de la cepa: algunas crecen mejor en un medio y otras en otro.' }],
+        placas: [{ nombre: 'Cada cepa y medio', h0: 'La OD media de la cepa es la misma en todas las placas: el resultado se reproduce entre réplicas.', h1: 'La OD media cambia entre placas (efecto placa): el resultado no se reproduce igual en cada placa.' }],
+        cepas: [{ nombre: 'Cada medio', h0: 'Todas las cepas producen la misma cantidad de biofilm (OD) en el medio.', h1: 'Al menos una cepa produce más o menos biofilm que otra en ese medio.' }],
+      }[obj]} />
       {nivel === 'pocillo' && obj !== 'placas' && <p className="aviso-sel">Cada pocillo cuenta como una réplica: los pocillos de una misma placa no son independientes y los p pueden salir demasiado chicos. Para conclusiones usá «Placa».</p>}
       {cuerpo}
     </section>
