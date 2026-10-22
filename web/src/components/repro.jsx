@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Nota } from './tip.jsx'
-import { Vacio } from './tabs.jsx'
-import { Campo, Check, Num, Panel, Select } from './ui.jsx'
+import { Check, Num, Vacio } from './ui.jsx'
+import { BotonCinta, Cajon, CampoCinta, Cinta, Grupo, OpcionesCinta } from './cinta.jsx'
 import { excelDe } from '../api.js'
 import { descargarBlob } from '../utils.js'
 import { nivelIcc, reproducibilidad } from '../reproducibilidad.js'
@@ -19,8 +19,9 @@ const Ok = ({ ok, children }) => <span className={ok === null ? '' : ok ? 'eval-
 // ===============================================================
 // REPRODUCIBILIDAD ENTRE EXPERIMENTOS: cada placa es una repetición del experimento
 // ===============================================================
-export function ReproTab({ s, D, o, setO, selectorModo }) {
+export function ReproTab({ s, D, o, setO, grupoModo }) {
   const [copiado, setCopiado] = useState(false)
+  const [cajon, setCajon] = useState(null)
   const { conAnalisis, placasSel, colores, colorBase, esBlanco } = D
   const variable = o.reproVar === 'odc' ? 'odc' : 'od'
   const cvBueno = finito(Number(o.reproCvBueno)) ? Number(o.reproCvBueno) : 20
@@ -93,43 +94,48 @@ export function ReproTab({ s, D, o, setO, selectorModo }) {
   }
 
   return (
-    <div className="con-lateral">
-      <Panel titulo="Comparar placas">
-        {selectorModo}
-        <Campo label={<>Variable<Nota>{'OD: la densidad óptica de cada pocillo.\nOD ÷ ODc: cada pocillo dividido por el punto de corte de su placa; corrige las diferencias de fondo entre días y suele ser la mejor medida para comparar experimentos.'}</Nota></>}>
-          <Select value={variable} onChange={(v) => setO('reproVar', v)} opciones={[['od', 'OD'], ['odc', 'OD ÷ ODc de su placa']]} />
-        </Campo>
-        <Campo label={<>CV % (bueno / aceptable hasta)<Nota>En biofilm (cristal violeta) un CV entre experimentos menor que 20–30 % suele considerarse aceptable.</Nota></>}>
-          <div className="fila-ctrl campos-cv" style={{ margin: 0 }}>
-            <Num value={cvBueno} min={1} max={100} onChange={(v) => setO('reproCvBueno', v === '' ? 20 : v)} />
-            <Num value={cvMax} min={1} max={200} onChange={(v) => setO('reproCvMax', v === '' ? 30 : v)} />
-          </div>
-        </Campo>
-        <Campo label={<>Experimentos (placas)<Nota>Cada placa es una repetición independiente del experimento.</Nota></>}>
-          <div className="fila-ctrl" style={{ margin: '0 0 4px' }}>
-            <button className="chico" onClick={() => setO('placasSel', conAnalisis.map((p) => p.id))}>Todas</button>
-            <button className="chico" onClick={() => setO('placasSel', [])}>Ninguna</button>
-          </div>
-          <div className="lista-check">
-            {conAnalisis.map((p) => (
-              <Check key={p.id} label={<><i className="punto-placa" style={{ background: colores[p.id] || colorBase[p.id] }} /> {p.nombre}{p.medio && <small className="medio-placa">{p.medio}</small>}</>}
-                checked={placasSel.some((x) => x.id === p.id)}
-                onChange={(v) => setO('placasSel', v ? conAnalisis.filter((x) => x.id === p.id || placasSel.some((y) => y.id === x.id)).map((x) => x.id) : placasSel.filter((x) => x.id !== p.id).map((x) => x.id))} />
-            ))}
-          </div>
-        </Campo>
-        <Campo label="Cepas o condiciones">
-          <div className="lista-check">
-            {todas.map((m) => (
-              <Check key={m} label={m} checked={!fuera.has(m)} onChange={(v) => setO('reproFuera', v ? [...fuera].filter((x) => x !== m) : [...fuera, m])} />
-            ))}
-          </div>
-        </Campo>
-        <button className="primario ancho" onClick={descargar} disabled={!R}>Descargar Excel</button>
-      </Panel>
+    <div className="repro">
+      <Cinta>
+        {grupoModo}
+        <Grupo titulo="Variable">
+          <OpcionesCinta valor={variable} onChange={(v) => setO('reproVar', v)} opciones={[
+            ['od', 'OD', 'OD', null, 'OD\nLa densidad óptica de cada pocillo'],
+            ['odc', 'OD ÷ ODc', '÷', null, 'OD ÷ ODc de su placa\nCorrige las diferencias de fondo entre días: suele ser la mejor medida para comparar experimentos'],
+          ]} />
+        </Grupo>
+        <Grupo titulo="CV entre placas" tip={'Límites del CV entre experimentos\nEn biofilm (cristal violeta) un CV menor que 20–30 % suele considerarse aceptable'}>
+          <CampoCinta etiqueta="Bueno hasta (%)"><Num value={cvBueno} min={1} max={100} ancho={56} onChange={(v) => setO('reproCvBueno', v === '' ? 20 : v)} /></CampoCinta>
+          <CampoCinta etiqueta="Aceptable hasta (%)"><Num value={cvMax} min={1} max={200} ancho={56} onChange={(v) => setO('reproCvMax', v === '' ? 30 : v)} /></CampoCinta>
+        </Grupo>
+        <Grupo titulo="Datos">
+          <BotonCinta icono="placas" texto={`Placas ${placasSel.length}/${conAnalisis.length}`} activo={cajon === 'placas'} onClick={() => setCajon(cajon === 'placas' ? null : 'placas')} tip="Cada placa es una repetición independiente del experimento" />
+          <BotonCinta icono="filtro" texto={`Cepas ${cepas.length}/${todas.length}`} activo={cajon === 'cepas'} onClick={() => setCajon(cajon === 'cepas' ? null : 'cepas')} tip="Cepas o condiciones que entran en el análisis" />
+        </Grupo>
+        <Grupo titulo="Exportar">
+          <BotonCinta icono="tabla" texto="Excel" onClick={descargar} deshabilitado={!R} tip="Todas las tablas de la concordancia y el resumen" />
+        </Grupo>
+      </Cinta>
+      <Cajon titulo="Placas (experimentos)" abierto={cajon === 'placas'} onClose={() => setCajon(null)}>
+        <div className="fila" style={{ marginBottom: 8 }}>
+          <button className="chico" onClick={() => setO('placasSel', null)}>Todas</button>
+          <button className="chico" onClick={() => setO('placasSel', [])}>Ninguna</button>
+        </div>
+        <div className="lista-check columnas">
+          {conAnalisis.map((p) => (
+            <Check key={p.id} label={<><i className="punto" style={{ background: colores[p.id] || colorBase[p.id] }} /> {p.nombre}{p.medio && <small className="medio-placa">{p.medio}</small>}</>}
+              checked={placasSel.some((x) => x.id === p.id)}
+              onChange={(v) => setO('placasSel', v ? conAnalisis.filter((x) => x.id === p.id || placasSel.some((y) => y.id === x.id)).map((x) => x.id) : placasSel.filter((x) => x.id !== p.id).map((x) => x.id))} />
+          ))}
+        </div>
+      </Cajon>
+      <Cajon titulo="Cepas o condiciones" abierto={cajon === 'cepas'} onClose={() => setCajon(null)}>
+        <div className="lista-check columnas">
+          {todas.map((m) => <Check key={m} label={m} checked={!fuera.has(m)} onChange={(v) => setO('reproFuera', v ? [...fuera].filter((x) => x !== m) : [...fuera, m])} />)}
+        </div>
+      </Cajon>
 
-      <div className="principal repro">
-        <h1>Reproducibilidad entre experimentos <span className="sub">· {exps.length} {exps.length === 1 ? 'experimento' : 'experimentos'}, {cepas.length} {cepas.length === 1 ? 'cepa' : 'cepas'} · {nomVar}</span></h1>
+      <div className="principal-repro">
+        <p className="ayuda" style={{ marginTop: 0 }}>{exps.length} {exps.length === 1 ? 'experimento' : 'experimentos'} (placas) · {cepas.length} {cepas.length === 1 ? 'cepa' : 'cepas'} · {nomVar}</p>
         {!R ? <Vacio texto="Elegí al menos dos placas (experimentos) y una cepa." /> : (
           <>
             <section className="resultado-test">
@@ -239,7 +245,7 @@ export function ReproTab({ s, D, o, setO, selectorModo }) {
               ) : <p>Hacen falta al menos 2 cepas presentes en todos los experimentos.</p>}
               {R.icc && <p className="ayuda">{R.icc.n} cepas × {R.icc.k} experimentos · F({R.icc.df1}; {R.icc.df2}) = {n2(R.icc.F)}, {pEq(R.icc.p)}{R.completas.length < cepas.length ? ` · no entran las cepas que faltan en algún experimento (${cepas.filter((c) => !R.completas.includes(c)).join(', ')})` : ''}</p>}
             </section>
-            <p className="ayuda">Cálculos verificados contra scipy, statsmodels y pingouin (equivalentes a aov, car::Anova, shapiro.test, kruskal.test, cor.test y psych::ICC de R). Detalle en Datos › Método.</p>
+            <p className="ayuda">Cálculos verificados contra scipy, statsmodels y pingouin (equivalentes a aov, car::Anova, shapiro.test, kruskal.test, cor.test y psych::ICC de R). Detalle en «Métodos».</p>
           </>
         )}
       </div>

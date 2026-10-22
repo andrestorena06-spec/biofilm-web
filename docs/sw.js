@@ -1,7 +1,7 @@
 // Service worker de Biofilm: deja la aplicación disponible sin conexión.
 // Al instalarse guarda la página, los scripts y estilos (incluido el lector de .xls/.ods); después responde desde la memoria
 // y se actualiza sola cuando hay una versión nueva.
-const VERSION = 'biofilm-v1'
+const VERSION = 'biofilm-v3'
 const BASE = self.registration.scope
 
 async function precargar() {

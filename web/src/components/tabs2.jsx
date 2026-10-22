@@ -1,26 +1,36 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { BarChart, ExcluirChart } from './charts.jsx'
-import { Campo, Check, EstiloDialog, MenuContextual, Num, Panel, RangoDialog, Select, useMenuContextual } from './ui.jsx'
+import { Check, EstiloDialog, MenuContextual, Num, RangoDialog, Select, Vacio, tamDe, useMenuContextual } from './ui.jsx'
+import { BotonCinta, Cajon, CampoCinta, Cinta, Grupo, InterruptorCinta, OpcionesCinta } from './cinta.jsx'
+import { Icono } from './iconos.jsx'
 import { ExportDialog } from './exportar.jsx'
 import { dCV, dClase, dDE, dIC, dMedia, dRazon, dSEM } from '../calculos.js'
 import { Nota } from './tip.jsx'
 import { PasoAPaso } from './pasos.jsx'
 import { MetodoEstadistico } from './metodoest.jsx'
 import { abrirInforme } from './informe.jsx'
+import { descargarExcelCompleto } from './resumen.jsx'
 import { resumenBlancos } from '../blancos.js'
-import { Vacio } from './tabs.jsx'
 import { excelDe } from '../api.js'
 import { Q_TABLA } from '../criticos.js'
 import { criticoGrubbs, normalizarMetodo } from '../motor.js'
 import { descargarBlob, estiloDefecto, fmt, tCuantil } from '../utils.js'
 
-const METODOS = [['q', 'Test Q de Dixon (n de 3 a 10)'], ['grubbs', 'Test de Grubbs (n ≥ 3)'], ['cv', 'Coeficiente de variación (%RSD)']]
-// Tamaño (en unidades de figura) del gráfico que se ve ahora en pantalla
-const tamDe = (svg) => ({ w: svg.viewBox.baseVal.width, h: svg.viewBox.baseVal.height })
 const nombreMetodo = { q: 'Test Q de Dixon', grubbs: 'Test de Grubbs', cv: 'Coeficiente de variación (%RSD)' }
+const ERRORES = [['ic95', 'IC 95 %'], ['sd', 'DE'], ['sem', 'SEM']]
+const NOMBRE_ERROR = { ic95: 'IC 95 %', sd: 'desviación estándar', sem: 'error estándar (SEM)', ninguno: 'sin barras de error' }
+
+// Grupo «Imagen» de la cinta: guardar la figura, estilo de los textos y rango del eje (también con clic derecho)
+const GrupoImagen = ({ onGuardar, onEstilo, onRango }) => (
+  <Grupo titulo="Imagen">
+    <BotonCinta icono="imagen" texto="Guardar imagen" onClick={onGuardar} tip="PNG o SVG con el tamaño y la resolución que elijas" />
+    <BotonCinta simbolo="Aa" texto="Textos" onClick={onEstilo} tip="Título, leyendas, etiquetas y números (también con clic derecho sobre el gráfico)" />
+    <BotonCinta icono="ordenar" texto="Eje Y" onClick={onRango} tip="Mínimo y máximo del eje Y (también con clic derecho)" />
+  </Grupo>
+)
 
 // ===============================================================
-// EXCLUIR PUNTOS
+// CALIDAD: valores atípicos y exclusión de pocillos
 // ===============================================================
 export function ExcluirTab({ s }) {
   const svg = useRef()
@@ -29,69 +39,66 @@ export function ExcluirTab({ s }) {
   const [rng, setRng] = useState(false)
   const [exp, setExp] = useState(false)
   const o = s.opts.excluir
-  const setO = (k, v) => s.setOpts({ ...s.opts, excluir: { ...o, [k]: v } })
+  const setO = (k, v) => s.setOpts((x) => ({ ...x, excluir: { ...x.excluir, [k]: v } }))
   const d = { ...s.deteccion, metodo: normalizarMetodo(s.deteccion.metodo) }
   const setD = (k, v) => s.setDeteccion({ ...d, [k]: v })
 
-  if (!s.analisis?.estado?.length) return <Vacio texto="Configurá los pocillos para poder excluir puntos." />
+  if (!s.placa) return <Vacio titulo="Esta placa no tiene datos" texto="Cargá el Excel o escribí las OD en «Placas»." accion={<button className="primario" onClick={() => s.irA('placas')}>Ir a Placas</button>} />
+  if (!s.analisis?.estado?.length) return <Vacio titulo="Faltan los pocillos" texto="Indicá qué muestra hay en cada pocillo para revisar las réplicas." accion={<button className="primario" onClick={() => s.irA('pocillos')}>Ir a Pocillos</button>} />
   const estado = s.analisis.estado
   const excluidos = estado.filter((e) => !e.Usado)
+  const sospechosos = estado.filter((e) => e.Sospechoso && e.Usado)
 
   return (
-    <div className="con-lateral">
-      <Panel titulo="Excluir puntos">
-        <p className="ayuda"><Nota titulo="Ayuda">Clic sobre un punto para excluirlo o incluirlo. Azul: aceptado. Cruz roja: excluido. Anillo naranja: sospechoso según el test elegido.</Nota></p>
+    <div>
+      <Cinta>
+        <Grupo titulo="Valores atípicos">
+          <OpcionesCinta valor={d.metodo} onChange={(v) => setD('metodo', v)} opciones={[
+            ['q', 'Dixon', 'Q', null, 'Test Q de Dixon (n de 3 a 10)\nQ = hueco del extremo / rango'],
+            ['grubbs', 'Grubbs', 'G', null, 'Test de Grubbs (n ≥ 3)\nG = máx |x − x̄| / s\nCon 3 réplicas casi nunca declara un atípico'],
+            ['cv', 'CV', '%', null, 'Coeficiente de variación (%RSD)\nSi el CV supera el límite, marca el pocillo más alejado de la media'],
+          ]} />
+          {d.metodo === 'cv'
+            ? <CampoCinta etiqueta="CV máximo (%)" tip="Límite de CV entre réplicas; para cristal violeta se suele aceptar hasta 15–20 %"><Num value={d.cvMax ?? 20} min={1} max={200} ancho={64} onChange={(v) => setD('cvMax', v === '' ? 20 : v)} /></CampoCinta>
+            : <CampoCinta etiqueta="Confianza"><Select value={d.conf} onChange={(v) => setD('conf', v)} opciones={[['90', '90 %'], ['95', '95 %'], ['99', '99 %']]} /></CampoCinta>}
+          <InterruptorCinta icono="escudo" texto="Excluir solos" valor={d.usar} onChange={(v) => setD('usar', v)} tip="Excluir automáticamente los pocillos que el test marca como sospechosos (en todas las placas)" />
+          <BotonCinta icono="refrescar" texto="Restablecer" onClick={s.restablecerExclusiones} tip="Vuelve a incluir los pocillos excluidos a mano en esta placa" />
+        </Grupo>
+        <Grupo titulo="Mostrar">
+          <InterruptorCinta icono="puntos" texto="Puntos" valor={o.puntos} onChange={(v) => setO('puntos', v)} />
+          <InterruptorCinta simbolo="x̄" texto="Media" valor={o.medias} onChange={(v) => setO('medias', v)} tip="Valor medio escrito sobre cada muestra" />
+          <InterruptorCinta simbolo="±" texto="Error" valor={o.errores} onChange={(v) => setO('errores', v)} tip="Agrega el error junto al valor medio" />
+          <CampoCinta etiqueta="Error"><Select value={o.error} onChange={(v) => setO('error', v)} opciones={ERRORES} /></CampoCinta>
+          <CampoCinta etiqueta="Rotación (°)"><Num value={o.rotar} min={0} max={90} ancho={56} onChange={(v) => setO('rotar', v === '' ? 0 : v)} /></CampoCinta>
+        </Grupo>
+        <GrupoImagen onGuardar={() => setExp(true)} onEstilo={() => setDlg(true)} onRango={() => setRng(true)} />
+      </Cinta>
 
-        <h3>Opciones del gráfico</h3>
-        <Check label="Mostrar puntos" checked={o.puntos} onChange={(v) => setO('puntos', v)} />
-        <Check label="Mostrar valor medio sobre cada muestra" checked={o.medias} onChange={(v) => setO('medias', v)} />
-        <Check label="Mostrar error junto al valor medio" checked={o.errores} onChange={(v) => setO('errores', v)} />
-        <Campo label="Tipo de error">
-          <Select value={o.error} onChange={(v) => setO('error', v)}
-            opciones={[['sd', 'Desviación estándar'], ['sem', 'Error estándar (SEM)'], ['ic95', 'IC 95 %']]} />
-        </Campo>
-        <Campo label="Rotación de etiquetas (°)"><Num value={o.rotar} min={0} max={90} step={15} onChange={(v) => setO('rotar', v === '' ? 0 : v)} /></Campo>
-
-        <h3>Detección de valores atípicos</h3>
-        <Campo label="Método">
-          <Select value={d.metodo} onChange={(v) => setD('metodo', v)} opciones={METODOS} />
-        </Campo>
-        {d.metodo === 'cv' ? (
-          <Campo label="CV máximo aceptado (%)"><Num value={d.cvMax ?? 20} min={1} step={1} onChange={(v) => setD('cvMax', v)} /></Campo>
-        ) : (
-          <Campo label="Nivel de confianza">
-            <Select value={d.conf} onChange={(v) => setD('conf', v)} opciones={[['90', '90 %'], ['95', '95 %'], ['99', '99 %']]} />
-          </Campo>
-        )}
-        <Check label="Excluir automáticamente los sospechosos" checked={d.usar} onChange={(v) => setD('usar', v)} />
-        <p className="ayuda">
-          {d.metodo === 'q' ? 'Detecta como máximo un valor atípico por muestra, con 3 a 10 pocillos.'
-            : d.metodo === 'grubbs' ? 'Detecta como máximo un valor atípico por muestra, con 3 o más pocillos. Con 3 réplicas casi nunca puede declarar un atípico (ver Método).'
-              : 'Si el CV de la muestra supera el límite, marca el pocillo más alejado de la media (uno por muestra, con 3 o más pocillos).'}
-          {' '}El detalle del cálculo está en Datos › Método.
-        </p>
-        <button className="ancho" onClick={() => s.restablecerExclusiones()}>Restablecer exclusiones</button>
-      </Panel>
-      <div className="principal">
-        <ExcluirChart ref={svg} estado={estado} orden={s.ordenMuestras} o={o} est={s.estilos.excluir} eje={s.ejeOD}
-          onClickPunto={s.alternarPocillo} onContext={abrirMenu} />
-        <div className="fila-ctrl">
-          <button className="primario" onClick={() => setExp(true)}>Descargar imagen…</button>
-          <span className="ayuda">Clic derecho sobre el gráfico: estilo de los textos y rango del eje Y.</span>
+      <section className="tarjeta">
+        <div className="cabeza-tarjeta">
+          <span className="etiqueta-seccion">Réplicas de cada muestra · {nombreMetodo[d.metodo]}{d.metodo === 'cv' ? ` (máx. ${d.cvMax ?? 20} %)` : ` (${d.conf} %)`}{d.usar ? ' · exclusión automática' : ''}</span>
+          <span className="ayuda">Clic sobre un punto para excluirlo o incluirlo <Nota>Azul: aceptado. Cruz roja: excluido. Anillo naranja: sospechoso según el test. Lo que decidís a mano tiene prioridad sobre el test. El desarrollo del cálculo está en «Métodos».</Nota></span>
         </div>
-        {excluidos.length ? <p><b>Excluidos: </b>{excluidos.map((e) => `${e.Pocillo} (${e.Muestra} R${e.Replica})`).join(', ')}</p>
-          : <p className="ayuda">No hay puntos excluidos.</p>}
-      </div>
+        <div className="figura">
+          <ExcluirChart ref={svg} estado={estado} orden={s.ordenMuestras} o={o} est={s.estilos.excluir} eje={s.ejeOD} onClickPunto={s.alternarPocillo} onContext={abrirMenu} />
+        </div>
+        <div className="fila" style={{ marginTop: 10 }}>
+          {sospechosos.length > 0 && <span className="chip aviso" data-tip={`Sospechosos dentro del análisis\n${sospechosos.map((e) => `${e.Pocillo} (${e.Muestra} R${e.Replica}): ${e.Motivo || ''}`).join('\n')}`}>{sospechosos.length} sospechoso{sospechosos.length > 1 ? 's' : ''} sin excluir</span>}
+          {excluidos.length ? <span className="ayuda"><b>Excluidos:</b> {excluidos.map((e) => <span key={e.Pocillo} className="chip peligro chip-boton" style={{ margin: '0 4px 4px 0' }} data-tip={`${e.Pocillo} · ${e.Muestra} R${e.Replica}\nOD = ${fmt(e.OD, 4)}\n${e.Manual ? 'Excluido a mano' : e.Motivo || ''}\nClic para volver a incluirlo`} onClick={() => s.alternarPocillo(e.Pocillo)}>{e.Pocillo} · {e.Muestra}</span>)}</span>
+            : <span className="ayuda">No hay pocillos excluidos en esta placa.</span>}
+        </div>
+      </section>
       <MenuContextual menu={menu} items={[
         ['Estilo de texto…', () => { cerrarMenu(); setDlg(true) }],
         ['Rango del eje Y…', () => { cerrarMenu(); setRng(true) }],
-        ['Restablecer estilo de texto', () => { cerrarMenu(); s.setEstilos({ ...s.estilos, excluir: estiloDefecto() }) }],
+        ['Guardar imagen…', () => { cerrarMenu(); setExp(true) }],
+        ['Restablecer estilo de texto', () => { cerrarMenu(); s.setEstilos((e) => ({ ...e, excluir: estiloDefecto() })) }],
       ]} />
-      {rng && <RangoDialog est={s.estilos.excluir} onClose={() => setRng(false)} onGuardar={(e) => { s.setEstilos({ ...s.estilos, excluir: e }); setRng(false) }} />}
+      {rng && <RangoDialog est={s.estilos.excluir} onClose={() => setRng(false)} onGuardar={(e) => { s.setEstilos((x) => ({ ...x, excluir: e })); setRng(false) }} />}
       {dlg && <EstiloDialog estilo={s.estilos.excluir} conClases={false} ejeDefecto={s.ejeOD} onClose={() => setDlg(false)}
-        onGuardar={(e) => { s.setEstilos({ ...s.estilos, excluir: e }); setDlg(false) }} />}
+        onGuardar={(e) => { s.setEstilos((x) => ({ ...x, excluir: e })); setDlg(false) }} />}
       {exp && svg.current && (
-        <ExportDialog nombre="excluir_puntos" size0={tamDe(svg.current)} onClose={() => setExp(false)}
+        <ExportDialog nombre={`calidad_${s.a.nombre}`} size0={tamDe(svg.current)} onClose={() => setExp(false)}
           render={(ref, tam) => <ExcluirChart ref={ref} estado={estado} orden={s.ordenMuestras} o={o} est={s.estilos.excluir}
             eje={s.ejeOD} onClickPunto={() => {}} onContext={(e) => e.preventDefault()} tam={tam} />} />
       )}
@@ -100,18 +107,19 @@ export function ExcluirTab({ s }) {
 }
 
 // ===============================================================
-// GRÁFICO DE BARRAS
+// GRÁFICO DE BARRAS DE LA PLACA ACTIVA (con la clasificación)
 // ===============================================================
-export function GraficoTab({ s }) {
+export function GraficoTab({ s, grupoVista }) {
   const svg = useRef()
   const [menu, abrirMenu, cerrarMenu] = useMenuContextual()
   const [dlg, setDlg] = useState(false)
   const [rng, setRng] = useState(false)
   const [exp, setExp] = useState(false)
+  const [cajon, setCajon] = useState(false)
   const o = s.opts.barras
-  const setO = (k, v) => s.setOpts({ ...s.opts, barras: { ...o, [k]: v } })
+  const setO = (k, v) => s.setOpts((x) => ({ ...x, barras: { ...x.barras, [k]: v } }))
   const a = s.analisis
-  if (!a?.resumen?.length) return <Vacio texto="Configurá los pocillos para ver el gráfico." />
+  if (!s.placa || !a?.resumen?.length) return <><Cinta>{grupoVista}</Cinta><Vacio titulo="Todavía no hay barras" texto={s.placa ? 'Indicá qué muestra hay en cada pocillo.' : 'Esta placa no tiene datos.'} accion={<button className="primario" onClick={() => s.irA(s.placa ? 'pocillos' : 'placas')}>Ir a {s.placa ? 'Pocillos' : 'Placas'}</button>} /></>
 
   const verBlancos = o.blancos !== false
   const blancosRes = verBlancos ? resumenBlancos(a.estado) : []
@@ -121,72 +129,62 @@ export function GraficoTab({ s }) {
   if (o.orden === 'asc') filas = [...filas].sort((x, y) => x.Media - y.Media)
   if (o.orden === 'desc') filas = [...filas].sort((x, y) => y.Media - x.Media)
   const puntos = a.estado.filter((e) => e.Usado && filas.some((f) => f.Muestra === e.Muestra))
-  const blancosDe = a.blancos || []
-  const usadosOdc = s.blancosUsados ?? blancosDe
+  const sinOdc = !Number.isFinite(a.odc.odc)
 
   return (
-    <div className="con-lateral">
-      <Panel titulo="Gráfico de barras">
-        <Campo label="Muestras a mostrar">
-          <div className="fila-ctrl" style={{ margin: '0 0 4px' }}>
-            <button className="chico" onClick={() => setO('muestrasSel', todas)}>Seleccionar todas</button>
-            <button className="chico" onClick={() => setO('muestrasSel', [])}>Deseleccionar todas</button>
-          </div>
-          <div className="lista-check">
-            {todas.map((m) => (
-              <Check key={m} label={m} checked={selMuestras.includes(m)}
-                onChange={(v) => setO('muestrasSel', v ? [...selMuestras, m] : selMuestras.filter((x) => x !== m))} />
-            ))}
-          </div>
-        </Campo>
-        <Check label="Mostrar los blancos (medio sin inocular)" checked={verBlancos} onChange={(v) => setO('blancos', v)} />
-        {blancosDe.length > 0 && (
-          <Campo label="Blancos usados para el ODc (podés elegir más de uno)">
-            <div className="lista-check">
-              {blancosDe.map((b) => (
-                <Check key={b} label={b} checked={usadosOdc.includes(b)}
-                  onChange={(v) => s.setBlancosUsados(v ? [...usadosOdc, b] : usadosOdc.filter((x) => x !== b))} />
-              ))}
-            </div>
-          </Campo>
-        )}
-        <Campo label="Barras de error">
-          <Select value={o.error} onChange={(v) => setO('error', v)}
-            opciones={[['ic95', 'IC 95 %'], ['sd', 'Desviación estándar'], ['sem', 'Error estándar (SEM)'], ['ninguno', 'Ninguna']]} />
-        </Campo>
-        <Campo label="Orden de las muestras">
-          <Select value={o.orden} onChange={(v) => setO('orden', v)}
-            opciones={[['lista', 'Como en la lista'], ['asc', 'OD creciente'], ['desc', 'OD decreciente']]} />
-        </Campo>
-        <Campo label="Color de las barras">
-          <Select value={o.color} onChange={(v) => setO('color', v)} opciones={[['clase', 'Según clasificación'], ['uno', 'Un solo color']]} />
-        </Campo>
-        <Check label="Mostrar puntos (réplicas)" checked={o.puntos} onChange={(v) => setO('puntos', v)} />
-        <Check label="Mostrar valores promedios" checked={o.medias} onChange={(v) => setO('medias', v)} />
-        {o.medias && <Check label="Mostrar errores junto a valores promedios" checked={o.errores} onChange={(v) => setO('errores', v)} />}
-        <Check label="Mostrar líneas y nombres de clasificación" checked={o.lineas} onChange={(v) => setO('lineas', v)} />
-        {o.lineas && <Check label="Mostrar el valor numérico bajo cada nombre" checked={o.valoresClase} onChange={(v) => setO('valoresClase', v)} />}
-        <Campo label="Rotación de etiquetas (°)"><Num value={o.rotar} min={0} max={90} step={15} onChange={(v) => setO('rotar', v === '' ? 0 : v)} /></Campo>
-        <p className="ayuda"><Nota titulo="Ayuda">El título y las leyendas se editan con clic derecho sobre el gráfico.</Nota></p>
-        <button className="primario ancho" onClick={() => setExp(true)}>Descargar imagen…</button>
-      </Panel>
-      <div className="principal">
+    <div>
+      <Cinta>
+        {grupoVista}
+        <Grupo titulo="Datos">
+          <BotonCinta icono="filtro" texto={`Muestras ${selMuestras.length}/${todas.length}`} activo={cajon} onClick={() => setCajon(!cajon)} tip="Elegir qué muestras se dibujan" />
+          <InterruptorCinta icono="matraz" texto="Blancos" valor={verBlancos} onChange={(v) => setO('blancos', v)} tip="Mostrar también los blancos (medio sin inocular)" />
+          <CampoCinta etiqueta="Orden"><Select value={o.orden} onChange={(v) => setO('orden', v)} opciones={[['lista', 'Como en la lista'], ['asc', 'OD creciente'], ['desc', 'OD decreciente']]} /></CampoCinta>
+        </Grupo>
+        <Grupo titulo="Mostrar">
+          <InterruptorCinta icono="puntos" texto="Réplicas" valor={o.puntos} onChange={(v) => setO('puntos', v)} tip="Un punto por pocillo aceptado" />
+          <InterruptorCinta simbolo="x̄" texto="Media" valor={o.medias} onChange={(v) => setO('medias', v)} tip="Valor medio escrito sobre cada barra" />
+          <InterruptorCinta simbolo="±" texto="Error" valor={o.errores} onChange={(v) => setO('errores', v)} deshabilitado={!o.medias} tip="Agrega el error junto al valor medio" />
+          <InterruptorCinta icono="umbral" texto="Clases" valor={o.lineas} onChange={(v) => setO('lineas', v)} deshabilitado={sinOdc} tip="Líneas de ODc, 2 × ODc y 4 × ODc con el nombre de cada clase" />
+          <InterruptorCinta simbolo="0,3" texto="Umbrales" valor={o.valoresClase} onChange={(v) => setO('valoresClase', v)} deshabilitado={sinOdc || !o.lineas} tip="Escribe el valor numérico bajo el nombre de cada clase" />
+        </Grupo>
+        <Grupo titulo="Barras">
+          <CampoCinta etiqueta="Error"><Select value={o.error} onChange={(v) => setO('error', v)} opciones={[...ERRORES, ['ninguno', 'Ninguno']]} /></CampoCinta>
+          <CampoCinta etiqueta="Color"><Select value={o.color} onChange={(v) => setO('color', v)} opciones={[['clase', 'Según la clase'], ['uno', 'Un solo color']]} /></CampoCinta>
+          <CampoCinta etiqueta="Rotación (°)"><Num value={o.rotar} min={0} max={90} ancho={56} onChange={(v) => setO('rotar', v === '' ? 0 : v)} /></CampoCinta>
+        </Grupo>
+        <GrupoImagen onGuardar={() => setExp(true)} onEstilo={() => setDlg(true)} onRango={() => setRng(true)} />
+      </Cinta>
+      <Cajon titulo="Muestras que se dibujan" abierto={cajon} onClose={() => setCajon(false)}>
+        <div className="fila" style={{ marginBottom: 8 }}>
+          <button className="chico" onClick={() => setO('muestrasSel', null)}>Todas</button>
+          <button className="chico" onClick={() => setO('muestrasSel', [])}>Ninguna</button>
+        </div>
+        <div className="lista-check columnas">
+          {todas.map((m) => <Check key={m} label={m} checked={selMuestras.includes(m)} onChange={(v) => setO('muestrasSel', v ? [...selMuestras, m] : selMuestras.filter((x) => x !== m))} />)}
+        </div>
+      </Cajon>
+
+      {sinOdc && <p className="aviso-caja">Sin ODc (faltan blancos aceptados): las barras no se pueden clasificar.</p>}
+      <section className="tarjeta">
+        <div className="cabeza-tarjeta">
+          <span className="etiqueta-seccion">OD media de las réplicas aceptadas · {NOMBRE_ERROR[o.error]}</span>
+          <span className="ayuda">Pasá el mouse por una barra para ver el cálculo<Nota>Clic derecho sobre el gráfico: estilo de los textos, rango del eje Y y guardar la imagen.</Nota></span>
+        </div>
         {filas.length ? (
-          <BarChart ref={svg} filas={filas} puntos={puntos} odc={a.odc.odc} o={o} est={s.estilos.barras} eje={s.ejeOD} onContext={abrirMenu} />
-        ) : <Vacio texto="Seleccioná al menos una muestra con réplicas aceptadas." />}
-        <p className="ayuda"><Nota titulo="Ayuda">Clic derecho sobre el gráfico: estilo de los textos y rango del eje Y.</Nota></p>
-        {!Number.isFinite(a.odc.odc) && <p className="ayuda">Sin ODc (faltan blancos): las barras no se pueden clasificar.</p>}
-      </div>
+          <div className="figura"><BarChart ref={svg} filas={filas} puntos={puntos} odc={a.odc.odc} o={o} est={s.estilos.barras} eje={s.ejeOD} onContext={abrirMenu} /></div>
+        ) : <Vacio texto="Elegí al menos una muestra con réplicas aceptadas." />}
+      </section>
       <MenuContextual menu={menu} items={[
         ['Estilo de texto…', () => { cerrarMenu(); setDlg(true) }],
         ['Rango del eje Y…', () => { cerrarMenu(); setRng(true) }],
-        ['Restablecer estilo de texto', () => { cerrarMenu(); s.setEstilos({ ...s.estilos, barras: estiloDefecto() }) }],
+        ['Guardar imagen…', () => { cerrarMenu(); setExp(true) }],
+        ['Restablecer estilo de texto', () => { cerrarMenu(); s.setEstilos((e) => ({ ...e, barras: estiloDefecto() })) }],
       ]} />
-      {rng && <RangoDialog est={s.estilos.barras} onClose={() => setRng(false)} onGuardar={(e) => { s.setEstilos({ ...s.estilos, barras: e }); setRng(false) }} />}
+      {rng && <RangoDialog est={s.estilos.barras} onClose={() => setRng(false)} onGuardar={(e) => { s.setEstilos((x) => ({ ...x, barras: e })); setRng(false) }} />}
       {dlg && <EstiloDialog estilo={s.estilos.barras} conClases ejeDefecto={s.ejeOD} onClose={() => setDlg(false)}
-        onGuardar={(e) => { s.setEstilos({ ...s.estilos, barras: e }); setDlg(false) }} />}
+        onGuardar={(e) => { s.setEstilos((x) => ({ ...x, barras: e })); setDlg(false) }} />}
       {exp && svg.current && (
-        <ExportDialog nombre="barras_biofilm" size0={tamDe(svg.current)} onClose={() => setExp(false)}
+        <ExportDialog nombre={`barras_${s.a.nombre}`} size0={tamDe(svg.current)} onClose={() => setExp(false)}
           render={(ref, tam) => <BarChart ref={ref} filas={filas} puntos={puntos} odc={a.odc.odc} o={o} est={s.estilos.barras}
             eje={s.ejeOD} onContext={(e) => e.preventDefault()} tam={tam} />} />
       )}
@@ -318,13 +316,12 @@ export function TablaAvanzada({ id, titulo, columnas, filas, onVista, tips }) {
 
   return (
     <section className="tarjeta">
-      <div className="titulo-fila">
-        <h2>{titulo} <small className="ayuda">({vista.length} de {filas.length} filas)</small></h2>
-        <div className="fila-ctrl" style={{ margin: 0 }}>
-          {hayFiltro && <button className="chico" onClick={() => setFiltros({})}>Quitar filtros</button>}
-          <button className="chico" onClick={() => { setOrden(columnas); setSort(null) }}>Orden original</button>
-          <button className="chico primario" onClick={() => excelDe([{ nombre: titulo, columnas: orden, filas: vista }]).then((b) => descargarBlob(b, `${id}_biofilm.xlsx`))}>Descargar Excel</button>
-        </div>
+      <div className="cabeza-tarjeta">
+        <span className="etiqueta-seccion">{titulo} · {vista.length} de {filas.length} filas</span>
+        <span className="ayuda">Pasá el mouse por un número para ver cómo se calculó<Nota>Clic en un encabezado para ordenar; arrastralo para mover la columna. Las columnas numéricas tienen un botón ▾ para filtrar.</Nota></span>
+        <span className="espacio" />
+        {hayFiltro && <button className="chico" onClick={() => setFiltros({})}>Quitar filtros</button>}
+        <button className="chico fantasma" onClick={() => { setOrden(columnas); setSort(null) }}>Orden original</button>
       </div>
       <div className="tabla-scroll">
         <table className="tabla">
@@ -352,7 +349,7 @@ export function TablaAvanzada({ id, titulo, columnas, filas, onVista, tips }) {
             </tr>
           </thead>
           <tbody>
-            {vista.map((f, i) => <tr key={i}>{orden.map((c) => { const t = tips ? tips(f, c) : null; return <td key={c} data-tip={t || undefined} className={t ? 'con-calculo' : undefined}>{f[c]}</td> })}</tr>)}
+            {vista.map((f, i) => <tr key={i}>{orden.map((c) => { const t = tips ? tips(f, c) : null; return <td key={c} data-tip={t || undefined} className={[typeof f[c] === 'number' ? 'num' : '', t ? 'con-calculo' : ''].join(' ').trim() || undefined}>{f[c]}</td> })}</tr>)}
             {!vista.length && <tr><td colSpan={orden.length} className="ayuda">Ninguna fila cumple los filtros.</td></tr>}
           </tbody>
         </table>
@@ -365,20 +362,32 @@ export function TablaAvanzada({ id, titulo, columnas, filas, onVista, tips }) {
   )
 }
 
+
 // ===============================================================
-// DATOS
+// DATOS: tablas de la placa activa
 // ===============================================================
 export function DatosTab({ s }) {
   const a = s.analisis
   const vistas = useRef({})
   const onVista = (id, v) => { vistas.current[id] = v }
-  if (!a?.resumen) return <Vacio texto="Todavía no hay datos para mostrar." />
+  const informe = () => { if (abrirInforme(s)) s.avisar('En el cuadro de impresión elegí «Guardar como PDF» como destino.') }
+  const cinta = (
+    <Cinta>
+      <Grupo titulo="Exportar">
+        <BotonCinta icono="tabla" texto="Excel de la placa" deshabilitado={!a?.resumen} onClick={() => excelDe(['muestras', 'pocillos'].map((k) => vistas.current[k]).filter(Boolean)).then((b) => descargarBlob(b, `resultados_${s.a?.nombre || 'placa'}.xlsx`))}
+          tip="Las dos tablas de esta placa, como se ven (con filtros y orden)" />
+        <BotonCinta icono="placas" texto="Excel completo" onClick={() => descargarExcelCompleto(s).catch((e) => s.avisar(e.message, 'error'))} tip="Todas las placas: placas, muestras, medias por placa, pocillos y lecturas, con los datos del experimento" />
+        <BotonCinta icono="imprimir" texto="Informe PDF" onClick={informe} tip="Gráficos y tablas de todas las placas, listos para imprimir o guardar como PDF" />
+      </Grupo>
+    </Cinta>
+  )
+  if (!a?.resumen) return <>{cinta}<Vacio titulo="Todavía no hay datos para esta placa" texto="Cargá los datos e indicá qué muestra hay en cada pocillo." /></>
   const r = (x, d = 4) => (Number.isFinite(x) ? Number(x.toFixed(d)) : null)
   const muestras = a.resumen.map((m) => ({
     Muestra: m.Muestra, Pocillos: m.N_total, Aceptadas: m.N_aceptadas, Excluidas: m.N_excluidas,
     Media_OD: r(m.Media), DE: r(m.SD), SEM: r(m.SEM), IC95_mas_menos: r(m.IC95), CV_pct: r(m.CV_pct, 2),
     OD_sobre_ODc: r(m.Razon_ODc, 2), Clasificacion: m.Clasificacion || '',
-    _v: a.estado.filter((e) => e.Muestra === m.Muestra && e.Usado).map((e) => e.OD), _clase: m.Clasificacion || '',
+    _v: a.estado.filter((e) => e.Muestra === m.Muestra && e.Usado).map((e) => e.OD),
   }))
   const pocillos = a.estado.map((e) => ({
     Pocillo: e.Pocillo, Muestra: e.Muestra, Replica: e.Replica, Blanco: e.EsBlanco ? 'Sí' : 'No', OD: r(e.OD),
@@ -396,35 +405,42 @@ export function DatosTab({ s }) {
     if (c === 'CV_pct') return dCV(v)
     if (c === 'OD_sobre_ODc' && Number.isFinite(odcNum)) return dRazon(f.Media_OD, odcNum)
     if (c === 'Clasificacion' && Number.isFinite(odcNum) && f.Clasificacion) return dClase(f.Media_OD, odcNum, f.Clasificacion)
-    if (c === 'Aceptadas') return `Réplicas aceptadas
-${f.Aceptadas} de ${f.Pocillos} pocillos entran en los cálculos
-Excluidas: ${f.Excluidas} (manual o por valor atípico)`
+    if (c === 'Aceptadas') return `Réplicas aceptadas\n${f.Aceptadas} de ${f.Pocillos} pocillos entran en los cálculos\nExcluidas: ${f.Excluidas} (a mano o por valor atípico)`
     return null
   }
-  const tipsPocillos = (f, c) => (c === 'Estado' || c === 'Motivo' || c === 'Sospechoso' ? `Pocillo ${f.Pocillo} (${f.Muestra} R${f.Replica})
-OD = ${f.OD}
-Estado: ${f.Estado}${f.Sospechoso === 'Sí' ? ' · sospechoso (valor atípico)' : ''}
-${f.Motivo || 'Sin observaciones'}` : null)
+  const tipsPocillos = (f, c) => (c === 'Estado' || c === 'Motivo' || c === 'Sospechoso' ? `Pocillo ${f.Pocillo} (${f.Muestra} R${f.Replica})\nOD = ${f.OD}\nEstado: ${f.Estado}${f.Sospechoso === 'Sí' ? ' · sospechoso (valor atípico)' : ''}\n${f.Motivo || 'Sin observaciones'}` : null)
   const cm = Object.keys(muestras[0] || {}).filter((k) => !k.startsWith('_'))
   const cp = Object.keys(pocillos[0] || {})
-  const ambas = () => {
-    const hojas = ['muestras', 'pocillos'].map((k) => vistas.current[k]).filter(Boolean)
-    excelDe(hojas).then((b) => descargarBlob(b, 'resultados_biofilm.xlsx'))
-  }
   return (
-    <div className="pagina">
-      <div className="titulo-fila">
-        <p className="ayuda" style={{ margin: 0 }}>Pasá el mouse por cualquier número para ver cómo se calculó<Nota>Cada columna numérica tiene un botón <code>▾</code> para filtrar. Clic en un encabezado para ordenar; arrastralo para mover la columna.</Nota></p>
-        <div className="fila-ctrl" style={{ margin: 0 }}>
-          <button onClick={() => { if (abrirInforme(s)) s.avisar('En el cuadro de impresión elegí «Guardar como PDF» como destino.') }}>Informe PDF (todos los datos procesados)</button>
-          <button className="primario" onClick={ambas}>Descargar ambas tablas (Excel)</button>
-        </div>
-      </div>
+    <div>
+      {cinta}
       <TablaAvanzada id="muestras" titulo="Muestras" columnas={cm} filas={muestras} onVista={onVista} tips={tipsMuestras} />
       <TablaAvanzada id="pocillos" titulo="Pocillos" columnas={cp} filas={pocillos} onVista={onVista} tips={tipsPocillos} />
-      <PasoAPaso s={s} />
-      <MetodoEstadistico s={s} />
-      <MetodoDetalle d={s.deteccion} odc={a.odc} />
+    </div>
+  )
+}
+
+// ===============================================================
+// MÉTODOS: cálculo paso a paso con los datos, lógica de la estadística y descripción de cada método
+// ===============================================================
+export function MetodosTab({ s }) {
+  const a = s.analisis
+  const ir = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  return (
+    <div className="metodos-pag">
+      <Cinta>
+        <Grupo titulo="Ir a">
+          <BotonCinta icono="tabla" texto="Paso a paso" onClick={() => ir('m-pasos')} deshabilitado={!a?.resumen} tip="ODc, media y errores y valores atípicos con los datos de la placa activa" />
+          <BotonCinta icono="sigma" texto="Estadística" onClick={() => ir('m-estadistica')} tip="Cómo se elige cada prueba y su desarrollo con tus datos" />
+          <BotonCinta icono="libro" texto="Métodos" onClick={() => ir('m-detalle')} tip="Fórmulas, tablas de valores críticos y referencias" />
+        </Grupo>
+        <Grupo titulo="Exportar">
+          <BotonCinta icono="imprimir" texto="Imprimir" onClick={() => window.print()} tip="Imprime o guarda como PDF esta pantalla" />
+        </Grupo>
+      </Cinta>
+      <div id="m-pasos">{a?.resumen ? <PasoAPaso s={s} /> : <Vacio texto="El cálculo paso a paso aparece cuando la placa activa tiene pocillos configurados." />}</div>
+      <div id="m-estadistica"><MetodoEstadistico s={s} /></div>
+      <div id="m-detalle"><MetodoDetalle d={s.deteccion} odc={a?.odc} /></div>
     </div>
   )
 }
@@ -502,60 +518,27 @@ function MetodoDetalle({ d, odc }) {
       <p className="ayuda">Un test estadístico no distingue un error experimental de una variación biológica real: revisá cada sospechoso antes de excluirlo y no elimines datos solo porque no te gusta el resultado.</p>
 
       <h3>8. Comparación entre placas</h3>
-      <p>La pestaña Comparar muestra, para cada muestra, <b>una barra por placa</b>: la altura es la OD media de las réplicas aceptadas de esa muestra en esa placa, y el color indica la placa. No hay líneas de ODc ni clasificación: es una comparación directa de OD.</p>
-
+      <p>En <b>Gráfico › Comparar placas</b> cada muestra se dibuja con <b>una columna por placa</b> (la altura es la OD media de sus réplicas aceptadas), <b>una por medio de cultivo</b> (las placas del mismo medio juntas, con todos sus pocillos o un valor por placa) o <b>una por pocillo</b>. Se puede mostrar barras con error, cajas (Q1–Q3, con 5 o más datos por columna), mediana, mínimo y máximo, media y los puntos. No hay líneas de ODc: es una comparación directa de OD.</p>
       <h4>Qué cuenta como réplica</h4>
-      <p>Los pocillos de una misma placa son <b>réplicas técnicas</b>: salen del mismo cultivo, el mismo día y el mismo lector. Las <b>placas</b> (hechas en días o experimentos distintos) son las <b>réplicas biológicas</b>. Para las pruebas estadísticas cada placa aporta <b>un solo número por muestra</b> (su OD media), así que el <b>n es el número de placas</b>, no el de pocillos. Si se contaran los pocillos como réplicas independientes, aparecerían diferencias «significativas» que en realidad no lo son (esto se llama pseudorreplicación).</p>
-
+      <p>Los pocillos de una misma placa son <b>réplicas técnicas</b>: salen del mismo cultivo, el mismo día y el mismo lector. Las <b>placas</b> (hechas en días o experimentos distintos) son las <b>réplicas biológicas</b>. Para las pruebas cada placa aporta <b>un solo número por muestra</b> (su OD media), así que el <b>n es el número de placas</b>. Contar los pocillos como réplicas independientes produce diferencias «significativas» que no lo son (pseudorreplicación).</p>
       <h4>Barras de error del gráfico</h4>
-      <p>Son las de la sección 2, calculadas con los <b>pocillos de esa placa</b> (SD, SEM o IC 95 %). Muestran cuánto varían las réplicas técnicas dentro de cada placa; <b>no</b> miden la diferencia entre placas.</p>
-
-      <h4>La prueba estadística (opcional)</h4>
-      <p>Responde una pregunta: <i>¿la diferencia que veo entre dos muestras es real o podría deberse al azar de este experimento?</i> El resultado es un número, el <b>valor de p</b>: la probabilidad de ver una diferencia igual o mayor <i>si en realidad no hubiera ninguna</i>. Por convención, <b>p menor que 0,05</b> se considera que la diferencia es real («estadísticamente significativa»); p mayor significa «no hay evidencia suficiente de diferencia», que <b>no</b> es lo mismo que «son iguales».</p>
-      <p><b>Opción «Cada muestra contra un control».</b> Elegís una muestra de referencia (por ejemplo la cepa sin tratar) y se compara cada una de las otras contra ella con la <b>prueba t de Welch</b>:</p>
+      <p>Son las de la sección 2 (DE, SEM o IC 95 %) calculadas con los datos de cada columna. Con una columna por placa muestran cuánto varían las réplicas técnicas dentro de esa placa; <b>no</b> miden la diferencia entre placas.</p>
+      <h4>Pruebas estadísticas</h4>
+      <p>Se hacen en la pestaña <b>Estadística</b>: arriba se elige qué comparar (cepas, medios, placas, una comparación «a medida» o la concordancia entre placas) y el programa revisa la normalidad (Shapiro-Wilk) y las varianzas (Levene) para elegir solo entre ANOVA clásico, ANOVA de Welch y Kruskal-Wallis, con comparaciones de a pares ajustadas por Holm (o Dunnett contra un control). La lógica completa y el desarrollo con tus datos están en la sección «Estadística: cálculos, razones y lógica de cada método» de esta misma pantalla.</p>
+      <h4>Concordancia entre placas (reproducibilidad)</h4>
       <ul>
-        <li><code>t = (x̄₁ − x̄₂) / √(s₁²/n₁ + s₂²/n₂)</code>, donde x̄ es la media entre placas, s la desviación estándar entre placas y n el número de placas de cada muestra.</li>
-        <li>Los grados de libertad se calculan con Welch–Satterthwaite: <code>gl = (s₁²/n₁ + s₂²/n₂)² / [ (s₁²/n₁)²/(n₁−1) + (s₂²/n₂)²/(n₂−1) ]</code>. No supone que las dos muestras varíen igual. Equivale a <code>t.test(x, y)</code> de R.</li>
-        <li><b>p</b> es la probabilidad de la distribución t con esos grados de libertad (prueba de dos colas).</li>
-        <li>Como se hacen <b>varias comparaciones a la vez</b>, la probabilidad de equivocarse al menos una vez crece. Por eso se corrige con el <b>ajuste de Holm</b>: se ordenan los p de menor a mayor y <code>p ajustado(k) = máximo de ( (m − j + 1) × p(j) ) para j ≤ k</code>, con tope en 1 (m = cantidad de comparaciones). Equivale a <code>p.adjust(p, "holm")</code>. <b>El que hay que mirar es el «p ajustado».</b></li>
+        <li><b>Variabilidad</b>: cada placa aporta la media de sus pocillos por cepa; entre placas se calculan media, DE y <code>CV % = DE ÷ media × 100</code>. En biofilm un CV menor que 20–30 % suele considerarse aceptable (los límites se pueden cambiar).</li>
+        <li><b>¿Difieren las placas?</b> Para cada cepa, ANOVA de una vía con la placa como factor y los pocillos como datos (Kruskal-Wallis si los residuos no son normales o alguna placa tiene menos de 3 pocillos), y ANOVA de dos vías cepa × placa (sumas de cuadrados tipo II).</li>
+        <li><b>Correlación</b> entre pares de placas con la media de cada cepa: Pearson si las medias son normales, si no Spearman. Hacen falta 3 o más cepas.</li>
+        <li><b>ICC</b> (Shrout y Fleiss): ICC(2,1) de acuerdo absoluto e ICC(3,1) de consistencia, con IC 95 % (McGraw y Wong). Menor que 0,5 pobre, 0,5–0,75 moderada, 0,75–0,9 buena, mayor que 0,9 excelente (Koo y Li, 2016).</li>
       </ul>
-      <p><b>Opción «ANOVA».</b> Pregunta algo más general: <i>¿hay alguna diferencia entre todas las muestras mostradas?</i> Compara cuánto varían las medias entre muestras con cuánto varían las placas dentro de cada muestra: <code>F = [SCentre / (k − 1)] / [SCdentro / (N − k)]</code>, con k muestras y N valores en total. Un p pequeño dice que <b>al menos dos</b> muestras difieren, pero <b>no cuáles</b>; para eso está la opción anterior. Equivale a <code>summary(aov(y ~ muestra))</code>.</p>
-
-      <h4>Comparación por medio de cultivo</h4>
-      <p>Cada columna junta las placas de un mismo medio. «Datos de cada medio» decide qué valores se usan para <b>todo</b> (puntos, media, error, cajas y pruebas):</p>
-      <ul>
-        <li><b>Promedio por placa</b>: un valor por placa (su OD media). Es lo correcto para concluir, porque cada placa es una réplica biológica; hacen falta 2 o más placas por medio para tener error y prueba.</li>
-        <li><b>Pocillos</b>: todos los pocillos aceptados del medio, de todas sus placas. Muestra la dispersión técnica y permite ver error con una sola placa, pero en las pruebas los pocillos no son réplicas independientes (pseudorreplicación): tomalo como orientación.</li>
-      </ul>
-      <p>Las pruebas son las mismas que por placa: <b>cada muestra contra un control</b> y <b>ANOVA</b>, calculadas dentro de cada medio, y además <b>cada medio contra un medio control</b>, muestra por muestra. Todas con t de Welch y ajuste de Holm, o ANOVA de un factor.</p>
-
-      <h4>Reproducibilidad entre experimentos</h4>
-      <p>En «Comparar › Reproducibilidad entre experimentos» cada placa es una repetición independiente del experimento. Responde si las repeticiones dan resultados consistentes. Se puede usar la OD o la <b>OD ÷ ODc</b> de cada placa (corrige las diferencias de fondo entre días).</p>
-      <ul>
-        <li><b>1. Variabilidad</b>: cada experimento aporta la media de sus pocillos por cepa; entre experimentos se calculan media, DE y <code>CV % = DE ÷ media × 100</code>. En biofilm un CV menor que 20–30 % suele considerarse aceptable (los límites se pueden cambiar).</li>
-        <li><b>2. ¿Difieren los experimentos?</b> Para cada cepa, ANOVA de una vía con el experimento como factor y los pocillos como datos. Se revisa la normalidad de los residuos con <b>Shapiro-Wilk</b>; si p &lt; 0,05 o algún experimento tiene menos de 3 pocillos se usa <b>Kruskal-Wallis</b>. p ≥ 0,05 = sin diferencias entre repeticiones (lo deseable). Además, <b>ANOVA de dos vías cepa × experimento</b> (sumas de cuadrados tipo II, como <code>car::Anova</code>): si la interacción tiene p ≥ 0,05, el efecto de la cepa se mantiene en todos los experimentos.</li>
-        <li><b>3. Correlación</b> entre pares de experimentos con la media de cada cepa: <b>Pearson</b> si las medias de los dos experimentos son normales (Shapiro-Wilk), si no <b>Spearman</b>. r cercano a 1 = las cepas mantienen el mismo orden. Hacen falta 3 o más cepas.</li>
-        <li><b>4. ICC</b> (correlación intraclase, Shrout y Fleiss): <b>ICC(2,1)</b> de acuerdo absoluto (el que se reporta para reproducibilidad) e <b>ICC(3,1)</b> de consistencia, con IC 95 % (McGraw y Wong). Menor que 0,5 pobre, 0,5–0,75 moderada, 0,75–0,9 buena, mayor que 0,9 excelente (Koo y Li, 2016). Solo entran las cepas presentes en todos los experimentos.</li>
-      </ul>
-      <p className="ayuda">Verificado contra scipy, statsmodels y pingouin (equivalentes a <code>aov</code>, <code>car::Anova</code>, <code>shapiro.test</code>, <code>kruskal.test</code>, <code>cor.test</code> y <code>psych::ICC</code> de R).</p>
-
-      <h4>Cómo leer los resultados</h4>
-      <ul>
-        <li><b>Diferencia con el control</b>: muestra − control, en unidades de OD. Positiva = la muestra produce más que el control.</li>
-        <li><b>p ajustado &lt; 0,05</b> → «Distinta del control». Las marcas son: <code>*</code> p &lt; 0,05 · <code>**</code> p &lt; 0,01 · <code>***</code> p &lt; 0,001.</li>
-        <li><b>p ajustado ≥ 0,05</b> → «Sin diferencia clara con el control»: con estos datos no se puede afirmar que difieran.</li>
-        <li><b>No se puede calcular</b>: la muestra o el control aparecen en menos de 2 placas, y con un solo valor no hay forma de medir la variación.</li>
-      </ul>
-      <p><i>Ejemplo:</i> con 3 placas, la cepa A tiene medias 0,52 · 0,55 · 0,49 y el control 0,21 · 0,25 · 0,22. La diferencia es +0,29 y es grande frente a la variación entre placas, así que p sale muy chico (0,0003): «Distinta del control». Si en cambio A fuera 0,24 · 0,31 · 0,19, la diferencia (+0,02) se pierde en la variación entre placas, p sería 0,63 y el resultado «Sin diferencia clara» (valores calculados con t.test de R).</p>
-
       <h4>Precauciones</h4>
       <ul>
-        <li><b>Pocas placas, poca potencia.</b> Con 2 o 3 placas solo se detectan diferencias muy grandes. Un p alto no prueba que no haya diferencia: puede faltar información. Idealmente, 3 o más placas independientes.</li>
-        <li><b>La OD se compara tal cual.</b> Si las placas tienen blancos o lecturas de base muy distintas (mirá el ODc de cada placa en la barra de placas), la variación entre placas aumenta y la prueba se vuelve menos sensible. En ese caso conviene que las placas se hayan leído en condiciones parecidas.</li>
-        <li>Las pruebas suponen que las medias de las placas tienen una distribución aproximadamente normal. Con tan pocos datos no se puede comprobar: tomalas como una guía, mirando siempre el gráfico.</li>
-        <li>Solo se comparan las barras que están marcadas en «Muestras a mostrar de cada placa»; si ocultás una muestra en una placa, esa placa no entra en la prueba para esa muestra.</li>
+        <li><b>Pocas placas, poca potencia.</b> Con 2 o 3 placas solo se detectan diferencias grandes; un p alto no prueba que no haya diferencia. Idealmente, 3 o más placas independientes por condición.</li>
+        <li><b>La OD se compara tal cual.</b> Si las placas tienen fondos muy distintos (mirá el ODc de cada una), conviene comparar <b>OD ÷ ODc</b> o ln(OD), que se eligen en Estadística.</li>
+        <li>Las placas leídas a distintas longitudes de onda no son comparables (el Resumen lo avisa).</li>
       </ul>
-      <p className="ayuda">Los cálculos de esta sección se verificaron contra R (t.test, p.adjust y aov) con los mismos datos.</p>
+      <p className="ayuda">Los cálculos se verificaron contra R (t.test, p.adjust, aov, oneway.test, kruskal.test, shapiro.test, car::Anova y psych::ICC) con los mismos datos.</p>
     </section>
   )
 }

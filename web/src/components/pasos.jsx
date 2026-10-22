@@ -2,13 +2,10 @@ import { useState } from 'react'
 import { Campo, Select } from './ui.jsx'
 import { Nota } from './tip.jsx'
 import { detectarCV, detectarGrubbs, detectarQ } from '../motor.js'
-import { anovaTabla, holm, marcaSig, media, welch } from '../estadistica.js'
-import { armarComparacion } from '../comparacion.js'
-import { tCuantil } from '../utils.js'
+import { media } from '../estadistica.js'
 import { estad } from '../calculos.js'
 
 const f = (x, d = 4) => (Number.isFinite(x) ? x.toFixed(d) : x === Infinity ? '∞' : '–')
-const pTxt = (p) => (!Number.isFinite(p) ? '–' : p < 0.0001 ? '< 0.0001' : p.toFixed(4))
 
 function Tabla({ cols, filas, pie }) {
   return (
@@ -49,18 +46,6 @@ export function PasoAPaso({ s }) {
   const orden = x.map((v, i) => ({ v, e: todas[i] })).sort((p, q) => p.v - q.v)
   const rango = orden.length ? orden[orden.length - 1].v - orden[0].v : NaN
 
-  // 4. comparación entre placas
-  const D = armarComparacion(s)
-  const gruposComp = D.grupos
-  const valores = gruposComp.map((g) => g.barras.map((b) => b.media))
-  const an = gruposComp.length > 1 ? anovaTabla(valores) : null
-  const o = s.opts.comparar
-  const ctrl = gruposComp.some((g) => g.muestra === o.control) ? o.control : gruposComp[0]?.muestra
-  const otros = gruposComp.filter((g) => g.muestra !== ctrl)
-  const vc = (gruposComp.find((g) => g.muestra === ctrl)?.barras || []).map((b) => b.media)
-  const ws = otros.map((g) => welch(g.barras.map((b) => b.media), vc))
-  const pa = holm(ws.map((w) => (w ? w.p : NaN)))
-
   return (
     <section className="tarjeta metodo">
       <div className="titulo-fila">
@@ -98,30 +83,7 @@ export function PasoAPaso({ s }) {
         </>
       )}
 
-      <h3>4. Comparación entre placas</h3>
-      {gruposComp.length > 0 ? (
-        <>
-          <Tabla cols={['Muestra', 'Placa', 'OD media de la placa (un valor por placa)']} filas={gruposComp.flatMap((g) => g.barras.map((b) => [g.etiqueta, b.placa, f(b.media)]))} />
-          {an ? (
-            <>
-              <Tabla cols={['Muestra', 'n (placas)', 'Media del grupo', 'Media general', 'Diferencia', 'n × diferencia²']}
-                filas={gruposComp.map((g, i) => [g.etiqueta, an.ns[i], f(an.medias[i]), f(an.gm), f(an.medias[i] - an.gm), f(an.ns[i] * (an.medias[i] - an.gm) ** 2, 6)])} />
-              <Tabla cols={['ANOVA · fuente', 'Suma de cuadrados', 'gl', 'Cuadrado medio', 'F', 'p']}
-                filas={[['Entre muestras', f(an.ssb, 6), an.df1, f(an.msb, 6), f(an.F, 3), pTxt(an.p)], ['Dentro (error)', f(an.ssw, 6), an.df2, f(an.msw, 6), '', ''], ['Total', f(an.sst, 6), an.df1 + an.df2, '', '', '']]} />
-              <p className="ayuda">F = CM entre / CM dentro = {f(an.msb, 6)} / {f(an.msw, 6)} = {f(an.F, 3)}; p = {pTxt(an.p)} {marcaSig(an.p)}.</p>
-            </>
-          ) : <p className="ayuda">Para el ANOVA hacen falta al menos 2 muestras con 2 o más placas.</p>}
-          {otros.length > 0 && vc.length > 0 && (
-            <Tabla cols={[`Contra el control «${ctrl}»`, 'Media', 'Media del control', 'Diferencia', 'Error estándar de la diferencia', 't', 'gl', 'p', 'p ajustado (Holm)']}
-              filas={otros.map((g, i) => {
-                const v = g.barras.map((b) => b.media)
-                const w = ws[i]
-                const se = w ? Math.abs(w.dif / w.t) : NaN
-                return [g.etiqueta, f(media(v)), f(media(vc)), w ? f(w.dif) : '–', f(se), w ? f(w.t, 3) : '–', w ? f(w.df, 2) : '–', w ? pTxt(w.p) : '–', pTxt(pa[i])]
-              })} />
-          )}
-        </>
-      ) : <p className="ayuda">Cargá y configurá al menos una placa para ver la comparación.</p>}
+      <p className="ayuda">La comparación entre placas, medios y cepas (con cada prueba desarrollada paso a paso) está más abajo, en «Estadística: cálculos, razones y lógica de cada método».</p>
     </section>
   )
 }

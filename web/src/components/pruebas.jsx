@@ -25,13 +25,6 @@ export const objetivoDe = (o) => {
 }
 // selección hecha en la barra superior de Estadística (undefined = todas)
 export const dentroDeSel = (o, x) => (!o.eCepas || o.eCepas.includes(x.cepa)) && (!o.eMedios || o.eMedios.includes(x.medio)) && (!o.ePlacas || o.ePlacas.includes(x.placaId))
-export const OBJETIVOS = [
-  ['medios', 'Entre medios', '¿En qué medio hay más OD? Cada cepa se compara entre los medios.'],
-  ['placas', 'Entre placas (réplicas)', '¿Una misma cepa da lo mismo en todas las placas? Reproducibilidad.'],
-  ['placastodas', 'Entre placas (todos los medios)', '¿Cada cepa da lo mismo en todas las placas, sin separar por medio? Incluye el modelo con medio y placa.'],
-  ['cepas', 'Entre cepas', 'Dentro de cada medio, ¿qué cepas difieren?'],
-  ['concordancia', 'Concordancia entre placas', '¿Las placas ordenan igual las cepas? ICC, correlaciones y CV.'],
-]
 
 // Hipótesis en el contexto del biofilm: la OD (cristal violeta) es la medida de biomasa de biofilm producida
 function Hip({ items, titulo = 'Hipótesis' }) {
@@ -70,7 +63,7 @@ function Chip({ tipo, children, tip }) {
 // ===============================================================
 // PANEL de la izquierda: qué evaluar y con qué opciones (sin botones repetidos: cada prueba se elige una sola vez)
 // ===============================================================
-export function PanelPruebas({ o, setO, D, sinObjetivos, horizontal }) {
+export function PanelPruebas({ o, setO, D, horizontal }) {
   const obj = objetivoDe(o)
   const esPl = obj === 'placas' || obj === 'placastodas'
   const var_ = o.variable || 'od'
@@ -78,14 +71,6 @@ export function PanelPruebas({ o, setO, D, sinObjetivos, horizontal }) {
   const comp = o.comp || 'pares'
   return (
     <div className={`panel-pruebas ${horizontal ? 'horizontal' : ''}`}>
-      {!sinObjetivos && <h3 className="sub-seccion">¿Qué querés evaluar? <Nota>El programa revisa los datos (normalidad y varianzas) y elige solo la prueba adecuada; los resultados aparecen debajo del gráfico. Cada placa cuenta como una réplica biológica.</Nota></h3>}
-      {!sinObjetivos && <div className="objetivos">
-        {OBJETIVOS.map(([id, t, d]) => (
-          <button key={id} type="button" className={`objetivo ${obj === id ? 'on' : ''}`} onClick={() => setO('objetivo', id)}>
-            <b>{t}</b><span>{d}</span>
-          </button>
-        ))}
-      </div>}
       {obj !== 'concordancia' && (
         <>
           <Campo label="Datos">
@@ -528,7 +513,7 @@ export function ResultadosPruebas({ s, D, o }) {
     // efecto global (todas las cepas juntas) con la placa como bloque
     const sp = parcelasDivididas(obsPlaca.filter((x) => finito(x.y)))
     info = infoDe(bloques, sp ? sp.filas.filter((x) => finito(x.p)).map((x) => ({ nombre: `Global · ${x.nombre}`, p: x.p })) : [], 'cepa')
-    cuerpo = medios.length < 2 ? <p className="ayuda">Hacen falta placas de al menos 2 medios distintos (el medio de cada placa se elige en la pestaña «Placa»).</p> : (
+    cuerpo = medios.length < 2 ? <p className="ayuda">Hacen falta placas de al menos 2 medios distintos (el medio de cada placa se elige en «Pocillos» o en «Placas»).</p> : (
       <>
         {sp && (
           <div className="bloque-res global-sp">
@@ -634,7 +619,7 @@ export function ResultadosPruebas({ s, D, o }) {
       <>
         <Resumen titulo="Cepa · medio" bloques={bloques} etiquetas={['Placas', 'Media de cada placa', 'CV entre placas (%)', 'Reproducibilidad']} />
         {bloques.map((b) => <Bloque key={b.titulo} color={colorMedios[b.medio]} medioTag={b.medio} titulo={b.titulo} sub={`entre placas · ${unidad}`} sujeto={`la producción de biofilm de «${b.titulo}»`} factor="las placas (réplicas)" r={b.r} colorDe={() => colorMedios[b.medio]} ctrl={null} />)}
-        <p className="ayuda">Los grupos son las placas y los datos de cada una son sus pocillos. Si p &lt; 0,05 la placa influye: la cepa no se repite igual. Para ICC y correlaciones entre experimentos usá el modo «Reproducibilidad entre experimentos».</p>
+        <p className="ayuda">Los grupos son las placas y los datos de cada una son sus pocillos. Si p &lt; 0,05 la placa influye: la cepa no se repite igual. Para ICC y correlaciones entre placas elegí «Concordancia» en la cinta.</p>
       </>
     )
   }

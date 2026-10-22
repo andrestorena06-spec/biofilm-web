@@ -1,14 +1,14 @@
 {
   "name": "Biofilm - producción de biofilm",
   "short_name": "Biofilm",
-  "description": "Análisis de producción de biofilm en placas de 96 pocillos: ODc, clasificación, valores atípicos y comparación entre placas.",
+  "description": "Análisis de producción de biofilm en placas de 96 pocillos: ODc, clasificación de Stepanović, control de calidad, gráficos y estadística entre cepas, medios y placas.",
   "lang": "es",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#fbf5ec",
-  "theme_color": "#4a2312",
+  "background_color": "#FBF6EC",
+  "theme_color": "#3A2003",
   "icons": [
     { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },

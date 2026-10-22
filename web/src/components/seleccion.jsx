@@ -1,24 +1,25 @@
 import { Desplegable } from './desplegable.jsx'
-import { Select } from './ui.jsx'
-import { Check } from './ui.jsx'
+import { Check, Select } from './ui.jsx'
 import { Nota } from './tip.jsx'
 import { PanelPruebas, juntarDe } from './pruebas.jsx'
+import { Grupo, OpcionesCinta } from './cinta.jsx'
 
 const MODOS = [
-  ['libre', 'A medida', 'Armás vos cada comparación: cepa contra cepa, una cepa entre medios, entre placas (réplicas)…'],
-  ['cepas', 'Cepas', 'Compara cepas entre sí (por ejemplo L100A1 con L100A1 Rug y L100A1 SCV).'],
-  ['medios', 'Medios', 'Compara el crecimiento de cada cepa entre los medios de cultivo.'],
-  ['placas', 'Placas', 'Compara una cepa entre las placas (réplicas): ¿se reproduce el resultado?'],
-  ['concordancia', 'Concordancia', '¿Las placas ordenan igual a las cepas? ICC, correlaciones y CV.'],
+  ['libre', 'A medida', 'editar', 'Armás vos cada comparación: cepa contra cepa, una cepa entre medios, entre placas (réplicas)…'],
+  ['cepas', 'Cepas', 'puntos', 'Compara cepas entre sí (por ejemplo L100A1 con L100A1 Rug y L100A1 SCV).'],
+  ['medios', 'Medios', 'matraz', 'Compara el crecimiento de cada cepa entre los medios de cultivo.'],
+  ['placas', 'Placas', 'placas', 'Compara una cepa entre las placas (réplicas): ¿se reproduce el resultado?'],
+  ['concordancia', 'Concordancia', 'copiar', '¿Las placas ordenan igual a las cepas? ICC, correlaciones y CV.'],
 ]
 export const modoBase = (o) => (o.objetivo === 'placastodas' ? 'placas' : ['libre', 'cepas', 'medios', 'placas', 'concordancia'].includes(o.objetivo) ? o.objetivo : 'medios')
 
-export function SelectorModo({ o, setO }) {
+// «¿Qué comparar?» en la cinta de herramientas
+export function GrupoModo({ o, setO }) {
   const modo = modoBase(o)
   return (
-    <div className="seg seg-modo">
-      {MODOS.map(([id, t, d]) => <button key={id} type="button" className={modo === id ? 'on' : ''} data-tip={`${t}\n${d}`} onClick={() => setO('objetivo', id)}>{t}</button>)}
-    </div>
+    <Grupo titulo="Qué comparar">
+      <OpcionesCinta valor={modo} onChange={(v) => setO('objetivo', v)} opciones={MODOS.map(([id, t, ic, d]) => [id, t, null, ic, `${t}\n${d}`])} />
+    </Grupo>
   )
 }
 
@@ -42,39 +43,6 @@ function Multi({ titulo, tip, todos, sel, onSel, comparado, colores }) {
           ))}
         </div>
       </Desplegable>
-    </div>
-  )
-}
-
-// Cada comparación es un ANOVA aparte entre los elementos que elijas (p. ej. L100A1 vs L100A1 Rug, y por otro lado L100A1 vs L100A1 SCV)
-function Comparaciones({ pool, sets, onSets, nombreFactor }) {
-  const nombre = (id) => pool.find((x) => x.id === id)?.nombre || id
-  const ids = pool.map((x) => x.id)
-  const actuales = (sets || []).map((S) => S.filter((x) => ids.includes(x)))
-  const cambiar = (i, S) => onSets(actuales.map((x, k) => (k === i ? S : x)))
-  return (
-    <div className="comparaciones">
-      <span className="multi-t">ANOVAs a realizar<Nota>{'Cada comparación es un ANOVA separado entre los elementos que elijas. Con dos elementos equivale a una prueba t. Al ser pruebas separadas, el error no se ajusta entre ellas: para controlar el error de todas contra un mismo control usá un solo ANOVA con «Contra un control».'}</Nota></span>
-      <div className="comp-lista">
-        {!sets && <span className="comp-chip" data-tip={`Un solo ANOVA con todas las ${nombreFactor} seleccionadas`}>Todas juntas (un ANOVA)</span>}
-        {actuales.map((S, i) => (
-          <span key={i} className="comp-chip">
-            <Desplegable etiqueta={`ANOVA ${i + 1}`} resumen={S.map(nombre).join(' vs ') || '(vacío)'} ancho={260}>
-              <div className="lista-check">
-                {pool.map((x) => <Check key={x.id} label={x.nombre} checked={S.includes(x.id)} onChange={(v) => cambiar(i, v ? [...S, x.id] : S.filter((y) => y !== x.id))} />)}
-              </div>
-              <button className="chico" onClick={() => onSets(actuales.filter((_, k) => k !== i))}>Quitar este ANOVA</button>
-            </Desplegable>
-          </span>
-        ))}
-        <button className="chico" onClick={() => onSets([...actuales, ids.slice(0, 2)])} disabled={ids.length < 2}>+ Agregar ANOVA</button>
-        {sets && <button className="chico" onClick={() => onSets(undefined)}>Todas juntas</button>}
-        {ids.length > 2 && (
-          <span className="comp-ctrl" data-tip={'Crea un ANOVA por cada par: el elemento que elijas contra cada uno de los demás'}>
-            <Select value="" onChange={(c) => c && onSets(ids.filter((x) => x !== c).map((x) => [c, x]))} opciones={[['', 'Un ANOVA por par con…'], ...pool.map((x) => [x.id, x.nombre])]} />
-          </span>
-        )}
-      </div>
     </div>
   )
 }
@@ -147,24 +115,18 @@ export function BarraSeleccion({ s, D, o, setO }) {
   }[modo]
   return (
     <section className="barra-seleccion">
-      <div className="barra-fila">
-        <div className="barra-modo">
-          <span className="multi-t">¿Qué comparar?<Nota>Elegí qué grupos se enfrentan; los otros dos paneles filtran los datos que se usan. Debajo se formulan las hipótesis con tu selección.</Nota></span>
-          <SelectorModo o={o} setO={setO} />
-        </div>
-        {modo !== 'concordancia' && modo !== 'libre' && (
+      {modo !== 'concordancia' && modo !== 'libre' && <div className="barra-fila">
           <>
             <Multi titulo="Cepas" tip="Cepas o muestras incluidas." todos={cepasTodas} sel={o.eCepas} onSel={(v) => setO('eCepas', v)} comparado={modo === 'cepas'} />
-            <Multi titulo="Medios" tip="Medios de cultivo incluidos (el medio se define en cada placa, pestaña «Placa»)." todos={mediosTodos} sel={o.eMedios} onSel={(v) => setO('eMedios', v)} comparado={modo === 'medios'} />
+            <Multi titulo="Medios" tip="Medios de cultivo incluidos (el medio se define en cada placa, pestaña «Pocillos»)." todos={mediosTodos} sel={o.eMedios} onSel={(v) => setO('eMedios', v)} comparado={modo === 'medios'} />
             <Multi titulo="Placas" tip="Placas incluidas: cada una es una réplica biológica. Se pueden ocultar placas en «Gráfico › Comparar»." todos={placasTodas} sel={o.ePlacas} onSel={(v) => setO('ePlacas', v)} comparado={modo === 'placas'} />
             {puedeJuntar && <Check label="Separar por medio" checked={!juntar} onChange={(v) => setO('juntar', !v)} ayuda={modo === 'cepas' ? 'Activado: las cepas se comparan dentro de cada medio. Desactivado: se juntan los datos de todos los medios.' : 'Activado: solo se comparan placas del mismo medio. Desactivado: se comparan todas las placas, aunque tengan distinto medio.'} />}
           </>
-        )}
-      </div>
+      </div>}
       {modo === 'libre' && <ComparadorLibre o={o} setO={setO} cepas={cepasTodas} medios={mediosTodos} placas={placasTodas} />}
       {modo !== 'concordancia' && (
         <>
-          <PanelPruebas o={o} setO={setO} D={D} sinObjetivos horizontal />
+          <PanelPruebas o={o} setO={setO} D={D} horizontal />
           {frase && <p className="frase-sel">{frase}</p>}
         </>
       )}
