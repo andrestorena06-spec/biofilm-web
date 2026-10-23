@@ -1,7 +1,7 @@
 import { forwardRef } from 'react'
 import { dBigotes, dCaja, dError, dMedia, dMediana } from '../calculos.js'
 import { calcularLayout } from '../layout.js'
-import { FUENTE, ejeConRango, escalaY, fmt, fmtTick, medir, ticksBonitos } from '../utils.js'
+import { FUENTE, estiloEscala, ejeConRango, escalaY, fmt, fmtTick, medir, ticksBonitos } from '../utils.js'
 import { EjeY, EtiquetaFondo, EtiquetasX, LeyendaX, Titulo, useAncho } from './charts.jsx'
 
 // ---------------------------------------------------------------
@@ -19,7 +19,10 @@ const cuantil = (v, q) => {
   return a[i] + (a[Math.min(i + 1, a.length - 1)] - a[i]) * (pos - i)
 }
 
-export const CompararChart = forwardRef(function CompararChart({ grupos, leyenda, o, est, eje, onContext, tam, nota }, svgRef) {
+// en la escala log ODc los umbrales de clase son iguales en todas las placas: 1 = ODc, 2 = 2 × ODc, 3 = 4 × ODc
+const CLASES_LOG = [['Productor fuerte', 3.45, '> 3'], ['Productor moderado', 2.5, '2 – 3'], ['Productor débil', 1.5, '1 – 2'], ['No productor', 0.5, '≤ 1']]
+
+export const CompararChart = forwardRef(function CompararChart({ grupos, leyenda, o, est, eje, onContext, tam, nota, clases, escalaLog, unidad = 'OD' }, svgRef) {
   const [wrap, Wmed] = useAncho()
   const W = tam ? tam.w : Wmed
   const labels = grupos.map((g) => g.etiqueta || g.muestra)
@@ -42,7 +45,11 @@ export const CompararChart = forwardRef(function CompararChart({ grupos, leyenda
   const lo = Math.min(0, ...todosPisos)
   let hi = Math.max(0.1, ...todasCimas)
   hi += (hi - lo) * (o.valores ? (o.errores ? 0.2 : 0.13) : 0.05)
-  const eY = ejeConRango(ticksBonitos(lo, hi, 6), est)
+  if (clases) hi = Math.max(hi, 3.9)
+  const eY = ejeConRango(ticksBonitos(lo, hi, 6), estiloEscala(est, escalaLog))
+  const estC = est.clases || { size: 11, color: '#333333' }
+  const textosC = clases ? CLASES_LOG.map(([n, , r]) => (o.valoresClase ? `${n}\n(${r})` : n)) : []
+  const wClases = clases ? Math.max(...textosC.flatMap((t) => t.split('\n')).map((t) => medir(t, estC.size, estC.bold, estC.italic))) : 0
   const yLabels = eY.ticks.map((t) => fmtTick(t, eY.paso))
 
   const itemsLey = leyenda.map((p) => ({ ...p, w: 26 + medir(p.nombre, 12) + 18 }))
@@ -55,7 +62,7 @@ export const CompararChart = forwardRef(function CompararChart({ grupos, leyenda
   if (fila.length) filasLey.push(fila)
 
   const L = calcularLayout({
-    W, etiquetas: labels, ang: o.rotar, est, yLabels, derecha: 18,
+    W, etiquetas: labels, ang: o.rotar, est, yLabels, derecha: clases ? wClases + 28 : 18,
     titulo: !!est.titulo.texto, tituloX: !!est.leyendaX.texto,
     altoPlot: Math.round(Math.min(Math.max(W * 0.3, 280), 380)) + est.valores.size * 2,
     extraAbajo: filasLey.length * 24 + 30, fijoH: tam ? tam.h : 0,
@@ -67,6 +74,12 @@ export const CompararChart = forwardRef(function CompararChart({ grupos, leyenda
   const bw = sw * 0.8
   const yLey = L.top + L.plotH + L.altoEtiquetas + L.altoLeyX + 36
   const errNom = o.errorNombre || 'error'
+  // etiquetas de clase en el margen derecho, sin que se pisen
+  const hLin = estC.size * 1.2
+  const ysC = CLASES_LOG.map((c) => y(c[1]))
+  const altC = textosC.map((t) => t.split('\n').length * hLin)
+  const posC = ysC.slice()
+  for (let i = 1; i < posC.length; i++) { const gap = (altC[i - 1] + altC[i]) / 2 + 3; if (posC[i] - posC[i - 1] < gap) posC[i] = posC[i - 1] + gap }
 
   return (
     <div ref={wrap} className="chart-wrap" onContextMenu={onContext}>
@@ -77,6 +90,10 @@ export const CompararChart = forwardRef(function CompararChart({ grupos, leyenda
         <line x1={L.left} x2={L.left + L.plotW} y1={y(eY.min)} y2={y(eY.min)} stroke="#444" />
         <line x1={L.left} x2={L.left} y1={L.top} y2={y(eY.min)} stroke="#444" />
         {eY.min < 0 && <line x1={L.left} x2={L.left + L.plotW} y1={y(0)} y2={y(0)} stroke="#888" strokeDasharray="3 3" />}
+        {clases && [1, 2, 3].filter((u) => u >= eY.min && u <= eY.max).map((u) => (
+          <line key={u} x1={L.left} x2={L.left + L.plotW} y1={y(u)} y2={y(u)} stroke="#333" strokeDasharray="2 3"
+            data-tip={`${u} = ${['ODc', '2 × ODc', '4 × ODc'][u - 1]} de cada placa\nlímite entre «${CLASES_LOG[4 - u][0]}» y «${CLASES_LOG[3 - u][0]}»`} />
+        ))}
 
         {grupos.map((g, gi) => {
           const x0 = cx(gi) - (g.barras.length * sw) / 2
@@ -127,7 +144,7 @@ export const CompararChart = forwardRef(function CompararChart({ grupos, leyenda
                     )}
                     {o.puntos && puntos.map((p, j) => (
                       <circle key={j} cx={mx + (puntos.length > 1 ? (((j * 0.6180339) % 1) - 0.5) * bw * 0.56 : 0)} cy={y(p.v)} r="3.6"
-                        fill={p.color} fillOpacity="0.92" stroke="#fff" strokeWidth="1" data-tip={p.tip || `${b.placa}\nOD = ${V(p.v)}`} />
+                        fill={p.color} fillOpacity="0.92" stroke="#fff" strokeWidth="1" data-tip={p.tip || `${b.placa}\n${unidad} = ${V(p.v)}`} />
                     ))}
                     {o.valores && Number.isFinite(arriba) && (
                       <EtiquetaFondo x={mx} y={y(arriba) - 8} est={est.valores}
@@ -139,6 +156,14 @@ export const CompararChart = forwardRef(function CompararChart({ grupos, leyenda
             </g>
           )
         })}
+
+        {clases && CLASES_LOG.map((c, i) => c[1] >= eY.min && c[1] <= eY.max && (
+          <g key={c[0]}>
+            <line x1={L.left + L.plotW} x2={L.left + L.plotW + 8} y1={ysC[i]} y2={posC[i]} stroke="#999" />
+            <EtiquetaFondo x={L.left + L.plotW + 12} y={posC[i] + (textosC[i].split('\n').length === 2 ? hLin * 0.1 : hLin * 0.35)}
+              texto={textosC[i]} est={estC} anchor="start" pad={1} />
+          </g>
+        ))}
 
         <EtiquetasX labels={labels} cx={cx} yBase={y(eY.min)} ang={o.rotar} est={est} />
         <LeyendaX L={L} est={est} />

@@ -14,7 +14,7 @@ import { resumenBlancos } from '../blancos.js'
 import { excelDe } from '../api.js'
 import { Q_TABLA } from '../criticos.js'
 import { criticoGrubbs, normalizarMetodo } from '../motor.js'
-import { descargarBlob, estiloDefecto, fmt, tCuantil } from '../utils.js'
+import { TXT_LOGODC, conRango, estiloEscala, descargarBlob, estiloDefecto, fmt, tCuantil } from '../utils.js'
 
 const nombreMetodo = { q: 'Test Q de Dixon', grubbs: 'Test de Grubbs', cv: 'Coeficiente de variación (%RSD)' }
 const ERRORES = [['ic95', 'IC 95 %'], ['sd', 'DE'], ['sem', 'SEM']]
@@ -131,6 +131,8 @@ export function GraficoTab({ s, grupoVista }) {
   if (o.orden === 'desc') filas = [...filas].sort((x, y) => y.Media - x.Media)
   const puntos = a.estado.filter((e) => e.Usado && filas.some((f) => f.Muestra === e.Muestra))
   const sinOdc = !Number.isFinite(a.odc.odc)
+  const escalaLog = o.escala === 'logodc' && !sinOdc
+  const ejeG = escalaLog ? TXT_LOGODC : s.ejeOD
 
   return (
     <div>
@@ -165,14 +167,14 @@ export function GraficoTab({ s, grupoVista }) {
         </div>
       </Cajon>
 
-      {sinOdc && <p className="aviso-caja">Sin ODc (faltan blancos aceptados): las barras no se pueden clasificar.</p>}
+      {sinOdc && <p className="aviso-caja">Sin ODc (faltan blancos aceptados): las barras no se pueden clasificar{o.escala === 'logodc' ? ' ni pasar a la escala log ODc (se muestran en OD)' : ''}.</p>}
       <section className="tarjeta">
         <div className="cabeza-tarjeta">
           <span className="etiqueta-seccion">OD media de las réplicas aceptadas · {NOMBRE_ERROR[o.error]}</span>
           <span className="ayuda">Pasá el mouse por una barra para ver el cálculo<Nota>Clic derecho sobre el gráfico: estilo de los textos, rango del eje Y y guardar la imagen.</Nota></span>
         </div>
         {filas.length ? (
-          <div className="figura"><BarChart ref={svg} filas={filas} puntos={puntos} odc={a.odc.odc} o={o} est={s.estilos.barras} eje={s.ejeOD} onContext={abrirMenu} /></div>
+          <div className="figura"><BarChart ref={svg} filas={filas} puntos={puntos} odc={a.odc.odc} o={o} est={s.estilos.barras} eje={ejeG} escalaLog={escalaLog} onContext={abrirMenu} /></div>
         ) : <Vacio texto="Elegí al menos una muestra con réplicas aceptadas." />}
       </section>
       <MenuContextual menu={menu} items={[
@@ -181,13 +183,13 @@ export function GraficoTab({ s, grupoVista }) {
         ['Guardar imagen…', () => { cerrarMenu(); setExp(true) }],
         ['Restablecer estilo de texto', () => { cerrarMenu(); s.setEstilos((e) => ({ ...e, barras: estiloDefecto() })) }],
       ]} />
-      {rng && <RangoDialog est={s.estilos.barras} onClose={() => setRng(false)} onGuardar={(e) => { s.setEstilos((x) => ({ ...x, barras: e })); setRng(false) }} />}
-      {dlg && <EstiloDialog estilo={s.estilos.barras} conClases ejeDefecto={s.ejeOD} onClose={() => setDlg(false)}
+      {rng && <RangoDialog est={estiloEscala(s.estilos.barras, escalaLog)} onClose={() => setRng(false)} onGuardar={(e) => { s.setEstilos((x) => ({ ...x, barras: conRango(x.barras, e, escalaLog) })); setRng(false) }} />}
+      {dlg && <EstiloDialog estilo={s.estilos.barras} conClases ejeDefecto={ejeG} onClose={() => setDlg(false)}
         onGuardar={(e) => { s.setEstilos((x) => ({ ...x, barras: e })); setDlg(false) }} />}
       {exp && svg.current && (
         <ExportDialog nombre={`barras_${s.a.nombre}`} size0={tamDe(svg.current)} onClose={() => setExp(false)}
           render={(ref, tam) => <BarChart ref={ref} filas={filas} puntos={puntos} odc={a.odc.odc} o={o} est={s.estilos.barras}
-            eje={s.ejeOD} onContext={(e) => e.preventDefault()} tam={tam} />} />
+            eje={ejeG} escalaLog={escalaLog} onContext={(e) => e.preventDefault()} tam={tam} />} />
       )}
     </div>
   )

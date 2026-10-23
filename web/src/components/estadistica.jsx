@@ -13,15 +13,17 @@ import { ReproTab } from './repro.jsx'
 import { armarComparacion } from '../comparacion.js'
 import { analizar, anidada, parcelasDivididas, placaCepa } from '../decision.js'
 import { desvio, marcaSig, media } from '../estadistica.js'
-import { COLOR_CLASE, fmtTick, ticksBonitos } from '../utils.js'
+import { COLOR_CLASE, TXT_LOGODC, fmtTick, logOdc, ticksBonitos } from '../utils.js'
 
 const finito = Number.isFinite
 const SIN_MEDIO = '(sin medio)'
-const UNIDAD = { od: 'OD', ln: 'ln(OD)', odc: 'OD ÷ ODc' }
+const UNIDAD = { od: 'OD', ln: 'ln(OD)', odc: 'OD ÷ ODc', logodc: TXT_LOGODC }
+// líneas de clase que se dibujan en el gráfico de los grupos (las escalas relativas al ODc tienen umbrales fijos)
+const UMBRALES = { odc: [[1, 'ODc'], [2, '2 × ODc'], [4, '4 × ODc']], logodc: [[1, 'ODc'], [2, '2 × ODc'], [3, '4 × ODc']] }
 
 // Valores de cada cepa en cada placa: uno por placa (la OD media de sus pocillos aceptados) y uno por pocillo
 function prepararDatos(s, D, variable) {
-  const fx = (y, odc) => (variable === 'ln' ? (y > 0 ? Math.log(y) : NaN) : variable === 'odc' ? (odc > 0 ? y / odc : NaN) : y)
+  const fx = (y, odc) => (variable === 'ln' ? (y > 0 ? Math.log(y) : NaN) : variable === 'odc' ? (odc > 0 ? y / odc : NaN) : variable === 'logodc' ? logOdc(y, odc) : y)
   const orden = [...new Set(s.placas.map((p) => p.medio).filter(Boolean))]
   const placas = [...D.conAnalisis].sort((a, b) => (a.medio ? orden.indexOf(a.medio) : 999) - (b.medio ? orden.indexOf(b.medio) : 999))
   const obsPlaca = [], obsPozo = [], fuera = []
@@ -41,7 +43,9 @@ function prepararDatos(s, D, variable) {
   const presentes = [...new Set(obsPlaca.map((x) => x.cepa))]
   const cepas = [...s.muestras.filter((m) => presentes.includes(m)), ...presentes.filter((m) => !s.muestras.includes(m))]
   const medios = orden.filter((m) => placas.some((p) => p.medio === m))
-  return { placas, obsPlaca, obsPozo, fuera, cepas, medios }
+  // las escalas relativas al ODc dejan afuera las placas sin ODc
+  const sinOdc = variable === 'odc' || variable === 'logodc' ? placas.filter((p) => !(s.analisisMap[p.id].odc?.odc > 0)) : []
+  return { placas, obsPlaca, obsPozo, fuera, cepas, medios, sinOdc }
 }
 
 // ---------------------------------------------------------------
@@ -68,7 +72,7 @@ function Fichas({ etiqueta, tip, opciones, activa, onClick, multi, extra }) {
 // ---------------------------------------------------------------
 // gráfico de los grupos: cada punto es un valor que entra en la prueba (placa o pocillo), con la media ± DE y la letra
 // ---------------------------------------------------------------
-function Dispersion({ grupos, letras, colorDe, unidad }) {
+function Dispersion({ grupos, letras, colorDe, unidad, umbrales }) {
   const vals = grupos.flatMap((g) => g.v)
   if (!vals.length) return null
   const W = 560, H = 270, m = { l: 50, r: 12, t: 22, b: 58 }
@@ -87,6 +91,12 @@ function Dispersion({ grupos, letras, colorDe, unidad }) {
         </g>
       ))}
       <text transform={`translate(13 ${(m.t + H - m.b) / 2}) rotate(-90)`} textAnchor="middle" fontSize="11" fill="#8A6A49">{unidad}</text>
+      {(umbrales || []).filter(([u]) => u >= t.min && u <= t.max).map(([u, nom]) => (
+        <g key={u} data-tip={`${u} = ${nom} de cada placa (límite de clase)`}>
+          <line x1={m.l} x2={W - m.r} y1={y(u)} y2={y(u)} stroke="#6B5A45" strokeDasharray="3 3" />
+          <text x={W - m.r - 3} y={y(u) - 3} textAnchor="end" fontSize="9.5" fill="#6B5A45">{nom}</text>
+        </g>
+      ))}
       {grupos.map((g, i) => {
         const cx = m.l + band * (i + 0.5)
         const mu = g.v.length ? media(g.v) : NaN, sd = g.v.length > 1 ? desvio(g.v) : 0
@@ -118,7 +128,7 @@ function Dispersion({ grupos, letras, colorDe, unidad }) {
 // ---------------------------------------------------------------
 // panel izquierdo: los grupos que se comparan
 // ---------------------------------------------------------------
-function PanelGrupos({ foco, unidad, nivelTxt, colorDe, fuera, comp, onCtrl }) {
+function PanelGrupos({ foco, unidad, nivelTxt, colorDe, fuera, comp, onCtrl, umbrales }) {
   const { grupos, r } = foco
   const ctrl = foco.ctrl
   const letra = (g) => {
@@ -140,7 +150,7 @@ function PanelGrupos({ foco, unidad, nivelTxt, colorDe, fuera, comp, onCtrl }) {
       )}
       {grupos.some((g) => g.v.length) ? (
         <>
-          <div className="figura"><Dispersion grupos={grupos} letras={ctrl ? null : r?.ok ? r.letras : null} colorDe={colorDe} unidad={unidad} /></div>
+          <div className="figura"><Dispersion grupos={grupos} letras={ctrl ? null : r?.ok ? r.letras : null} colorDe={colorDe} unidad={unidad} umbrales={umbrales} /></div>
           <div className="tabla-scroll">
             <table className="tabla compacta">
               <thead><tr><th>Grupo</th><th className="num">n</th><th className="num">Media</th><th className="num">DE</th><th className="num">CV %</th><th>{ctrl ? 'Contra el control' : 'Letra'}</th></tr></thead>
@@ -331,7 +341,7 @@ export function EstadisticaTab({ s }) {
   const obsN = nivel === 'placa' ? X.obsPlaca : X.obsPozo
   const forzado = o.prueba || 'auto', comp = o.comp || 'pares', ajuste = o.ajuste === 'lsd' ? 'lsd' : 'holm'
   const unidad = UNIDAD[variable]
-  const nivelTxt = nivel === 'placa' ? 'cada punto es una placa (OD media de sus pocillos)' : 'cada punto es un pocillo'
+  const nivelTxt = nivel === 'placa' ? `cada punto es una placa (${variable === 'od' ? 'OD media de sus pocillos' : 'calculado con la OD media de sus pocillos'})` : 'cada punto es un pocillo'
 
   // ---- qué se compara ----
   const juntar = juntarDe(o)
@@ -457,6 +467,7 @@ export function EstadisticaTab({ s }) {
         <Grupo titulo="Datos">
           <OpcionesCinta valor={variable} onChange={(v) => setO('variable', v)} opciones={[
             ['od', 'OD', 'OD', null, 'OD tal cual'], ['ln', 'ln(OD)', 'ln', null, 'Logaritmo natural de la OD\nEstabiliza la varianza cuando la DE crece con la media'], ['odc', 'OD ÷ ODc', '÷', null, 'Cada OD dividida por el ODc de su placa\nReduce las diferencias de fondo entre placas'],
+            ['logodc', 'log ODc', 'log', null, `${TXT_LOGODC}\nCada OD medida contra el ODc de su placa en escala logarítmica: 1 = ODc, 2 = 2 × ODc, 3 = 4 × ODc.\nQuita la variación de la tinción entre placas y la varianza que crece con la OD: los grupos se comparan con los mismos umbrales de clase.`],
           ]} />
         </Grupo>
         {modo !== 'placas' && !usaPlacaLibre && (
@@ -505,8 +516,9 @@ export function EstadisticaTab({ s }) {
           <ComparadorLibre o={o} setO={setO} cepas={X.cepas.map((c) => ({ id: c, nombre: c }))} medios={X.medios.map((m) => ({ id: m, nombre: m }))} placas={X.placas.map((p) => ({ id: p.id, nombre: p.nombre }))} />
           {libres.length > 1 && <Fichas etiqueta="Ver" opciones={libres.map((c, i) => ({ id: i, texto: `ANOVA ${i + 1}` }))} activa={(id) => id === iLibre} onClick={(id) => setO('selLibre', id)} />}
         </>}
-        {(sinAnalisis.length > 0 || (modo !== 'libre' && sinMedio.length > 0 && modo === 'medios')) && (
+        {(sinAnalisis.length > 0 || X.sinOdc.length > 0 || (modo !== 'libre' && sinMedio.length > 0 && modo === 'medios')) && (
           <p className="aviso-sel">
+            {X.sinOdc.length > 0 && <>{X.sinOdc.map((p) => `«${p.nombre}»`).join(', ')} no {X.sinOdc.length === 1 ? 'tiene' : 'tienen'} ODc (faltan blancos aceptados): no {X.sinOdc.length === 1 ? 'entra' : 'entran'} con {unidad}. </>}
             {sinAnalisis.length > 0 && <>{sinAnalisis.map((p) => `«${p.nombre}»`).join(', ')} todavía no {sinAnalisis.length === 1 ? 'entra' : 'entran'}: {sinAnalisis.some((p) => !p.placa) ? 'faltan datos o ' : ''}falta configurar los pocillos. </>}
             {modo === 'medios' && sinMedio.length > 0 && <>{sinMedio.map((p) => `«${p.nombre}»`).join(', ')} no {sinMedio.length === 1 ? 'tiene' : 'tienen'} medio: no {sinMedio.length === 1 ? 'entra' : 'entran'} al comparar medios.</>}
           </p>
@@ -515,7 +527,7 @@ export function EstadisticaTab({ s }) {
 
       {foco ? (
         <div className="est-paneles">
-          <PanelGrupos foco={foco} unidad={unidad} nivelTxt={nivelTxt} colorDe={colorDe} fuera={fueraFoco} comp={comp} onCtrl={(v) => setO(ctrlKey, v)} />
+          <PanelGrupos foco={foco} unidad={unidad} nivelTxt={nivelTxt} colorDe={colorDe} fuera={fueraFoco} comp={comp} onCtrl={(v) => setO(ctrlKey, v)} umbrales={UMBRALES[variable]} />
           <PanelResultado foco={foco} alDesarrollo={irDesarrollo} extra={extraResultado} />
         </div>
       ) : <Vacio titulo="Todavía no hay comparaciones" texto="Agregá una con las plantillas de arriba («Cepa vs cepa», «Una cepa entre medios»…)." />}

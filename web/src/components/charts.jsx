@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useRef, useState } from 'react'
 import { dBarra } from '../calculos.js'
 import { calcularLayout, estiloTexto } from '../layout.js'
-import { CLASES, COLOR_CLASE, FUENTE, ejeConRango, escalaY, fmt, fmtTick, medir, tCuantil, ticksBonitos } from '../utils.js'
+import { CLASES, COLOR_CLASE, FUENTE, TXT_LOGODC, estiloEscala, ejeConRango, escalaY, fmt, fmtTick, logOdc, medir, tCuantil, ticksBonitos } from '../utils.js'
 
 export function useAncho() {
   const ref = useRef(null)
@@ -70,10 +70,15 @@ export const LeyendaX = ({ L, est }) => est.leyendaX.texto ? (
 // ---------------------------------------------------------------
 // GRÁFICO DE BARRAS
 // ---------------------------------------------------------------
-export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, est, eje, onContext, tam, nota, leyendaPuntos }, svgRef) {
+export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, est, eje, onContext, tam, nota, leyendaPuntos, escalaLog }, svgRef) {
   const [wrap, Wmed] = useAncho()
   const W = tam ? tam.w : Wmed
+  // escala 1 + log₂(OD ÷ ODc): el ODc de la placa vale 1 y los umbrales de clase quedan en 1, 2 y 3
+  const log = !!escalaLog && Number.isFinite(odc) && odc > 0
+  const tv = log ? (v) => logOdc(v, odc) : (v) => v
+  const tvB = (v) => (Number.isFinite(tv(v)) ? tv(v) : 0)   // altura de barra (OD ≤ 0 en log: sin barra)
   const lineas = o.lineas && Number.isFinite(odc)
+  const umbrales = log ? [1, 2, 3] : [odc, 2 * odc, 4 * odc]
   const errTxt = { ic95: 'IC 95 %', sd: 'desviación estándar', sem: 'error estándar', ninguno: '' }[o.error]
   const labels = filas.map((f) => (f.EsBlanco ? `${f.Muestra} (blanco)` : f.Muestra))
   const hayBlanco = filas.some((f) => f.EsBlanco)
@@ -81,13 +86,16 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
   const errDe = (f) => (o.error === 'ic95' ? f.IC95 : o.error === 'sd' ? f.SD : o.error === 'sem' ? f.SEM : null)
   const topDe = filas.map((f) => {
     const e = errDe(f)
-    const p = puntos.filter((q) => q.Muestra === f.Muestra).map((q) => q.OD)
-    return Math.max(f.Media + (Number.isFinite(e) ? e : 0), ...p)
+    const p = puntos.filter((q) => q.Muestra === f.Muestra).map((q) => tv(q.OD)).filter(Number.isFinite)
+    return Math.max(...[tv(f.Media + (Number.isFinite(e) ? e : 0)), ...p].filter(Number.isFinite), log ? 0 : -Infinity)
   })
+  // con la escala logarítmica los valores pueden ser negativos (OD menor que la mitad del ODc)
+  const bajos = log ? filas.flatMap((f) => { const e = errDe(f); return [tv(f.Media), Number.isFinite(e) && f.Media - e > 0 ? tv(f.Media - e) : NaN, ...puntos.filter((q) => q.Muestra === f.Muestra).map((q) => tv(q.OD))] }).filter(Number.isFinite) : []
+  const lo = log ? Math.min(0, ...bajos) : 0
   // textos "media ± error"; si no caben al lado de los vecinos se apilan en dos líneas
   const textoValor = (f) => {
     const e = errDe(f)
-    return { m: fmt(f.Media), e: o.errores && Number.isFinite(e) ? fmt(e) : null }
+    return { m: fmt(tv(f.Media), log ? 2 : 3), e: !log && o.errores && Number.isFinite(e) ? fmt(e) : null }
   }
   const wMaxTxt = Math.max(0, ...filas.map((f) => {
     const t = textoValor(f)
@@ -97,17 +105,20 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
   const apilar = o.medias && wMaxTxt > wDisponible * 0.92
   let tope = Math.max(0, ...topDe)
   if (o.medias) tope *= 1 + (est.valores.size * (apilar ? 2.8 : 1.6)) / 340
-  if (lineas) tope = Math.max(tope * 1.05, odc * 4.9)
+  if (lineas) tope = Math.max(tope * 1.05, log ? 3.9 : odc * 4.9)
   if (!(tope > 0)) tope = 1
-  const eY = ejeConRango(ticksBonitos(0, tope, 6), est)
+  const eY = ejeConRango(ticksBonitos(lo, tope, 6), estiloEscala(est, log))
+  // las barras salen del 0 (en log ODc, 0 = la mitad del ODc): las que quedan por debajo bajan
+  const base = Math.min(Math.max(0, eY.min), eY.max)
   const yLabels = eY.ticks.map((t) => fmtTick(t, eY.paso))
 
+  const [u1, u2, u3] = log ? ['1', '2', '3'] : [fmt(odc), fmt(2 * odc), fmt(4 * odc)]
   const clasesTxt = lineas
     ? [
-        ['Productor fuerte', 4.45, o.valoresClase ? `Productor fuerte\n(> ${fmt(4 * odc)})` : 'Productor fuerte'],
-        ['Productor moderado', 3, o.valoresClase ? `Productor moderado\n(${fmt(2 * odc)} – ${fmt(4 * odc)})` : 'Productor moderado'],
-        ['Productor débil', 1.5, o.valoresClase ? `Productor débil\n(${fmt(odc)} – ${fmt(2 * odc)})` : 'Productor débil'],
-        ['No productor', 0.5, o.valoresClase ? `No productor\n(≤ ${fmt(odc)})` : 'No productor'],
+        ['Productor fuerte', log ? 3.45 : 4.45 * odc, o.valoresClase ? `Productor fuerte\n(> ${u3})` : 'Productor fuerte'],
+        ['Productor moderado', log ? 2.5 : 3 * odc, o.valoresClase ? `Productor moderado\n(${u2} – ${u3})` : 'Productor moderado'],
+        ['Productor débil', log ? 1.5 : 1.5 * odc, o.valoresClase ? `Productor débil\n(${u1} – ${u2})` : 'Productor débil'],
+        ['No productor', log ? 0.5 : 0.5 * odc, o.valoresClase ? `No productor\n(≤ ${u1})` : 'No productor'],
       ]
     : []
   const wClases = lineas
@@ -127,7 +138,7 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
   const COLOR_BLANCO = '#cfc8bc'
 
   // etiquetas de clasificación en el margen derecho, sin que se pisen
-  const ys = clasesTxt.map((c) => y(c[1] * odc))
+  const ys = clasesTxt.map((c) => y(c[1]))
   const hLin = est.clases.size * 1.2
   const alt = clasesTxt.map((c) => c[2].split('\n').length * hLin)
   const pos = ys.slice()
@@ -145,11 +156,12 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
         <rect width={W} height={L.H} fill="#fff" />
         <Titulo W={W} est={est} />
         <EjeY ticks={eY.ticks} paso={eY.paso} y={y} left={L.left} plotW={L.plotW} est={est} titulo={est.leyendaY.texto || eje} />
-        <line x1={L.left} x2={L.left + L.plotW} y1={y(0)} y2={y(0)} stroke="#444" />
-        <line x1={L.left} x2={L.left} y1={L.top} y2={y(0)} stroke="#444" />
+        <line x1={L.left} x2={L.left + L.plotW} y1={y(eY.min)} y2={y(eY.min)} stroke="#444" />
+        <line x1={L.left} x2={L.left} y1={L.top} y2={y(eY.min)} stroke="#444" />
+        {eY.min < 0 && <line x1={L.left} x2={L.left + L.plotW} y1={y(0)} y2={y(0)} stroke="#888" strokeDasharray="3 3" />}
 
-        {lineas && [1, 2, 4].map((m) => (
-          <line key={m} x1={L.left} x2={L.left + L.plotW} y1={y(m * odc)} y2={y(m * odc)} stroke="#333" strokeDasharray="2 3" />
+        {lineas && umbrales.map((u) => (
+          <line key={u} x1={L.left} x2={L.left + L.plotW} y1={y(u)} y2={y(u)} stroke="#333" strokeDasharray="2 3" />
         ))}
 
         {filas.map((f, i) => {
@@ -157,19 +169,20 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
           const pts = puntos.filter((q) => q.Muestra === f.Muestra)
           return (
             <g key={f.Muestra}>
-              <rect x={cx(i) - bw / 2} y={y(f.Media)} width={bw} height={Math.max(y(0) - y(f.Media), 0)}
+              <rect x={cx(i) - bw / 2} y={y(Math.max(tvB(f.Media), base))} width={bw} height={Math.max(Math.abs(y(base) - y(tvB(f.Media))), 0.5)}
                 fill={colorBarra(f)} stroke="#333" strokeWidth="0.8" strokeDasharray={f.EsBlanco ? '4 2' : undefined}
-                data-tip={dBarra(`${f.Muestra}${f.EsBlanco ? ' (blanco)' : ''} · OD media = ${fmt(f.Media)}`, pts.map((q) => q.OD), o.error, f.EsBlanco ? NaN : odc, f.Clasificacion)} />
+                data-tip={(log ? `${TXT_LOGODC} = 1 + log₂(${fmt(f.Media, 4)} ÷ ${fmt(odc, 4)}) = ${fmt(tv(f.Media), 3)}\n` : '') + dBarra(`${f.Muestra}${f.EsBlanco ? ' (blanco)' : ''} · OD media = ${fmt(f.Media)}`, pts.map((q) => q.OD), o.error, f.EsBlanco ? NaN : odc, f.Clasificacion)} />
               {Number.isFinite(e) && e > 0 && (
                 <g stroke="#111" strokeWidth="1.3">
-                  <line x1={cx(i)} x2={cx(i)} y1={y(Math.max(f.Media - e, 0))} y2={y(f.Media + e)} />
-                  <line x1={cx(i) - bw * 0.18} x2={cx(i) + bw * 0.18} y1={y(f.Media + e)} y2={y(f.Media + e)} />
-                  <line x1={cx(i) - bw * 0.18} x2={cx(i) + bw * 0.18} y1={y(Math.max(f.Media - e, 0))} y2={y(Math.max(f.Media - e, 0))} />
+                  {(() => { const hi = y(tv(f.Media + e)), bajo = y(log ? (f.Media - e > 0 ? Math.max(tv(f.Media - e), eY.min) : eY.min) : Math.max(f.Media - e, 0)); return <>
+                    <line x1={cx(i)} x2={cx(i)} y1={bajo} y2={hi} />
+                    <line x1={cx(i) - bw * 0.18} x2={cx(i) + bw * 0.18} y1={hi} y2={hi} />
+                    <line x1={cx(i) - bw * 0.18} x2={cx(i) + bw * 0.18} y1={bajo} y2={bajo} /></> })()}
                 </g>
               )}
               {o.puntos && pts.map((q, k) => (
-                <circle key={q.Pocillo} cx={cx(i) + (pts.length > 1 ? (k / (pts.length - 1) - 0.5) * bw * 0.45 : 0)} cy={y(q.OD)} r={q.color ? 4.4 : 3.3}
-                  fill={q.color || '#1b1f23'} fillOpacity="0.9" stroke={q.color ? '#fff' : 'none'} strokeWidth="1" data-tip={`Pocillo ${q.Pocillo}\nOD = ${fmt(q.OD, 4)}`}>
+                <circle key={q.Pocillo} cx={cx(i) + (pts.length > 1 ? (k / (pts.length - 1) - 0.5) * bw * 0.45 : 0)} cy={y(Number.isFinite(tv(q.OD)) ? Math.max(tv(q.OD), eY.min) : eY.min)} r={q.color ? 4.4 : 3.3}
+                  fill={q.color || '#1b1f23'} fillOpacity="0.9" stroke={q.color ? '#fff' : 'none'} strokeWidth="1" data-tip={`Pocillo ${q.Pocillo}\nOD = ${fmt(q.OD, 4)}${log ? `\n${TXT_LOGODC} = ${fmt(tv(q.OD), 3)}` : ''}`}>
                 </circle>
               ))}
               {o.medias && (
@@ -188,7 +201,7 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
           </g>
         ))}
 
-        <EtiquetasX labels={labels} cx={cx} yBase={y(0)} ang={o.rotar} est={est} />
+        <EtiquetasX labels={labels} cx={cx} yBase={y(eY.min)} ang={o.rotar} est={est} />
         <LeyendaX L={L} est={est} />
 
         {(leyenda || hayBlanco) && (
@@ -230,7 +243,7 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
           </g>
         )}
         <text x={L.left + L.plotW} y={L.H - 8} textAnchor="end" style={{ fontSize: 11, fill: '#6b7785' }}>
-          {nota ?? `Barras: media de las réplicas aceptadas${errTxt ? `; error: ${errTxt}` : ''}`}
+          {nota ?? `Barras: media de las réplicas aceptadas${errTxt ? `; error: ${errTxt}` : ''}${log ? ` · escala ${TXT_LOGODC}: 1 = ODc, 2 = 2 × ODc, 3 = 4 × ODc` : ''}`}
         </text>
       </svg>
     </div>

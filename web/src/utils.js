@@ -213,7 +213,9 @@ export function normalizarEstilo(e = {}) {
   if (e.ejes && !e.leyendaY) { out.leyendaY = { ...base.leyendaY, ...e.ejes }; out.leyendaX = { ...base.leyendaX, ...e.ejes } }
   if (e.etiquetas && !e.nombresX) { out.nombresX = { ...base.nombresX, ...e.etiquetas }; out.numerosY = { ...base.numerosY, ...e.etiquetas } }
   for (const k of Object.keys(base)) if (e[k] && typeof e[k] === 'object' && 'size' in e[k]) out[k] = { ...base[k], ...e[k] }
-  if (e.rango && (Number.isFinite(e.rango.min) || Number.isFinite(e.rango.max))) out.rango = { min: Number.isFinite(e.rango.min) ? e.rango.min : null, max: Number.isFinite(e.rango.max) ? e.rango.max : null }
+  const rg = (r) => (r && (Number.isFinite(r.min) || Number.isFinite(r.max)) ? { min: Number.isFinite(r.min) ? r.min : null, max: Number.isFinite(r.max) ? r.max : null } : null)
+  if (rg(e.rango)) out.rango = rg(e.rango)
+  if (rg(e.rangoLog)) out.rangoLog = rg(e.rangoLog)
   return out
 }
 
@@ -233,3 +235,11 @@ export const escalaY = (L, eY) => (v) => {
   const f = (v - eY.min) / (eY.max - eY.min)
   return L.top + L.plotH - Math.min(Math.max(f, 0), 1) * L.plotH
 }
+
+// Escala logarítmica con el ODc de cada placa como referencia: 1 = ODc, 2 = 2 × ODc, 3 = 4 × ODc (0 = la mitad del ODc).
+// Quita la variación de la tinción entre placas (cada una se mide contra su propio ODc) y la varianza que crece con la OD.
+export const logOdc = (od, odc) => (od > 0 && odc > 0 ? 1 + Math.log2(od / odc) : NaN)
+export const TXT_LOGODC = '1 + log₂(OD ÷ ODc)'
+// el rango del eje Y elegido a mano se guarda aparte para la escala log ODc (sus números no son de OD)
+export const estiloEscala = (est, log) => (log ? { ...est, rango: est.rangoLog } : est)
+export const conRango = (prev, nuevo, log) => (log ? { ...prev, rangoLog: nuevo.rango } : { ...prev, rango: nuevo.rango })
