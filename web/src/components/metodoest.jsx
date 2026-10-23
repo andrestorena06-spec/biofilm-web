@@ -177,12 +177,12 @@ function prepararBloques(s, D, o) {
   const nivel = esPl || libres.some((c) => c.grupos.some((g) => g.placa)) ? 'pocillo' : o.nivel || 'placa'
   const fx = (y, odc) => (variable === 'ln' ? (y > 0 ? Math.log(y) : NaN) : variable === 'odc' ? (odc > 0 ? y / odc : NaN) : y)
   const obsPlaca0 = [], obsPozo0 = []
-  D.placasSel.forEach((p) => {
+  D.conAnalisis.forEach((p) => {
     const a = s.analisisMap[p.id]
     const odc = a.odc?.odc
     const medio = p.medio || '(sin medio)'
-    a.resumen.forEach((r) => { if (!D.ocultos.has(D.clave(p.id, r.Muestra)) && finito(r.Media)) obsPlaca0.push({ cepa: r.Muestra, medio, placa: p.nombre, placaId: p.id, y: fx(r.Media, odc) }) })
-    a.estado.forEach((e) => { if (e.Usado && !e.EsBlanco && !D.ocultos.has(D.clave(p.id, e.Muestra))) obsPozo0.push({ cepa: e.Muestra, medio, placa: p.nombre, placaId: p.id, y: fx(e.OD, odc) }) })
+    a.resumen.forEach((r) => { if (finito(r.Media)) obsPlaca0.push({ cepa: r.Muestra, medio, placa: p.nombre, placaId: p.id, y: fx(r.Media, odc) }) })
+    a.estado.forEach((e) => { if (e.Usado && !e.EsBlanco) obsPozo0.push({ cepa: e.Muestra, medio, placa: p.nombre, placaId: p.id, y: fx(e.OD, odc) }) })
   })
   const sel = (x) => (obj === 'libre' || dentroDeSel(o, x)) && !(usaMedio(obj) && x.medio === '(sin medio)')
   const obsPlaca = obsPlaca0.filter(sel), obsPozo = obsPozo0.filter(sel)
@@ -220,7 +220,10 @@ function prepararBloques(s, D, o) {
     const pls = [...new Set(obs.filter((x) => x.cepa === c && x.medio === m && S.includes(x.placaId)).map((x) => x.placa))]
     if (pls.length >= 2) bloques.push({ titulo: `${c} · ${m}${sfx(S)}: entre placas`, grupos: pls.map((p) => ({ nombre: p, v: vals(c, m, p) })), ctrl: null })
   })))
-  return { obj, variable, nivel, forzado: o.prueba || 'auto', ajuste: o.ajuste === 'lsd' ? 'lsd' : 'holm', bloques, obsPlaca, obsPozo, unidad: variable === 'ln' ? 'ln(OD)' : variable === 'odc' ? 'OD ÷ ODc' : 'OD' }
+  const cepaF = cepas.includes(o.selCepa) ? o.selCepa : cepas[0]
+  const medioF = medios.includes(o.selMedio) ? o.selMedio : medios[0]
+  const foco = { medios: `${cepaF}: entre medios`, cepas: `Medio ${medioF}: entre cepas`, cepastodas: 'Todos los medios: entre cepas', placas: `${cepaF} · ${medioF}: entre placas`, placastodas: `${cepaF}: entre todas las placas`, libre: `ANOVA ${(o.selLibre || 0) + 1}:` }[obj]
+  return { obj, foco, variable, nivel, forzado: o.prueba || 'auto', ajuste: o.ajuste === 'lsd' ? 'lsd' : 'holm', bloques, obsPlaca, obsPozo, unidad: variable === 'ln' ? 'ln(OD)' : variable === 'odc' ? 'OD ÷ ODc' : 'OD' }
 }
 
 // ---------------------------------------------------------------
@@ -232,7 +235,7 @@ function Ejemplo({ s }) {
   const P = useMemo(() => (D.conAnalisis.length ? prepararBloques(s, D, o) : null), [D, o, s.analisisMap]) // eslint-disable-line react-hooks/exhaustive-deps
   const [sel, setSel] = useState('')
   if (!P || !P.bloques.length) return <p className="ayuda">Para ver el desarrollo con tus datos hacen falta al menos 2 placas con análisis (y, según el objetivo, 2 medios o 2 cepas). Se usa lo que esté elegido en la pestaña «Estadística».</p>
-  const b = P.bloques.find((x) => x.titulo === sel) || P.bloques[0]
+  const b = P.bloques.find((x) => x.titulo === sel) || P.bloques.find((x) => x.titulo === P.foco) || P.bloques.find((x) => P.foco && x.titulo.startsWith(P.foco)) || P.bloques[0]
   const g = b.grupos.filter((x) => x.v.length > 0)
   const vs = g.map((x) => x.v)
   const N = vs.reduce((a, v) => a + v.length, 0), k = g.length
