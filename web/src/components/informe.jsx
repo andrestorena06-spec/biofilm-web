@@ -41,7 +41,8 @@ export function abrirInforme(s) {
     }))
     const logB = s.opts.barras.escala === 'logodc' && Number.isFinite(a.odc.odc)
     const gBarras = filas.length ? svgStr(<BarChart filas={filas} puntos={puntos} odc={a.odc.odc} o={ob} est={s.estilos.barras} eje={logB ? TXT_LOGODC : eje} escalaLog={logB} tam={{ w: 900, h: 520 }} />) : ''
-    const gExcluir = svgStr(<ExcluirChart estado={a.estado} orden={orden} o={s.opts.excluir} est={s.estilos.excluir} eje={eje} onClickPunto={noop} tam={{ w: 900, h: 520 }} />)
+    const logE = s.opts.excluir.escala === 'logodc' && Number.isFinite(a.odc.odc)
+    const gExcluir = svgStr(<ExcluirChart estado={a.estado} orden={orden} o={s.opts.excluir} est={s.estilos.excluir} eje={logE ? TXT_LOGODC : eje} odc={a.odc.odc} escalaLog={logE} onClickPunto={noop} tam={{ w: 900, h: 520 }} />)
     return `<section class="placa ${i ? 'salto' : ''}">
       <h2>${esc(p.nombre)}${p.medio ? ' <small>· ' + esc(p.medio) + '</small>' : ''}</h2>
       <p class="meta">Archivo: ${esc(p.archivo?.nombre || '–')}${p.archivo?.hoja && p.archivo.hoja !== 'csv' ? ' · hoja ' + esc(p.archivo.hoja) : ''}

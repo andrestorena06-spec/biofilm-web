@@ -255,8 +255,8 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
 // ---------------------------------------------------------------
 const tCrit = (gl) => tCuantil(0.975, gl)
 
-export function resumenGrupo(g, tipo) {
-  const u = g.filter((e) => e.Usado).map((e) => e.OD)
+export function resumenGrupo(g, tipo, tv = (v) => v) {
+  const u = g.filter((e) => e.Usado).map((e) => tv(e.OD)).filter(Number.isFinite)
   if (!u.length) return null
   const m = u.reduce((a, b) => a + b, 0) / u.length
   const sd = u.length > 1 ? Math.sqrt(u.reduce((a, b) => a + (b - m) ** 2, 0) / (u.length - 1)) : null
@@ -265,31 +265,35 @@ export function resumenGrupo(g, tipo) {
   return { m, err, n: u.length }
 }
 
-export const ExcluirChart = forwardRef(function ExcluirChart({ estado, orden, o, est, eje, onClickPunto, onContext, tam }, svgRef) {
+export const ExcluirChart = forwardRef(function ExcluirChart({ estado, orden, o, est, eje, onClickPunto, onContext, tam, odc, escalaLog }, svgRef) {
   const [wrap, Wmed] = useAncho()
   const W = tam ? tam.w : Wmed
+  // escala 1 + log₂(OD ÷ ODc): solo cambia cómo se dibuja; los valores atípicos se buscan siempre sobre la OD
+  const log = !!escalaLog && odc > 0
+  const tv = log ? (v) => logOdc(v, odc) : (v) => v
   const labels = orden
   const idx = Object.fromEntries(orden.map((m, i) => [m, i]))
   const porMuestra = orden.map((m) => estado.filter((e) => e.Muestra === m))
-  const res = porMuestra.map((g) => resumenGrupo(g, o.error))
+  const res = porMuestra.map((g) => resumenGrupo(g, o.error, tv))
   const textoValor = (r) => (o.errores && r.err !== null && Number.isFinite(r.err) ? `${fmt(r.m)}\n± ${fmt(r.err)}` : fmt(r.m))
 
-  const valores = estado.map((e) => e.OD).filter(Number.isFinite)
+  const valores = estado.map((e) => tv(e.OD)).filter(Number.isFinite)
   res.forEach((r) => { if (r && Number.isFinite(r.err)) valores.push(r.m + r.err, r.m - r.err) })
   let lo = Math.min(0, ...valores)
   let hi = Math.max(...valores, 0.1)
   if (o.medias) hi += (hi - lo) * (est.valores.size * (o.errores ? 2.8 : 1.8)) / 340
   hi += (hi - lo) * 0.04
-  const eY = ejeConRango(ticksBonitos(lo, hi, 6), est)
+  const eY = ejeConRango(ticksBonitos(lo, hi, 6), estiloEscala(est, log))
   const yLabels = eY.ticks.map((t) => fmtTick(t, eY.paso))
   const L = calcularLayout({
     W, etiquetas: labels, ang: o.rotar, est, yLabels,
     titulo: !!est.titulo.texto, tituloX: !!est.leyendaX.texto,
-    altoPlot: 280 + est.valores.size * 2, extraAbajo: 40, fijoH: tam ? tam.h : 0,
+    altoPlot: 280 + est.valores.size * 2, extraAbajo: 40, fijoH: tam ? tam.h : 0, derecha: log ? 62 : undefined,
     anchoTituloY: medir(est.leyendaY.texto || eje, est.leyendaY.size, est.leyendaY.bold, est.leyendaY.italic),
   })
   const y = escalaY(L, eY)
   const cx = (i) => L.left + L.band * (i + 0.5)
+  const vy = (e) => { const v = tv(e.OD); return y(Number.isFinite(v) ? Math.max(v, eY.min) : eY.min) }
 
   const px = (e) => {
     const g = porMuestra[idx[e.Muestra]]
@@ -304,7 +308,13 @@ export const ExcluirChart = forwardRef(function ExcluirChart({ estado, orden, o,
         <rect width={W} height={L.H} fill="#fff" />
         <Titulo W={W} est={est} />
         <EjeY ticks={eY.ticks} paso={eY.paso} y={y} left={L.left} plotW={L.plotW} est={est} titulo={est.leyendaY.texto || eje} />
-        <line x1={L.left} x2={L.left + L.plotW} y1={y(0)} y2={y(0)} stroke="#444" />
+        <line x1={L.left} x2={L.left + L.plotW} y1={y(Math.max(0, eY.min))} y2={y(Math.max(0, eY.min))} stroke="#444" />
+        {log && [[1, 'ODc'], [2, '2 × ODc'], [3, '4 × ODc']].filter(([u]) => u > eY.min && u < eY.max).map(([u, t]) => (
+          <g key={u} data-tip={`${u} = ${t} de esta placa (${fmt(odc * 2 ** (u - 1), 3)} de OD)\nlímite de clase`}>
+            <line x1={L.left} x2={L.left + L.plotW} y1={y(u)} y2={y(u)} stroke="#999" strokeDasharray="3 3" />
+            <text x={L.left + L.plotW + 6} y={y(u) + 4} style={{ fontSize: 11, fill: '#6b7785' }}>{t}</text>
+          </g>
+        ))}
 
         {res.map((r, i) => r && (o.errores || o.medias) ? (
           <g key={'m' + i} stroke="#111" strokeWidth="1.4">
@@ -321,15 +331,15 @@ export const ExcluirChart = forwardRef(function ExcluirChart({ estado, orden, o,
 
         {o.puntos && estado.map((e) => (
           <g key={e.Pocillo} onClick={() => onClickPunto(e.Pocillo)} style={{ cursor: 'pointer' }}
-            data-tip={`${e.Pocillo} · ${e.Muestra} R${e.Replica}\nOD = ${fmt(e.OD, 4)}\n${e.Manual ? 'Excluido manualmente' : e.Motivo || (e.Usado ? 'Aceptado' : 'Excluido')}\nClic: ${e.Usado ? 'excluir' : 'reincorporar'}`}>
-            <circle cx={px(e)} cy={y(e.OD)} r="14" fill="transparent" />
-            {e.Sospechoso && <circle cx={px(e)} cy={y(e.OD)} r="9" fill="none" stroke="#f0932b" strokeWidth="2.4" />}
+            data-tip={`${e.Pocillo} · ${e.Muestra} R${e.Replica}\nOD = ${fmt(e.OD, 4)}${log ? `\n${TXT_LOGODC} = ${fmt(tv(e.OD), 3)}` : ''}\n${e.Manual ? 'Excluido manualmente' : e.Motivo || (e.Usado ? 'Aceptado' : 'Excluido')}\nClic: ${e.Usado ? 'excluir' : 'reincorporar'}`}>
+            <circle cx={px(e)} cy={vy(e)} r="14" fill="transparent" />
+            {e.Sospechoso && <circle cx={px(e)} cy={vy(e)} r="9" fill="none" stroke="#f0932b" strokeWidth="2.4" />}
             {e.Usado ? (
-              <circle cx={px(e)} cy={y(e.OD)} r="5" fill="#2f5d8a" />
+              <circle cx={px(e)} cy={vy(e)} r="5" fill="#2f5d8a" />
             ) : (
               <g stroke="#c0392b" strokeWidth="2.4">
-                <line x1={px(e) - 5} x2={px(e) + 5} y1={y(e.OD) - 5} y2={y(e.OD) + 5} />
-                <line x1={px(e) - 5} x2={px(e) + 5} y1={y(e.OD) + 5} y2={y(e.OD) - 5} />
+                <line x1={px(e) - 5} x2={px(e) + 5} y1={vy(e) - 5} y2={vy(e) + 5} />
+                <line x1={px(e) - 5} x2={px(e) + 5} y1={vy(e) + 5} y2={vy(e) - 5} />
               </g>
             )}
           </g>
@@ -338,7 +348,7 @@ export const ExcluirChart = forwardRef(function ExcluirChart({ estado, orden, o,
         {o.medias && res.map((r, i) => {
           if (!r) return null
           const g = porMuestra[i]
-          const top = Math.max(...(o.puntos ? g.map((e) => e.OD) : [r.m]), r.m + (o.errores && Number.isFinite(r.err) ? r.err : 0))
+          const top = Math.max(...(o.puntos ? g.map((e) => tv(e.OD)).filter(Number.isFinite) : [r.m]), r.m + (o.errores && Number.isFinite(r.err) ? r.err : 0))
           return <EtiquetaFondo key={i} x={cx(i)} y={y(top) - 14} est={est.valores} texto={textoValor(r)} />
         })}
 
