@@ -22,7 +22,9 @@ export function armarComparacion(s) {
   const modo = ['placas', 'medio', 'pocillo'].includes(o.modo) ? o.modo : 'placas'
   const verBlancos = o.blancos !== false
   const conAnalisis = s.placas.filter((p) => !p.oculta && s.analisisMap[p.id]?.resumen?.length)
-  const sel0 = o.placasSel ? conAnalisis.filter((p) => o.placasSel.includes(p.id)) : conAnalisis
+  // se guardan las placas que se sacaron: una placa nueva entra sola en la comparación y en la estadística
+  const fueraPl = new Set(o.placasFuera || [])
+  const sel0 = conAnalisis.filter((p) => !fueraPl.has(p.id))
   // las placas se ordenan por medio de cultivo (las del mismo medio quedan juntas)
   const ordenMedios = [...new Set(s.placas.map((p) => p.medio || ''))].filter(Boolean)
   const placasSel = [...sel0].sort((a, b) => (a.medio ? ordenMedios.indexOf(a.medio) : 999) - (b.medio ? ordenMedios.indexOf(b.medio) : 999))

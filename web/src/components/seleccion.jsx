@@ -24,17 +24,17 @@ export function GrupoModo({ o, setO }) {
 }
 
 // Lista de elementos con selección múltiple (undefined = todos)
-function Multi({ titulo, tip, todos, sel, onSel, comparado, colores }) {
-  const activos = sel ? todos.filter((x) => sel.includes(x.id)) : todos
+function Multi({ titulo, tip, todos, fuera = [], onFuera, comparado, colores }) {
+  const activos = todos.filter((x) => !fuera.includes(x.id))
   const resumen = activos.length === todos.length ? 'todas' : activos.length === 0 ? 'ninguna' : activos.length <= 2 ? activos.map((x) => x.nombre).join(', ') : `${activos.length} de ${todos.length}`
-  const poner = (ids) => onSel(ids.length === todos.length ? undefined : ids)
+  const poner = (ids) => onFuera(todos.filter((x) => !ids.includes(x.id)).map((x) => x.id))
   return (
     <div className={`multi ${comparado ? 'comparado' : ''}`}>
       <span className="multi-t">{titulo}{comparado && <em> · se comparan</em>}<Nota>{tip}</Nota></span>
       <Desplegable etiqueta={`${activos.length}/${todos.length}`} resumen={resumen} ancho={280}>
         <div className="fila-ctrl" style={{ margin: '0 0 6px' }}>
           <button className="chico" onClick={() => poner(todos.map((x) => x.id))}>Todas</button>
-          <button className="chico" onClick={() => onSel([])}>Ninguna</button>
+          <button className="chico" onClick={() => poner([])}>Ninguna</button>
         </div>
         <div className="lista-check">
           {todos.map((x) => (
@@ -101,9 +101,8 @@ export function BarraSeleccion({ s, D, o, setO }) {
   const cepasTodas = D.muestras.filter((m) => !D.esBlanco.has(m) && D.placasSel.some((p) => s.analisisMap[p.id].resumen.some((r) => r.Muestra === m))).map((m) => ({ id: m, nombre: m }))
   const mediosTodos = D.mediosPres.map((m) => ({ id: m, nombre: m }))
   const placasTodas = D.placasSel.map((p) => ({ id: p.id, nombre: p.nombre, sub: p.medio || '' }))
-  const nomsC = (o.eCepas ? cepasTodas.filter((x) => o.eCepas.includes(x.id)) : cepasTodas).map((x) => x.nombre)
-  const nomsM = (o.eMedios ? mediosTodos.filter((x) => o.eMedios.includes(x.id)) : mediosTodos).map((x) => x.nombre)
-  const nomsP = (o.ePlacas ? placasTodas.filter((x) => o.ePlacas.includes(x.id)) : placasTodas).map((x) => x.nombre)
+  const dentro = (lista, fuera) => lista.filter((x) => !(fuera || []).includes(x.id)).map((x) => x.nombre)
+  const nomsC = dentro(cepasTodas, o.eCepasFuera), nomsM = dentro(mediosTodos, o.eMediosFuera), nomsP = dentro(placasTodas, o.ePlacasFuera)
   const lista = (a) => (a.length ? a.join(', ') : '(ninguno)')
   const puedeJuntar = modo === 'cepas' || modo === 'placas'
   const frase = {
@@ -117,9 +116,9 @@ export function BarraSeleccion({ s, D, o, setO }) {
     <section className="barra-seleccion">
       {modo !== 'concordancia' && modo !== 'libre' && <div className="barra-fila">
           <>
-            <Multi titulo="Cepas" tip="Cepas o muestras incluidas." todos={cepasTodas} sel={o.eCepas} onSel={(v) => setO('eCepas', v)} comparado={modo === 'cepas'} />
-            <Multi titulo="Medios" tip="Medios de cultivo incluidos (el medio se define en cada placa, pestaña «Pocillos»)." todos={mediosTodos} sel={o.eMedios} onSel={(v) => setO('eMedios', v)} comparado={modo === 'medios'} />
-            <Multi titulo="Placas" tip="Placas incluidas: cada una es una réplica biológica. Se pueden ocultar placas en «Gráfico › Comparar»." todos={placasTodas} sel={o.ePlacas} onSel={(v) => setO('ePlacas', v)} comparado={modo === 'placas'} />
+            <Multi titulo="Cepas" tip="Cepas o muestras incluidas." todos={cepasTodas} fuera={o.eCepasFuera} onFuera={(v) => setO('eCepasFuera', v)} comparado={modo === 'cepas'} />
+            <Multi titulo="Medios" tip="Medios de cultivo incluidos (el medio se define en cada placa, pestaña «Pocillos»)." todos={mediosTodos} fuera={o.eMediosFuera} onFuera={(v) => setO('eMediosFuera', v)} comparado={modo === 'medios'} />
+            <Multi titulo="Placas" tip="Placas incluidas: cada una es una réplica biológica. Se pueden ocultar placas en «Gráfico › Comparar»." todos={placasTodas} fuera={o.ePlacasFuera} onFuera={(v) => setO('ePlacasFuera', v)} comparado={modo === 'placas'} />
             {puedeJuntar && <Check label="Separar por medio" checked={!juntar} onChange={(v) => setO('juntar', !v)} ayuda={modo === 'cepas' ? 'Activado: las cepas se comparan dentro de cada medio. Desactivado: se juntan los datos de todos los medios.' : 'Activado: solo se comparan placas del mismo medio. Desactivado: se comparan todas las placas, aunque tengan distinto medio.'} />}
           </>
       </div>}

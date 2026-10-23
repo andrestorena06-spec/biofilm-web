@@ -117,14 +117,14 @@ export function ReproTab({ s, D, o, setO, grupoModo }) {
       </Cinta>
       <Cajon titulo="Placas (experimentos)" abierto={cajon === 'placas'} onClose={() => setCajon(null)}>
         <div className="fila" style={{ marginBottom: 8 }}>
-          <button className="chico" onClick={() => setO('placasSel', null)}>Todas</button>
-          <button className="chico" onClick={() => setO('placasSel', [])}>Ninguna</button>
+          <button className="chico" onClick={() => setO('placasFuera', [])}>Todas</button>
+          <button className="chico" onClick={() => setO('placasFuera', conAnalisis.map((x) => x.id))}>Ninguna</button>
         </div>
         <div className="lista-check columnas">
           {conAnalisis.map((p) => (
             <Check key={p.id} label={<><i className="punto" style={{ background: colores[p.id] || colorBase[p.id] }} /> {p.nombre}{p.medio && <small className="medio-placa">{p.medio}</small>}</>}
               checked={placasSel.some((x) => x.id === p.id)}
-              onChange={(v) => setO('placasSel', v ? conAnalisis.filter((x) => x.id === p.id || placasSel.some((y) => y.id === x.id)).map((x) => x.id) : placasSel.filter((x) => x.id !== p.id).map((x) => x.id))} />
+              onChange={(v) => setO('placasFuera', v ? (o.placasFuera || []).filter((x) => x !== p.id) : [...(o.placasFuera || []), p.id])} />
           ))}
         </div>
       </Cajon>

@@ -14,11 +14,11 @@ export const optsDef = () => ({
   excluir: { puntos: true, medias: true, errores: false, error: 'sd', rotar: 45 },
   barras: {
     error: 'ic95', orden: 'lista', color: 'clase', puntos: true, medias: true, errores: true,
-    lineas: true, valoresClase: false, rotar: 45, muestrasSel: null,
+    lineas: true, valoresClase: false, rotar: 45, muestrasFuera: [],
   },
   comparar: {
     error: 'sd', rotar: 45,
-    placasSel: null, ocultos: [],   // ocultos: "idPlaca|muestra" que no se muestran
+    placasFuera: [], ocultos: [],   // placas que se sacaron y "idPlaca|muestra" que no se muestran
     modo: 'placas',                 // 'placas' (una columna por placa), 'medio' (placas del mismo medio juntas) o 'pocillo'
     barras: true, cajas: false, puntos: true, barrasError: true, valores: true, errores: false,
     puntosMedio: 'pocillos',        // por medio: puntos y cajas con todos los pocillos, o un valor por placa
@@ -89,8 +89,23 @@ export function normalizarExp(x) {
     id: x.id || nuevoId(), version: VERSION, info, placas, muestras, medios,
     deteccion: normDet(x.deteccion || {}), opts: optsDe(x.opts), estilos: estilosDe(x.estilos),
   }
+  aListasFuera(exp)
   const activaId = placas.some((p) => p.id === x.activaId) ? x.activaId : placas[0]?.id || null
   return { exp, tab: tabDe(x.tab), activaId, avisos }
+}
+
+// Las versiones anteriores guardaban lo ELEGIDO (placas, cepas, medios y muestras): lo que se agregaba después quedaba afuera.
+// Ahora se guarda lo que se SACÓ, así las placas, cepas o medios nuevos entran solos.
+function aListasFuera(exp) {
+  const c = exp.opts.comparar, b = exp.opts.barras
+  const ids = exp.placas.map((p) => p.id)
+  const conv = (sel, todos) => (Array.isArray(sel) ? todos.filter((x) => !sel.includes(x)) : undefined)
+  if (Array.isArray(c.placasSel)) c.placasFuera = conv(c.placasSel, ids)
+  if (Array.isArray(c.ePlacas)) c.ePlacasFuera = conv(c.ePlacas, ids)
+  if (Array.isArray(c.eCepas)) c.eCepasFuera = conv(c.eCepas, exp.muestras)
+  if (Array.isArray(c.eMedios)) c.eMediosFuera = conv(c.eMedios, exp.medios)
+  if (Array.isArray(b.muestrasSel)) b.muestrasFuera = conv(b.muestrasSel, exp.muestras)
+  delete c.placasSel; delete c.ePlacas; delete c.eCepas; delete c.eMedios; delete b.muestrasSel
 }
 
 // Lo que se descarga con «Guardar» (también lo leen las versiones anteriores: mismos campos que la versión 4)
@@ -107,11 +122,11 @@ export function renombrarMuestra(exp, viejo, nuevo) {
     placas: exp.placas.map((p) => ({ ...p, config: p.config.map((c) => (c.Muestra === viejo ? { ...c, Muestra: nuevo } : c)), blancosUsados: p.blancosUsados ? p.blancosUsados.map(cambia) : p.blancosUsados })),
     opts: {
       ...o,
-      barras: { ...o.barras, muestrasSel: o.barras.muestrasSel ? o.barras.muestrasSel.map(cambia) : null },
+      barras: { ...o.barras, muestrasFuera: o.barras.muestrasFuera ? o.barras.muestrasFuera.map(cambia) : o.barras.muestrasFuera },
       comparar: {
         ...o.comparar,
         ocultos: (o.comparar.ocultos || []).map((k) => { const [id, m] = k.split('|'); return m === viejo ? `${id}|${nuevo}` : k }),
-        eCepas: o.comparar.eCepas ? o.comparar.eCepas.map(cambia) : o.comparar.eCepas,
+        eCepasFuera: o.comparar.eCepasFuera ? o.comparar.eCepasFuera.map(cambia) : o.comparar.eCepasFuera,
         ctrlCepa: o.comparar.ctrlCepa === viejo ? nuevo : o.comparar.ctrlCepa,
         libres: (o.comparar.libres || []).map((c) => ({ ...c, grupos: c.grupos.map((g) => (g.cepa === viejo ? { ...g, cepa: nuevo } : g)) })),
       },
@@ -126,7 +141,7 @@ export function renombrarMedio(exp, viejo, nuevo) {
     ...exp,
     medios: exp.medios.map(cambia),
     placas: exp.placas.map((p) => (p.medio === viejo ? { ...p, medio: nuevo } : p)),
-    opts: { ...exp.opts, comparar: { ...c, eMedios: c.eMedios ? c.eMedios.map(cambia) : c.eMedios, ctrlMedio: c.ctrlMedio === viejo ? nuevo : c.ctrlMedio,
+    opts: { ...exp.opts, comparar: { ...c, eMediosFuera: c.eMediosFuera ? c.eMediosFuera.map(cambia) : c.eMediosFuera, ctrlMedio: c.ctrlMedio === viejo ? nuevo : c.ctrlMedio,
       libres: (c.libres || []).map((x) => ({ ...x, grupos: x.grupos.map((g) => (g.medio === viejo ? { ...g, medio: nuevo } : g)) })) } },
   }
 }

@@ -124,7 +124,8 @@ export function GraficoTab({ s, grupoVista }) {
   const verBlancos = o.blancos !== false
   const blancosRes = verBlancos ? resumenBlancos(a.estado) : []
   const todas = [...a.resumen.map((r) => r.Muestra), ...blancosRes.map((r) => r.Muestra)]
-  const selMuestras = o.muestrasSel ? o.muestrasSel.filter((m) => todas.includes(m)) : todas
+  const fueraM = o.muestrasFuera || []
+  const selMuestras = todas.filter((m) => !fueraM.includes(m))
   let filas = [...a.resumen, ...blancosRes].filter((r) => selMuestras.includes(r.Muestra) && Number.isFinite(r.Media))
   if (o.orden === 'asc') filas = [...filas].sort((x, y) => x.Media - y.Media)
   if (o.orden === 'desc') filas = [...filas].sort((x, y) => y.Media - x.Media)
@@ -156,11 +157,11 @@ export function GraficoTab({ s, grupoVista }) {
       </Cinta>
       <Cajon titulo="Muestras que se dibujan" abierto={cajon} onClose={() => setCajon(false)}>
         <div className="fila" style={{ marginBottom: 8 }}>
-          <button className="chico" onClick={() => setO('muestrasSel', null)}>Todas</button>
-          <button className="chico" onClick={() => setO('muestrasSel', [])}>Ninguna</button>
+          <button className="chico" onClick={() => setO('muestrasFuera', [])}>Todas</button>
+          <button className="chico" onClick={() => setO('muestrasFuera', todas)}>Ninguna</button>
         </div>
         <div className="lista-check columnas">
-          {todas.map((m) => <Check key={m} label={m} checked={selMuestras.includes(m)} onChange={(v) => setO('muestrasSel', v ? [...selMuestras, m] : selMuestras.filter((x) => x !== m))} />)}
+          {todas.map((m) => <Check key={m} label={m} checked={selMuestras.includes(m)} onChange={(v) => setO('muestrasFuera', v ? fueraM.filter((x) => x !== m) : [...fueraM, m])} />)}
         </div>
       </Cajon>
 

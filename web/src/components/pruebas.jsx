@@ -24,7 +24,9 @@ export const objetivoDe = (o) => {
   return b
 }
 // selección hecha en la barra superior de Estadística (undefined = todas)
-export const dentroDeSel = (o, x) => (!o.eCepas || o.eCepas.includes(x.cepa)) && (!o.eMedios || o.eMedios.includes(x.medio)) && (!o.ePlacas || o.ePlacas.includes(x.placaId))
+export const dentroDeSel = (o, x) => !(o.eCepasFuera || []).includes(x.cepa) && !(o.eMediosFuera || []).includes(x.medio) && !(o.ePlacasFuera || []).includes(x.placaId)
+// objetivos que agrupan o separan por medio: las placas sin medio no pueden entrar
+export const usaMedio = (obj) => obj === 'medios' || obj === 'cepas' || obj === 'placas'
 
 // Hipótesis en el contexto del biofilm: la OD (cristal violeta) es la medida de biomasa de biofilm producida
 function Hip({ items, titulo = 'Hipótesis' }) {
@@ -448,7 +450,7 @@ export function ResultadosPruebas({ s, D, o }) {
       obsPozo0.push({ cepa: e.Muestra, medio, placa: p.nombre, placaId: p.id, y: fx(e.OD, odc) })
     })
   })
-  const sel = (x) => obj === 'libre' || dentroDeSel(o, x)
+  const sel = (x) => (obj === 'libre' || dentroDeSel(o, x)) && !(usaMedio(obj) && x.medio === '(sin medio)')
   const obsPlaca = obsPlaca0.filter(sel), obsPozo = obsPozo0.filter(sel)
   const obs = (nivel === 'placa' ? obsPlaca : obsPozo).filter((x) => finito(x.y))
   const cepas = [...new Set(obs.map((x) => x.cepa))]

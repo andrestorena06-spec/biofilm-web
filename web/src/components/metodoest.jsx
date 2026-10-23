@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Campo, Select } from './ui.jsx'
 import { Nota } from './tip.jsx'
-import { dentroDeSel, objetivoDe } from './pruebas.jsx'
+import { dentroDeSel, objetivoDe, usaMedio } from './pruebas.jsx'
 import { armarComparacion } from '../comparacion.js'
 import { analizar, anidada, levene, parcelasDivididas, placaCepa, razonSD } from '../decision.js'
 import { anovaTabla, desvio, holm, marcaSig, media, varianza } from '../estadistica.js'
@@ -184,7 +184,7 @@ function prepararBloques(s, D, o) {
     a.resumen.forEach((r) => { if (!D.ocultos.has(D.clave(p.id, r.Muestra)) && finito(r.Media)) obsPlaca0.push({ cepa: r.Muestra, medio, placa: p.nombre, placaId: p.id, y: fx(r.Media, odc) }) })
     a.estado.forEach((e) => { if (e.Usado && !e.EsBlanco && !D.ocultos.has(D.clave(p.id, e.Muestra))) obsPozo0.push({ cepa: e.Muestra, medio, placa: p.nombre, placaId: p.id, y: fx(e.OD, odc) }) })
   })
-  const sel = (x) => obj === 'libre' || dentroDeSel(o, x)
+  const sel = (x) => (obj === 'libre' || dentroDeSel(o, x)) && !(usaMedio(obj) && x.medio === '(sin medio)')
   const obsPlaca = obsPlaca0.filter(sel), obsPozo = obsPozo0.filter(sel)
   const obs = (nivel === 'placa' ? obsPlaca : obsPozo).filter((x) => finito(x.y))
   const cepas = [...new Set(obs.map((x) => x.cepa))], medios = [...new Set(obs.map((x) => x.medio))]

@@ -316,8 +316,8 @@ export default function App() {
     delete archivosRef.current[id]
     upd((e) => ({
       placas: e.placas.filter((x) => x.id !== id),
-      opts: { ...e.opts, comparar: { ...e.opts.comparar, placasSel: e.opts.comparar.placasSel ? e.opts.comparar.placasSel.filter((x) => x !== id) : e.opts.comparar.placasSel,
-        ePlacas: e.opts.comparar.ePlacas ? e.opts.comparar.ePlacas.filter((x) => x !== id) : e.opts.comparar.ePlacas },
+      opts: { ...e.opts, comparar: { ...e.opts.comparar, placasFuera: (e.opts.comparar.placasFuera || []).filter((x) => x !== id),
+        ePlacasFuera: e.opts.comparar.ePlacasFuera ? e.opts.comparar.ePlacasFuera.filter((x) => x !== id) : e.opts.comparar.ePlacasFuera },
       archivo: { ...e.opts.archivo, layoutBase: e.opts.archivo.layoutBase === id ? '' : e.opts.archivo.layoutBase } },
     }))
     avisar(`Placa «${p.nombre}» quitada (Ctrl + Z para deshacer).`)
