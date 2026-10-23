@@ -3,6 +3,7 @@ import { ACEPTA_LIBRO } from './libro.js'
 import { analizar, ErrorRed, hojasDe, leerPlaca, MODO, ping } from './api.js'
 import { aArchivo, expNuevo, nombreArchivo, normalizarExp, placaVacia, renombrarMuestra as renMuestra } from './modelo.js'
 import { listo as listoDe, TITULO_PASO } from './progreso.js'
+import { elegirSesion, escribir, guardarComo as guardarComoArchivo, hayAccesoArchivos, leerManejador, recordarManejador } from './archivos.js'
 import { PlacaTab, AnalisisTab } from './components/tabs.jsx'
 import { ExcluirTab, DatosTab, MetodosTab } from './components/tabs2.jsx'
 import { PlacasVista } from './components/placas.jsx'
@@ -77,6 +78,9 @@ export default function App() {
   const [menuPlaca, setMenuPlaca] = useState(null)
   const [renombrar, setRenombrar] = useState(null)        // { id, nombre }
   const [placaNueva, setPlacaNueva] = useState(null)      // { nombre, medio }
+  const [archivo, setArchivo] = useState(null)            // archivo de la sesión abierta: { nombre, handle, viejo }
+  const archivoRef = useRef(null)
+  archivoRef.current = archivo
   const archivosRef = useRef({})        // id de placa -> File (solo mientras la pestaña está abierta)
   const arrastrada = useRef(null)
   const [arrastrandoSobre, setArrastrandoSobre] = useState(null)
@@ -151,31 +155,71 @@ export default function App() {
     ;(n.avisos || []).forEach((a) => avisar(a, 'error'))
   }
   const nuevo = (archivos) => {
+    setArchivo(null)
     abrir({ exp: expNuevo(), tab: 'placas', activaId: null }, 'Experimento nuevo: cargá el Excel de cada placa.')
     if (archivos?.length) setTimeout(() => agregarPlacasRef.current(archivos), 0)
   }
-  const guardar = useCallback(() => {
+  // «Guardar como»: se elige carpeta y nombre; desde ahí «Guardar» escribe en ese archivo
+  const guardarComo = useCallback(async () => {
     const e = expRef.current
     if (!e) return
-    descargarBlob(new Blob([JSON.stringify(aArchivo(e, tab, activaId))], { type: 'application/json' }), nombreArchivo(e))
-  }, [tab, activaId])
-  const cargarSesion = async (file) => {
-    try { abrir(normalizarExp(JSON.parse(await file.text())), `«${file.name}» abierto.`) } catch (e) { avisar(`No se pudo abrir «${file.name}»: ${e.message}`, 'error') }
+    const texto = JSON.stringify(aArchivo(e, tab, activaId))
+    if (!hayAccesoArchivos()) return descargarBlob(new Blob([texto], { type: 'application/json' }), nombreArchivo(e))
+    try {
+      const h = await guardarComoArchivo(nombreArchivo(e), texto)
+      if (!h) return
+      setArchivo({ nombre: h.name, handle: h })
+      recordarManejador(e.id, h)
+      avisar(`Guardado en «${h.name}».`)
+    } catch (err) { avisar(`No se pudo guardar: ${err.message}`, 'error') }
+  }, [tab, activaId, avisar])
+  // «Guardar»: si la sesión se abrió de un archivo (o ya se guardó), lo sobrescribe; si no, pregunta dónde
+  const guardar = useCallback(async () => {
+    const e = expRef.current
+    if (!e) return
+    const a = archivoRef.current
+    if (!hayAccesoArchivos()) return descargarBlob(new Blob([JSON.stringify(aArchivo(e, tab, activaId))], { type: 'application/json' }), nombreArchivo(e))
+    if (a?.handle && !a.viejo) {
+      try { await escribir(a.handle, JSON.stringify(aArchivo(e, tab, activaId))); avisar(`Guardado en «${a.nombre}».`); return } catch (err) { avisar(`No se pudo escribir en «${a.nombre}» (${err.message}). Elegí dónde guardarlo.`, 'error') }
+    }
+    if (a?.viejo) avisar(`«${a.nombre}» es de una versión anterior: se guarda como archivo nuevo para no reemplazar el original.`)
+    return guardarComo()
+  }, [tab, activaId, avisar, guardarComo])
+  const cargarSesion = async (file, handle = null) => {
+    try {
+      const x = JSON.parse(await file.text())
+      const n = normalizarExp(x)
+      abrir(n, `«${file.name}» abierto.`)
+      const viejo = !(x.version >= 5)
+      setArchivo({ nombre: file.name, handle, viejo })
+      if (handle && !viejo) recordarManejador(n.exp.id, handle)
+    } catch (e) { avisar(`No se pudo abrir «${file.name}»: ${e.message}`, 'error') }
   }
-  const abrirReciente = (r) => { try { abrir({ ...normalizarExp(r.exp), tab: r.tab, activaId: r.activaId }, `«${r.exp.info?.nombre || 'Experimento'}» abierto.`) } catch (e) { avisar(e.message, 'error') } }
+  const pedirSesion = async () => {
+    if (!hayAccesoArchivos()) return inputSesion.current.click()
+    try { const r = await elegirSesion(); if (r) cargarSesion(r.file, r.handle) } catch (e) { avisar(e.message, 'error') }
+  }
+  const abrirReciente = async (r) => {
+    try {
+      abrir({ ...normalizarExp(r.exp), tab: r.tab, activaId: r.activaId }, `«${r.exp.info?.nombre || 'Experimento'}» abierto.`)
+      setArchivo(null)
+      const h = await leerManejador(r.exp.id)
+      if (h) setArchivo({ nombre: h.name, handle: h })
+    } catch (e) { avisar(e.message, 'error') }
+  }
 
   useEffect(() => {
     const k = (ev) => {
       if (!(ev.ctrlKey || ev.metaKey)) return
       const t = ev.key.toLowerCase()
-      if (t === 's') { ev.preventDefault(); guardar(); return }
+      if (t === 's') { ev.preventDefault(); if (ev.shiftKey) guardarComo(); else guardar(); return }
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return
       if (t === 'z' && !ev.shiftKey) { ev.preventDefault(); deshacer() }
       else if (t === 'y' || (t === 'z' && ev.shiftKey)) { ev.preventDefault(); rehacer() }
     }
     window.addEventListener('keydown', k)
     return () => window.removeEventListener('keydown', k)
-  }, [deshacer, rehacer, guardar])
+  }, [deshacer, rehacer, guardar, guardarComo])
 
   // ---------- estado derivado ----------
   const placas = exp?.placas || []
@@ -407,7 +451,7 @@ export default function App() {
   const setOpts = (o) => upd((e) => ({ opts: typeof o === 'function' ? o(e.opts) : o }))
 
   const s = exp && {
-    exp, upd, info: exp.info, avisar, irA, guardar, listo, abrirEditar: () => setEditar(true), tema,
+    exp, upd, info: exp.info, avisar, irA, guardar, guardarComo, archivo, listo, abrirEditar: () => setEditar(true), tema,
     // placas
     placas, activaId: activa?.id || null, a: activa, setActiva: setActivaId, analisisMap, setPlacas,
     agregarPlacas, nuevaPlacaVacia: () => setPlacaNueva({ nombre: '', medio: '' }), quitarPlaca, renombrarPlaca, pedirRenombre: (p) => setRenombrar({ id: p.id, nombre: p.nombre }),
@@ -449,7 +493,8 @@ export default function App() {
     if (medios.length) p.push(medios.join(' y '))
     if (analisis && Number.isFinite(analisis.odc?.odc)) p.push(`ODc de ${activa.nombre} = ${analisis.odc.odc.toFixed(3)}`)
     p.push(MODO === 'web' ? 'cálculos en este equipo' : 'motor R')
-    p.push('guardado automático en «Recientes»')
+    p.push(archivo ? `archivo: ${archivo.nombre}${archivo.viejo ? ' (versión anterior)' : ''}` : 'sin archivo guardado')
+    p.push('copia automática en «Recientes»')
     return p.join(' · ')
   })()
 
@@ -469,7 +514,7 @@ export default function App() {
           {exp && <>
             <button className="titulo-boton" onClick={deshacer} disabled={!hist.current.pasado.length} aria-label="Deshacer" data-tip="Deshacer (Ctrl + Z)"><Icono n="deshacer" size={16} /></button>
             <button className="titulo-boton" onClick={rehacer} disabled={!hist.current.futuro.length} aria-label="Rehacer" data-tip="Rehacer (Ctrl + Y)"><Icono n="rehacer" size={16} /></button>
-            <button className="titulo-boton solo-compu" onClick={guardar} aria-label="Guardar" data-tip={'Guardar (Ctrl + S)\nDescarga la sesión completa (.biofilm.json) con los datos de todas las placas'}><Icono n="guardar" size={16} /></button>
+            <button className="titulo-boton solo-compu" onClick={guardar} aria-label="Guardar" data-tip={archivo && !archivo.viejo ? `Guardar (Ctrl + S)\nSobrescribe «${archivo.nombre}»\nCtrl + Mayús + S: guardar como` : 'Guardar (Ctrl + S)\nElegís dónde guardar la sesión (.biofilm.json); después «Guardar» escribe en ese archivo'}><Icono n="guardar" size={16} /></button>
           </>}
           <button className="titulo-boton" onClick={() => setTema(tema === 'oscuro' ? 'claro' : 'oscuro')} aria-label="Tema" data-tip="Cambiar entre tema claro y oscuro">
             <Icono n={tema === 'oscuro' ? 'sol' : 'luna'} size={15} />
@@ -579,7 +624,7 @@ export default function App() {
                 )}
                 {exp && verPlacas && !placas.length && <div className="vacio"><b>Todavía no hay placas</b><div>Cargá el Excel de cada lectura en «Placas».</div><div style={{ marginTop: 12 }}><button className="primario" onClick={() => irA('placas')}>Ir a Placas</button></div></div>}
                 {enArchivo || !exp
-                  ? <Inicio exp={exp} recientes={recientes} onNuevo={nuevo} onAbrir={() => inputSesion.current.click()} onAbrirArchivo={cargarSesion}
+                  ? <Inicio exp={exp} archivo={archivo} recientes={recientes} onNuevo={nuevo} onAbrir={pedirSesion} onAbrirArchivo={cargarSesion} onGuardarComo={guardarComo}
                     onAbrirReciente={abrirReciente} onBorrarReciente={borrarReciente} onGuardar={guardar} onVolver={() => setEnArchivo(false)} />
                   : (!verPlacas || placas.length > 0) && <Vista s={s} key={tab} />}
               </div>

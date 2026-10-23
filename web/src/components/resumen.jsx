@@ -83,7 +83,7 @@ export function Resumen({ s }) {
     <div>
       <Cinta>
         <Grupo titulo="Experimento">
-          <BotonCinta icono="guardar" texto="Guardar" onClick={s.guardar} tip="Descarga la sesión con los datos de todas las placas (Ctrl + S)" />
+          <BotonCinta icono="guardar" texto="Guardar" onClick={s.guardar} tip={s.archivo && !s.archivo.viejo ? `Sobrescribe «${s.archivo.nombre}» (Ctrl + S)` : 'Elegís dónde guardar la sesión; después «Guardar» escribe en ese archivo (Ctrl + S)'} />
           <BotonCinta icono="editar" texto="Datos del experimento" onClick={s.abrirEditar} tip="Nombre, fecha, condiciones, notas, muestras y medios (renombrar en todo el experimento)" />
         </Grupo>
         <Grupo titulo="Exportar">

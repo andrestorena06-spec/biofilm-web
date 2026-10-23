@@ -12,17 +12,18 @@ const resumenExp = (e) => {
 }
 
 // Pestaña «Archivo»: empezar, abrir, guardar y retomar los experimentos recientes de este equipo
-export function Inicio({ exp, recientes = [], onNuevo, onAbrir, onAbrirArchivo, onAbrirReciente, onBorrarReciente, onGuardar, onVolver }) {
+export function Inicio({ exp, archivo, recientes = [], onNuevo, onAbrir, onAbrirArchivo, onAbrirReciente, onBorrarReciente, onGuardar, onGuardarComo, onVolver }) {
   const [sobre, setSobre] = useState(false)
   const ref = useRef()
   const todos = recientes.filter((r) => r.exp?.id !== exp?.id)
   const ultimo = !exp && todos[0]
   const otros = ultimo ? todos.slice(1) : todos
   // soltar archivos: Excel = experimento nuevo con esas placas; .json = abrir la sesión
-  const soltar = (files) => {
-    const lista = [...files]
-    const sesion = lista.find((f) => /\.json$/i.test(f.name))
-    if (sesion) return onAbrirArchivo(sesion)
+  // pares { file, h }: el manejador (para poder sobrescribir el archivo) se pide durante el evento de soltar
+  const soltar = async (pares) => {
+    const sesion = pares.find((p) => p.file && /\.json$/i.test(p.file.name))
+    if (sesion) return onAbrirArchivo(sesion.file, await sesion.h)
+    const lista = pares.map((p) => p.file).filter(Boolean)
     const excel = lista.filter((f) => esLibro(f.name))
     if (excel.length) onNuevo(excel)
   }
@@ -32,7 +33,8 @@ export function Inicio({ exp, recientes = [], onNuevo, onAbrir, onAbrirArchivo, 
         <Grupo titulo="Experimento">
           <BotonCinta icono="nuevo" texto="Nuevo" onClick={() => onNuevo()} tip="Empezar un experimento nuevo (el que está abierto queda en «Recientes»)" />
           <BotonCinta icono="carpeta" texto="Abrir" onClick={onAbrir} tip="Abrir una sesión guardada (.biofilm.json o sesion_biofilm.json de versiones anteriores)" />
-          <BotonCinta icono="guardar" texto="Guardar" onClick={onGuardar} deshabilitado={!exp} tip="Descarga la sesión con los datos de todas las placas (Ctrl + S)" />
+          <BotonCinta icono="guardar" texto="Guardar" onClick={onGuardar} deshabilitado={!exp} tip={archivo && !archivo.viejo ? `Sobrescribe «${archivo.nombre}» (Ctrl + S)` : 'Elegís dónde guardar la sesión; después «Guardar» escribe en ese archivo (Ctrl + S)'} />
+          <BotonCinta icono="copiar" texto="Guardar como" onClick={onGuardarComo} deshabilitado={!exp} tip="Guardar la sesión en otro archivo (Ctrl + Mayús + S)" />
         </Grupo>
         {exp && <Grupo titulo="Volver"><BotonCinta icono="flecha" texto="Al experimento" onClick={onVolver} /></Grupo>}
       </Cinta>
@@ -58,11 +60,15 @@ export function Inicio({ exp, recientes = [], onNuevo, onAbrir, onAbrirArchivo, 
 
       <div className={`zona-carga ${sobre ? 'sobre' : ''}`} onClick={() => ref.current.click()}
         onDragOver={(e) => { e.preventDefault(); setSobre(true) }} onDragLeave={() => setSobre(false)}
-        onDrop={(e) => { e.preventDefault(); setSobre(false); soltar(e.dataTransfer.files) }}>
+        onDrop={(e) => {
+          e.preventDefault(); setSobre(false)
+          const items = [...e.dataTransfer.items].filter((i) => i.kind === 'file')
+          soltar(items.map((i) => ({ file: i.getAsFile(), h: i.getAsFileSystemHandle ? i.getAsFileSystemHandle().catch(() => null) : Promise.resolve(null) })))
+        }}>
         <Icono n="subir" size={24} />
         <b>Soltá acá los Excel de las placas o una sesión guardada</b>
         <small>Excel: arranca un experimento nuevo con esas placas · sesión (.json): la abre · {TEXTO_FORMATOS}</small>
-        <input ref={ref} type="file" hidden multiple onChange={(e) => { soltar(e.target.files); e.target.value = '' }} />
+        <input ref={ref} type="file" hidden multiple onChange={(e) => { soltar([...e.target.files].map((file) => ({ file, h: Promise.resolve(null) }))); e.target.value = '' }} />
       </div>
 
       {exp && (
@@ -71,7 +77,7 @@ export function Inicio({ exp, recientes = [], onNuevo, onAbrir, onAbrirArchivo, 
           <div className="fila">
             <div style={{ flex: 1, minWidth: 220 }}>
               <h2 style={{ margin: '2px 0' }}>{exp.info.nombre}</h2>
-              <span className="ayuda">{resumenExp(exp)}</span>
+              <span className="ayuda">{resumenExp(exp)} · {archivo ? `archivo: ${archivo.nombre}` : 'todavía sin guardar en un archivo'}</span>
             </div>
             <button onClick={onGuardar}><Icono n="guardar" size={15} />Guardar sesión</button>
             <button className="primario" onClick={onVolver}>Seguir trabajando<Icono n="flecha" size={15} /></button>

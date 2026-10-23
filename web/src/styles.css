@@ -605,3 +605,16 @@ button[data-tip], .chip-placa[data-tip] { cursor: pointer; }
   .acciones-fila { flex-wrap: wrap; }
 }
 @media (display-mode: standalone) { body { overscroll-behavior-y: contain; } }
+
+/* tabla de datos que entran en las pruebas (Estadística) */
+.matriz-datos { margin-bottom: 0; }
+.matriz-datos .tabla th.grupo-medio { text-align: center; border-bottom: 2px solid var(--acento); color: var(--texto); letter-spacing: .02em; }
+.matriz-datos thead tr:nth-child(2) th { top: 29px; }
+.matriz-datos .tabla td.celda-clase { cursor: help; }
+.matriz-datos .col-media { background: var(--panel2) !important; font-weight: 700; border-left: 1px solid var(--borde2); border-right: 1px solid var(--borde2); }
+.matriz-datos th.col-resultado { text-align: left; border-left: 2px solid var(--borde2); }
+.matriz-datos td.col-resultado { border-left: 2px solid var(--borde2); white-space: nowrap; font-size: 12.5px; }
+.matriz-datos td.col-resultado small { color: var(--sec); font-size: 11.5px; }
+.matriz-datos td.col-resultado.dif { background: var(--aviso-suave) !important; }
+.matriz-datos td.col-resultado.dif b { color: var(--aviso); }
+.matriz-datos td.col-resultado.ok b { color: var(--ok); }

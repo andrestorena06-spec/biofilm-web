@@ -4,7 +4,7 @@ import { Nota } from './tip.jsx'
 import { anidada, placaCepa, analizar, levene, parcelasDivididas } from '../decision.js'
 import { shapiro, spearman } from '../reproducibilidad.js'
 import { desvio, marcaSig, media } from '../estadistica.js'
-import { paletaMuestras } from '../utils.js'
+import { COLOR_CLASE, paletaMuestras } from '../utils.js'
 
 const finito = Number.isFinite
 const f = (x, d = 3) => (finito(x) ? x.toFixed(d) : x === Infinity ? '∞' : '–')
@@ -403,6 +403,64 @@ function Infografia({ info, titulo, hip }) {
   )
 }
 
+// Tabla con los datos que entran en las pruebas: cada cepa en cada placa (placas agrupadas por medio), con la media
+// de cada medio si corresponde y, al final, el resultado de la prueba para cada cepa. Cada número muestra de dónde sale.
+function MatrizDatos({ titulo, nota, cepas, placas, celda, conMedia, mediaDe, finales, colorCepas }) {
+  const grupos = []
+  placas.forEach((p) => { const m = p.medio || '(sin medio)'; const g = grupos.find((x) => x.medio === m); if (g) g.placas.push(p); else grupos.push({ medio: m, placas: [p] }) })
+  const conGrupos = grupos.length > 1 || conMedia
+  const celdaRes = (fz, c) => { const r = fz.valor(c); return <td key={fz.titulo} className={`col-resultado ${r.nivel || ''}`} data-tip={r.tip}>{r.texto}</td> }
+  return (
+    <section className="tarjeta matriz-datos">
+      <div className="cabeza-tarjeta">
+        <span className="etiqueta-seccion">{titulo}</span>
+        {nota && <span className="ayuda">{nota}</span>}
+      </div>
+      <div className="tabla-scroll">
+        <table className="tabla compacta matriz-clase">
+          <thead>
+            {conGrupos && (
+              <tr>
+                <th rowSpan={2}>Muestra</th>
+                {grupos.map((g) => <th key={g.medio} colSpan={g.placas.length + (conMedia ? 1 : 0)} className="grupo-medio">{g.medio}</th>)}
+                {finales.map((fz) => <th key={fz.titulo} rowSpan={2} className="col-resultado" data-tip={fz.tip}>{fz.titulo}</th>)}
+              </tr>
+            )}
+            <tr>
+              {!conGrupos && <th>Muestra</th>}
+              {grupos.flatMap((g) => [
+                ...g.placas.map((p) => <th key={p.id} className="num" data-tip={`${p.nombre}${p.medio ? ` · ${p.medio}` : ''}`}>{p.nombre}</th>),
+                ...(conMedia ? [<th key={'m' + g.medio} className="num col-media" data-tip={`Media de ${g.medio}\nPromedio de los valores de todas sus placas: es lo que se compara`}>Media</th>] : []),
+              ])}
+              {!conGrupos && finales.map((fz) => <th key={fz.titulo} className="col-resultado" data-tip={fz.tip}>{fz.titulo}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {cepas.map((c) => (
+              <tr key={c}>
+                <td><i className="punto" style={{ background: colorCepas[c] }} /> {c}</td>
+                {grupos.flatMap((g) => [
+                  ...g.placas.map((p) => {
+                    const x = celda(c, p)
+                    return x ? <td key={p.id} className="num celda-clase" style={{ '--clase': COLOR_CLASE[x.clase] || 'transparent' }} data-tip={x.tip}>{f(x.v, 3)}{x.marca && <sup>{x.marca}</sup>}</td>
+                      : <td key={p.id} className="num tenue" data-tip={`${c} · ${p.nombre}\nSin datos de esta cepa en esta placa (o se ocultó en «Gráfico › Comparar»)`}>—</td>
+                  }),
+                  ...(conMedia ? [(() => { const x = mediaDe(c, g.medio); return x ? <td key={'m' + g.medio} className="num col-media" data-tip={x.tip}>{f(x.v, 3)}</td> : <td key={'m' + g.medio} className="num col-media tenue">—</td> })()] : []),
+                ])}
+                {finales.map((fz) => celdaRes(fz, c))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="leyenda-clases">
+        {Object.entries(COLOR_CLASE).filter(([k]) => k.startsWith('No') || k.startsWith('Productor')).map(([k, col]) => <span key={k}><i className="punto" style={{ background: col }} />{k}</span>)}
+        <span className="tenue">color: clasificación de la cepa en esa placa · pasá el mouse por cada número para ver los pocillos que entran</span>
+      </div>
+    </section>
+  )
+}
+
 // resumen de todos los análisis en una tabla
 function Resumen({ titulo, bloques, etiquetas }) {
   const ok = bloques.filter((b) => b.r.ok)
@@ -471,7 +529,8 @@ export function ResultadosPruebas({ s, D, o }) {
   const factorComp = obj === 'medios' ? 'medios' : obj === 'cepas' || obj === 'cepastodas' ? 'cepas' : 'placas'
   const placasIds = [...new Set(obs.map((x) => x.placaId))]
   const nomP = (id) => obs.find((x) => x.placaId === id)?.placa || id
-  const personal = o.sets && o.sets[factorComp]
+  // las comparaciones a medida se arman en «A medida» (el selector viejo de comparaciones ya no existe)
+  const personal = null
   const nivelesComp = factorComp === 'medios' ? medios : factorComp === 'cepas' ? cepas : placasIds
   const conjuntos = personal ? personal.map((S) => S.filter((x) => nivelesComp.includes(x))).filter((S) => S.length >= 2) : [nivelesComp]
   const nomS = (S) => S.map((x) => (factorComp === 'placas' ? nomP(x) : x)).join(' vs ')
@@ -484,6 +543,61 @@ export function ResultadosPruebas({ s, D, o }) {
     h1: 'Hay diferencia: la OD media no es la misma en todos los grupos de esta comparación.',
   }))
   const hipLibre = libres.map((c, i) => ({ nombre: `ANOVA ${i + 1}`, h0: `La OD media es la misma en todos los grupos: ${c.grupos.map(nombreG).join('; ')}.`, h1: 'Al menos uno de esos grupos tiene una OD media distinta.' }))
+  // ---- tabla de datos: qué valores entran en las pruebas y el resultado de cada cepa ----
+  const placasTabla = D.placasSel.filter((p) => obs.some((x) => x.placaId === p.id))
+  const nivelTxt = nivel === 'placa' ? 'un valor por placa (réplica biológica)' : 'los pocillos de cada placa'
+  const celda = (c, p) => {
+    const v = obs.filter((x) => x.cepa === c && x.placaId === p.id).map((x) => x.y)
+    if (!v.length) return null
+    const pozos = obsPozo.filter((x) => x.cepa === c && x.placaId === p.id).map((x) => x.y)
+    const r = s.analisisMap[p.id]?.resumen.find((x) => x.Muestra === c)
+    const m = media(v)
+    return {
+      v: m, clase: r?.Clasificacion,
+      tip: `${c} · ${p.nombre}${p.medio ? ` (${p.medio})` : ''}\n${nivel === 'placa' ? `Valor de la placa que entra en la prueba: ${f(m, 4)}${variable === 'ln' ? ' (ln de la OD media)' : ''}` : `Media de los ${v.length} pocillos que entran: ${f(m, 4)}`}\nPocillos aceptados (${unidad}): ${pozos.map((y) => f(y, 3)).join(' · ') || '—'}${r?.Clasificacion ? `\n${r.Clasificacion}` : ''}`,
+    }
+  }
+  const mediaDe = (c, m) => {
+    const v = vals(c, m, null)
+    if (!v.length) return null
+    return { v: media(v), tip: `Media de ${c} en ${m}\n${nivel === 'placa' ? `${v.length} ${v.length === 1 ? 'placa' : 'placas'}` : `${v.length} pocillos`}: ${v.map((y) => f(y, 3)).join(' · ')}\nx̄ = ${f(media(v), 4)}${v.length > 1 ? ` · DE = ${f(desvio(v), 4)}` : ''}` }
+  }
+  // resultado de una prueba global para la columna final
+  const resultado = (b, extra = '') => {
+    const r = b?.r
+    if (!r) return { texto: '—', nivel: 'na', tip: 'Sin análisis: faltan datos de esta cepa' }
+    if (!r.ok) return { texto: '—', nivel: 'na', tip: r.motivo }
+    const p = r.global.p, sig = p < 0.05
+    const orden = [...r.grupos].sort((a, z) => media(z.v) - media(a.v))
+    const dir = sig ? (orden.length === 2 ? `${orden[0].nombre} > ${orden[1].nombre}` : 'difieren') : 'sin dif.'
+    return {
+      texto: <><b>{dir}</b> <small>p {pTxt(p)}{sig ? ` ${marcaSig(p)}` : ''}</small></>,
+      nivel: sig ? 'dif' : 'ok',
+      tip: `${NOMBRE_TEST[r.tipo]}: ${r.global.est} = ${f(r.global.valor, 3)} · p = ${pTxt(p)}${extra ? ` · ${extra}` : ''}\n${r.grupos.map((g) => `${g.nombre}: x̄ = ${f(media(g.v), 3)} (n ${g.v.length})`).join('\n')}\n${r.razon}`,
+    }
+  }
+  // letra de significancia de una cepa (o su comparación con el control)
+  const letra = (b, c) => {
+    const r = b?.r
+    if (!r?.ok) return { texto: '—', nivel: 'na', tip: r?.motivo || 'Sin análisis' }
+    const g = r.grupos.find((x) => x.nombre === c)
+    if (!g) return { texto: '—', nivel: 'na', tip: 'Sin datos de esta cepa' }
+    if (b.ctrl) {
+      if (c === b.ctrl) return { texto: <b>control</b>, nivel: 'na', tip: 'Cepa control de la comparación' }
+      const par = r.pares.find((x) => x.a === c)
+      if (!par || !finito(par.pa)) return { texto: '—', nivel: 'na', tip: 'No se pudo comparar con el control' }
+      return { texto: <><b>{par.pa < 0.05 ? '≠ control' : '= control'}</b> <small>p {pTxt(par.pa)}{par.pa < 0.05 ? ` ${marcaSig(par.pa)}` : ''}</small></>, nivel: par.pa < 0.05 ? 'dif' : 'ok',
+        tip: `${c} contra ${b.ctrl} (${par.metodo})\nDiferencia = ${f(par.dif, 4)} · p ajustado = ${pTxt(par.pa)}` }
+    }
+    const L = r.letras?.[c] || '—'
+    return { texto: <b>{L}</b>, nivel: r.global.p < 0.05 ? 'dif' : 'ok',
+      tip: `Letra «${L}»: las cepas que comparten una letra no difieren (p ajustado ≥ 0,05)\n${NOMBRE_TEST[r.tipo]} entre cepas: p = ${pTxt(r.global.p)}\nMedia de ${c}: ${f(media(g.v), 4)} (n ${g.v.length})` }
+  }
+  const tipGlobal = (b, que) => (b?.r?.ok ? `${que}\n${NOMBRE_TEST[b.r.tipo]}: p = ${pTxt(b.r.global.p)} ${marcaSig(b.r.global.p)}` : que)
+  const matriz = (finales, conMedia = false, nota) => (
+    <MatrizDatos titulo={`Datos que entran en las pruebas · ${unidad} · ${nivelTxt}`} nota={nota} cepas={cepas} placas={placasTabla}
+      celda={celda} conMedia={conMedia} mediaDe={mediaDe} finales={finales} colorCepas={colorCepas} />
+  )
   let cuerpo = null
   let info = null
 
@@ -517,6 +631,8 @@ export function ResultadosPruebas({ s, D, o }) {
     info = infoDe(bloques, sp ? sp.filas.filter((x) => finito(x.p)).map((x) => ({ nombre: `Global · ${x.nombre}`, p: x.p })) : [], 'cepa')
     cuerpo = medios.length < 2 ? <p className="ayuda">Hacen falta placas de al menos 2 medios distintos (el medio de cada placa se elige en «Pocillos» o en «Placas»).</p> : (
       <>
+        {!personal && matriz([{ titulo: 'Entre medios', tip: 'Resultado de comparar los medios para cada cepa (prueba elegida sola)', valor: (c) => resultado(bloques.find((b) => b.titulo === c)) }], true,
+          'Cada número es el valor de la cepa en esa placa; «Media» es lo que se compara entre medios.')}
         {sp && (
           <div className="bloque-res global-sp">
             <h4>Efecto del medio con todas las cepas juntas (placa como bloque) <Nota>ANOVA de parcelas divididas: cada placa tiene un solo medio, así que el medio se prueba contra la variación entre placas del mismo medio; la cepa y la interacción cepa × medio se prueban contra la variación dentro de las placas. Equivale a un modelo mixto con la placa como efecto aleatorio.</Nota></h4>
@@ -528,7 +644,7 @@ export function ResultadosPruebas({ s, D, o }) {
           </div>
         )}
         <h4 className="sub-res">Cada cepa entre medios</h4>
-        <Resumen titulo="Cepa" bloques={bloques} etiquetas={['Media de OD por medio']} />
+        {personal && <Resumen titulo="Cepa" bloques={bloques} etiquetas={['Media de OD por medio']} />}
         {bloques.map((b) => <Bloque key={b.titulo} titulo={b.titulo} sub={`entre medios · ${unidad}`} sujeto={`la producción de biofilm de «${b.titulo}»`} factor="los medios de cultivo" r={b.r} colorDe={(n) => colorMedios[n]} ctrl={b.ctrl} />)}
       </>
     )
@@ -541,6 +657,8 @@ export function ResultadosPruebas({ s, D, o }) {
     info = infoDe(bloques, [], 'análisis')
     cuerpo = !bloques.length ? <p className="ayuda">Elegí al menos 2 cepas con datos.</p> : (
       <>
+        {!personal && bloques[0] && matriz([{ titulo: 'Media', tip: 'Media de cada cepa con las placas de todos los medios', valor: (c) => { const v = vals(c, null, null); return v.length ? { texto: f(media(v), 3), nivel: 'na', tip: `${c}: ${v.length} valores · x̄ = ${f(media(v), 4)}` } : { texto: '—', nivel: 'na' } } },
+          { titulo: 'Letra', tip: tipGlobal(bloques[0], 'Las cepas que comparten una letra no difieren'), valor: (c) => letra(bloques[0], c) }], false, 'Las letras salen de las comparaciones de a pares (cepas con la misma letra no difieren).')}
         <p className="aviso-sel">Las cepas se comparan juntando los datos de {medios.join(' y ')}: si las placas de un medio rinden distinto que las del otro, esa diferencia entra en el error. Para compararlas dentro de cada medio activá «Separar por medio».</p>
         {bloques.map((b) => <Bloque key={b.titulo} abierto titulo={b.titulo} sub={`entre cepas · ${unidad}`} sujeto={`la producción de biofilm (medios: ${medios.join(', ')})`} factor="las cepas" r={b.r} colorDe={(n) => colorCepas[n]} ctrl={b.ctrl} />)}
       </>
@@ -554,7 +672,9 @@ export function ResultadosPruebas({ s, D, o }) {
     info = infoDe(bloques, [], 'medio', colorMedios)
     cuerpo = !bloques.length ? <p className="ayuda">Hacen falta al menos 2 cepas con datos.</p> : (
       <>
-        <Resumen titulo="Medio" bloques={bloques} etiquetas={['Datos']} />
+        {personal ? <Resumen titulo="Medio" bloques={bloques} etiquetas={['Datos']} />
+          : matriz(medios.map((m) => { const b = bloques.find((x) => x.medio === m); return { titulo: `Letras · ${m}`, tip: tipGlobal(b, `Comparación de las cepas en ${m}: las que comparten una letra no difieren`), valor: (c) => letra(b, c) } }), true,
+            'Dentro de cada medio se comparan las cepas con los valores de sus placas; «Media» es la media de la cepa en ese medio.')}
         {bloques.map((b) => <Bloque key={b.titulo} color={colorMedios[b.medio]} medioTag={b.medio} titulo={`Medio «${b.medio}»${b.etq ? ' · ' + b.etq : ''}`} sub={`entre cepas · ${unidad}`} sujeto={`la producción de biofilm en el medio «${b.medio}»`} factor="las cepas" r={b.r} colorDe={(n) => colorCepas[n]} ctrl={b.ctrl} />)}
       </>
     )
@@ -579,6 +699,8 @@ export function ResultadosPruebas({ s, D, o }) {
     const colsSp = ['Fuente', 'Suma de cuadrados', 'gl', 'Cuadrado medio', 'F', 'p', 'Se prueba contra', 'Resultado']
     cuerpo = !bloques.length ? <p className="ayuda">Hacen falta al menos 2 placas con la misma cepa.</p> : (
       <>
+        {!personal && matriz([{ titulo: 'Entre placas', tip: 'Resultado de comparar todas las placas de cada cepa (pocillos como réplicas)', valor: (c) => { const b = bloques.find((x) => x.titulo === c); return resultado(b, b ? `CV entre placas ${b.extra[3]} %` : '') } }], false,
+          'Cada número es la media de los pocillos de la cepa en esa placa; la prueba compara las placas con sus pocillos.')}
         <p className="aviso-sel">Cada placa tiene un solo medio: si dos placas de distinto medio difieren, no se puede separar el efecto de la placa (día, cultivo) del efecto del medio. Para una reproducibilidad limpia usá «Entre placas (réplicas)», que compara placas del mismo medio; el modelo de medio y placa de cada cepa separa ambos efectos.</p>
         {pc && (
           <div className="bloque-res global-sp">
@@ -590,7 +712,7 @@ export function ResultadosPruebas({ s, D, o }) {
           </div>
         )}
         <h4 className="sub-res">Cada cepa entre todas las placas</h4>
-        <Resumen titulo="Cepa" bloques={bloques} etiquetas={['Placas', 'Medios', 'Media de cada placa', 'CV entre placas (%)']} />
+        {personal && <Resumen titulo="Cepa" bloques={bloques} etiquetas={['Placas', 'Medios', 'Media de cada placa', 'CV entre placas (%)']} />}
         {bloques.map((b) => (
           <Fragment key={b.titulo}>
             <Bloque titulo={b.titulo} sub={`entre placas, todos los medios · ${unidad}`} sujeto={`la producción de biofilm de «${b.titulo}»`} factor="las placas (sin separar por medio)" r={b.r} colorDe={(n) => colorPlacas[n.split(' · ')[0]]} ctrl={null} />
@@ -619,7 +741,9 @@ export function ResultadosPruebas({ s, D, o }) {
     info = infoDe(bloques, [], 'cepa · medio', colorMedios)
     cuerpo = !bloques.length ? <p className="ayuda">Hacen falta al menos 2 placas con la misma cepa y el mismo medio.</p> : (
       <>
-        <Resumen titulo="Cepa · medio" bloques={bloques} etiquetas={['Placas', 'Media de cada placa', 'CV entre placas (%)', 'Reproducibilidad']} />
+        {personal ? <Resumen titulo="Cepa · medio" bloques={bloques} etiquetas={['Placas', 'Media de cada placa', 'CV entre placas (%)', 'Reproducibilidad']} />
+          : matriz(medios.map((m) => ({ titulo: `Entre placas · ${m}`, tip: `Resultado de comparar las placas de ${m} para cada cepa (pocillos como réplicas)`, valor: (c) => { const b = bloques.find((x) => x.titulo === `${c} · ${m}`); return b ? resultado(b, `CV entre placas ${b.extra[2]} %`) : { texto: '—', nivel: 'na', tip: `Hacen falta 2 o más placas de ${m} con esta cepa` } } })), false,
+            'Cada número es la media de los pocillos de la cepa en esa placa; dentro de cada medio la prueba compara sus placas.')}
         {bloques.map((b) => <Bloque key={b.titulo} color={colorMedios[b.medio]} medioTag={b.medio} titulo={b.titulo} sub={`entre placas · ${unidad}`} sujeto={`la producción de biofilm de «${b.titulo}»`} factor="las placas (réplicas)" r={b.r} colorDe={() => colorMedios[b.medio]} ctrl={null} />)}
         <p className="ayuda">Los grupos son las placas y los datos de cada una son sus pocillos. Si p &lt; 0,05 la placa influye: la cepa no se repite igual. Para ICC y correlaciones entre placas elegí «Concordancia» en la cinta.</p>
       </>

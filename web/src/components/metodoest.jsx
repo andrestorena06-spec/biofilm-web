@@ -196,7 +196,7 @@ function prepararBloques(s, D, o) {
   const factorComp = obj === 'medios' ? 'medios' : obj === 'cepas' || obj === 'cepastodas' ? 'cepas' : 'placas'
   const placasIds = [...new Set(obs.map((x) => x.placaId))]
   const nivelesComp = factorComp === 'medios' ? medios : factorComp === 'cepas' ? cepas : placasIds
-  const personal = o.sets && o.sets[factorComp]
+  const personal = null
   const conjuntos = personal ? personal.map((S) => S.filter((x) => nivelesComp.includes(x))).filter((S) => S.length >= 2) : [nivelesComp]
   const nomP = (id) => obs.find((x) => x.placaId === id)?.placa || id
   const sfx = (S) => (personal ? ' · ' + S.map((x) => (factorComp === 'placas' ? nomP(x) : x)).join(' vs ') : '')

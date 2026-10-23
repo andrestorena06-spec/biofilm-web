@@ -45,6 +45,8 @@ const optsDe = (x) => {
   const o = Object.fromEntries(Object.keys(d).map((k) => [k, { ...d[k], ...(x?.[k] || {}) }]))
   // la prueba que estaba dentro de «Comparar» (versión 2) ahora vive en la pestaña Estadística
   ;['test', 'control', 'testG', 'controlG', 'controlM'].forEach((k) => delete o.comparar[k])
+  // el selector «ANOVAs a realizar» se reemplazó por el modo «A medida»: sus comparaciones guardadas ya no se usan
+  delete o.comparar.sets
   return o
 }
 const estilosDe = (x) => ({ barras: normalizarEstilo(x?.barras), excluir: normalizarEstilo(x?.excluir), comparar: normalizarEstilo(x?.comparar) })
