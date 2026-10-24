@@ -2,7 +2,7 @@ import { forwardRef } from 'react'
 import { dBigotes, dCaja, dError, dMedia, dMediana } from '../calculos.js'
 import { calcularLayout } from '../layout.js'
 import { ESCALAS, FUENTE, estiloEscala, ejeConRango, escalaY, fmt, fmtTick, medir, ticksBonitos } from '../utils.js'
-import { EjeY, EtiquetaFondo, EtiquetasX, LeyendaX, Titulo, useAncho } from './charts.jsx'
+import { ALTO_FILA_CV, EjeY, EtiquetaFondo, EtiquetasX, FilaCV, LeyendaX, Titulo, useAncho } from './charts.jsx'
 
 // ---------------------------------------------------------------
 // GRÁFICO DE COMPARACIÓN: cada elemento se muestra u oculta por separado (barras, barras de error, caja de cuartiles,
@@ -24,7 +24,7 @@ const CLASES_ESC = {
   odc: [['Productor fuerte', 4.45, '> 4'], ['Productor moderado', 3, '2 – 4'], ['Productor débil', 1.5, '1 – 2'], ['No productor', 0.5, '≤ 1']],
 }
 
-export const CompararChart = forwardRef(function CompararChart({ grupos, leyenda, o, est, eje, onContext, tam, nota, clases: conClases, escala = 'od', unidad = 'OD' }, svgRef) {
+export const CompararChart = forwardRef(function CompararChart({ grupos, leyenda, o, est, eje, onContext, tam, nota, clases: conClases, escala = 'od', unidad = 'OD', cvLim = 20 }, svgRef) {
   const CL = conClases ? CLASES_ESC[escala] : null
   const clases = !!CL
   const [wrap, Wmed] = useAncho()
@@ -69,14 +69,14 @@ export const CompararChart = forwardRef(function CompararChart({ grupos, leyenda
     W, etiquetas: labels, ang: o.rotar, est, yLabels, derecha: clases ? wClases + 28 : 18,
     titulo: !!est.titulo.texto, tituloX: !!est.leyendaX.texto,
     altoPlot: Math.round(Math.min(Math.max(W * 0.3, 280), 380)) + est.valores.size * 2,
-    extraAbajo: filasLey.length * 24 + 30, fijoH: tam ? tam.h : 0,
+    extraAbajo: filasLey.length * 24 + 30 + (o.cv ? ALTO_FILA_CV : 0), fijoH: tam ? tam.h : 0,
     anchoTituloY: medir(est.leyendaY.texto || eje, est.leyendaY.size, est.leyendaY.bold, est.leyendaY.italic),
   })
   const y = escalaY(L, eY)
   const cx = (i) => L.left + L.band * (i + 0.5)
   const sw = Math.max(Math.min((L.band * 0.84) / nmax, 78), 9)    // ancho de cada columna
   const bw = sw * 0.8
-  const yLey = L.top + L.plotH + L.altoEtiquetas + L.altoLeyX + 36
+  const yLey = L.top + L.plotH + L.altoEtiquetas + L.altoLeyX + 36 + (o.cv ? ALTO_FILA_CV : 0)
   const errNom = o.errorNombre || 'error'
   // etiquetas de clase en el margen derecho, sin que se pisen
   const hLin = estC.size * 1.2
@@ -170,6 +170,15 @@ export const CompararChart = forwardRef(function CompararChart({ grupos, leyenda
         ))}
 
         <EtiquetasX labels={labels} cx={cx} yBase={y(eY.min)} ang={o.rotar} est={est} />
+        {o.cv && (() => {
+          // un CV por columna, con los mismos datos que la media y el error de esa columna
+          const cvDe = (v) => { if (v.length < 2) return NaN; const m = v.reduce((a, b) => a + b, 0) / v.length; const sd = Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / (v.length - 1)); return m > 0 ? (100 * sd) / m : NaN }
+          const items = grupos.flatMap((g, gi) => {
+            const x0 = cx(gi) - (g.barras.length * sw) / 2
+            return g.barras.map((b, k) => { const v = b.vp || b.pts; const cv = cvDe(v); return { x: x0 + k * sw + sw / 2, cv, corto: sw < 34, tip: Number.isFinite(cv) ? `${g.etiqueta || g.muestra} · ${b.placa}\nCV = 100 × DE ÷ media = ${cv.toFixed(1)} % (n = ${v.length})${cv > cvLim ? `\nSupera el límite de ${cvLim} %` : ''}` : `${g.etiqueta || g.muestra} · ${b.placa}\nhacen falta 2 o más datos` } })
+          })
+          return <FilaCV L={L} lim={cvLim} items={items} size={Math.max(9.5, Math.min(12, sw * 0.42))} />
+        })()}
         <LeyendaX L={L} est={est} />
 
         {filasLey.map((f, r) => {

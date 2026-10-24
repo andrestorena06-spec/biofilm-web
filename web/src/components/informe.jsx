@@ -106,7 +106,7 @@ export function abrirInforme(s) {
       Estado: e.Usado ? 'Aceptado' : 'Excluido', Sospechoso: e.Sospechoso ? 'Sí' : 'No', Motivo: e.Manual ? 'Excluido manualmente' : e.Motivo || '',
     }))
     const escB = escalaValida(s.opts.barras.escala, a.odc.odc)
-    const gBarras = filas.length ? svgStr(<BarChart filas={filas} puntos={puntos} odc={a.odc.odc} o={ob} est={s.estilos.barras} eje={escB === 'od' ? eje : ESCALAS[escB].eje} escala={escB} tam={{ w: 900, h: 520 }} />) : ''
+    const gBarras = filas.length ? svgStr(<BarChart filas={filas} puntos={puntos} odc={a.odc.odc} o={ob} est={s.estilos.barras} eje={escB === 'od' ? eje : ESCALAS[escB].eje} escala={escB} cvLim={Number(det.cvMax) || 20} tam={{ w: 900, h: 520 }} />) : ''
     const escE = escalaValida(s.opts.excluir.escala, a.odc.odc)
     const gExcluir = svgStr(<ExcluirChart estado={a.estado} orden={orden} o={s.opts.excluir} est={s.estilos.excluir} eje={escE === 'od' ? eje : ESCALAS[escE].eje} odc={a.odc.odc} escala={escE} onClickPunto={noop} tam={{ w: 900, h: 520 }} />)
     return `<section class="placa ${i ? 'salto' : ''}">
@@ -129,10 +129,10 @@ export function abrirInforme(s) {
     const D = armarComparacion(s)
     const el = {
       barras: oc.barras !== false, barrasError: oc.barrasError !== false, caja: oc.caja ?? !!oc.cajas, mediana: oc.mediana ?? !!oc.cajas, bigotes: oc.bigotes ?? !!oc.cajas, media: oc.media ?? !!oc.cajas, puntos: oc.puntos !== false,
-      valores: oc.valores !== false, errores: !!oc.errores, rotar: oc.rotar ?? 45,
+      valores: oc.valores !== false, errores: !!oc.errores, rotar: oc.rotar ?? 45, cv: !!oc.cv && oc.modo !== 'pocillo',
     }
     if (D.grupos.length && (el.barras || el.caja || el.mediana || el.bigotes || el.media || el.puntos)) {
-      const fig = svgStr(<CompararChart grupos={D.grupos} leyenda={D.leyenda} o={{ ...el, valoresClase: !!s.opts.comparar.valoresClase }} est={s.estilos.comparar} eje={D.rel ? ESCALAS[D.escala].eje : ejeDe(D.placasSel[0])} tam={{ w: 900, h: 560 }} nota={D.nota} clases={D.rel && s.opts.comparar.lineas !== false} escala={D.escala} unidad={D.rel ? ESCALAS[D.escala].corto : 'OD'} />)
+      const fig = svgStr(<CompararChart grupos={D.grupos} leyenda={D.leyenda} o={{ ...el, valoresClase: !!s.opts.comparar.valoresClase }} est={s.estilos.comparar} eje={D.rel ? ESCALAS[D.escala].eje : ejeDe(D.placasSel[0])} tam={{ w: 900, h: 560 }} nota={D.nota} clases={D.rel && s.opts.comparar.lineas !== false} escala={D.escala} unidad={D.rel ? ESCALAS[D.escala].corto : 'OD'} cvLim={Number(det.cvMax) || 20} />)
       const filasT = D.grupos.flatMap((g) => g.barras.map((b) => ({
         Muestra: g.etiqueta, [{ medio: 'Medio', pocillo: 'Pocillo', todas: 'Placas' }[D.modo] || 'Placa']: b.placa,
         OD_media: r4(b.media), Error: b.err === null || b.err === undefined ? '' : r4(b.err), N: (b.vp || b.pts).length,

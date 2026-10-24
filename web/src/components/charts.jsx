@@ -58,6 +58,29 @@ export function EtiquetasX({ labels, cx, yBase, ang, est }) {
   ))
 }
 
+// Fila con el CV (100 × DE ÷ media) de cada columna, debajo de los nombres del eje X.
+// En naranja si supera el límite de CV de «Calidad». items: [{ x, cv, tip, corto }]
+export const ALTO_FILA_CV = 32
+export function FilaCV({ L, items, lim, size = 12 }) {
+  const y = L.top + L.plotH + 10 + L.altoEtiquetas + 12 + L.altoLeyX + 16
+  return (
+    <g>
+      <line x1={L.left} x2={L.left + L.plotW} y1={y - 15} y2={y - 15} stroke="#e5ddd0" />
+      <text x={L.left - 8} y={y} textAnchor="end" style={{ fontSize: 11, fill: '#6b7785' }}
+        data-tip={`CV = 100 × DE ÷ media de cada columna\nEn naranja: más del ${lim} % (límite de CV de «Calidad»)`}>CV %</text>
+      {items.map((it, i) => {
+        const alto = Number.isFinite(it.cv) && it.cv > lim
+        return (
+          <text key={i} x={it.x} y={y} textAnchor="middle" data-tip={it.tip}
+            style={{ fontSize: size, fill: alto ? '#c25e00' : '#5b6672', fontWeight: alto ? 700 : 400 }}>
+            {Number.isFinite(it.cv) ? (it.corto ? it.cv.toFixed(0) : `${it.cv.toFixed(0)} %`) : '–'}
+          </text>
+        )
+      })}
+    </g>
+  )
+}
+
 export const Titulo = ({ W, est }) => est.titulo.texto ? (
   <text x={W / 2} y={14 + est.titulo.size} textAnchor="middle" style={estiloTexto(est.titulo)}>{est.titulo.texto}</text>
 ) : null
@@ -70,7 +93,7 @@ export const LeyendaX = ({ L, est }) => est.leyendaX.texto ? (
 // ---------------------------------------------------------------
 // GRÁFICO DE BARRAS
 // ---------------------------------------------------------------
-export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, est, eje, onContext, tam, nota, leyendaPuntos, escala }, svgRef) {
+export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, est, eje, onContext, tam, nota, leyendaPuntos, escala, cvLim = 20 }, svgRef) {
   const [wrap, Wmed] = useAncho()
   const W = tam ? tam.w : Wmed
   // escala relativa al ODc de la placa: OD ÷ ODc, con las clases en 1, 2 y 4
@@ -130,7 +153,7 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
     W, etiquetas: labels, ang: o.rotar, est, yLabels,
     derecha: lineas ? wClases + 28 : 16,
     titulo: !!est.titulo.texto, tituloX: !!est.leyendaX.texto, altoPlot: 280 + est.valores.size * 2,
-    extraAbajo: (leyenda || hayBlanco ? 30 : 0) + (leyendaPuntos?.length ? 26 : 0) + 22, fijoH: tam ? tam.h : 0,
+    extraAbajo: (leyenda || hayBlanco ? 30 : 0) + (leyendaPuntos?.length ? 26 : 0) + 22 + (o.cv ? ALTO_FILA_CV : 0), fijoH: tam ? tam.h : 0,
     anchoTituloY: medir(est.leyendaY.texto || eje, est.leyendaY.size, est.leyendaY.bold, est.leyendaY.italic),
   })
   const y = escalaY(L, eY)
@@ -149,7 +172,7 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
   }
 
   const colorBarra = (f) => (f.EsBlanco ? COLOR_BLANCO : o.color === 'clase' && Number.isFinite(odc) ? COLOR_CLASE[f.Clasificacion] : '#6b8fb5')
-  const yLeyenda = L.top + L.plotH + L.altoEtiquetas + L.altoLeyX + 34
+  const yLeyenda = L.top + L.plotH + L.altoEtiquetas + L.altoLeyX + 34 + (o.cv ? ALTO_FILA_CV : 0)
 
   return (
     <div ref={wrap} className="chart-wrap" onContextMenu={onContext}>
@@ -204,6 +227,10 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
 
         <EtiquetasX labels={labels} cx={cx} yBase={y(eY.min)} ang={o.rotar} est={est} />
         <LeyendaX L={L} est={est} />
+        {o.cv && <FilaCV L={L} lim={cvLim} items={filas.map((f, i) => ({
+          x: cx(i), cv: f.CV_pct,
+          tip: Number.isFinite(f.CV_pct) ? `CV de ${f.Muestra} = 100 × DE ÷ media\n= 100 × ${fmt(f.SD, 4)} ÷ ${fmt(f.Media, 4)} = ${fmt(f.CV_pct, 1)} %\n(${f.N_aceptadas ?? '?'} réplicas aceptadas)${f.CV_pct > cvLim ? `\nSupera el límite de ${cvLim} %` : ''}` : `${f.Muestra}: hacen falta 2 o más réplicas`,
+        }))} />}
 
         {(leyenda || hayBlanco) && (
           <g transform={`translate(${L.left + L.plotW / 2},${yLeyenda})`}>

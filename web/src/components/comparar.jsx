@@ -24,6 +24,7 @@ export function CompararTab({ s, grupoVista }) {
   const D = useMemo(() => armarComparacion(s), [s.placas, s.analisisMap, s.muestras, o, s.opts.barras?.escala])
   const { modo, conAnalisis, placasSel, colores, colorBase, ocultos, clave, muestras, etiqueta, tieneMuestra, grupos, leyenda, nota, sinMedio, escala, rel, sinOdc } = D
   const eje = rel ? ESCALAS[escala].eje : s.ejeOD
+  const cvLim = Number(s.deteccion.cvMax) || 20
   const umbTxt = rel ? ESCALAS[escala].umbrales.map((u) => u[0]).join(', ').replace(/, (\d)$/, ' y $1') : ''
 
   // elementos del gráfico (las sesiones viejas traían una sola opción «cajas»)
@@ -31,7 +32,7 @@ export function CompararTab({ s, grupoVista }) {
     barras: o.barras !== false, barrasError: o.barrasError !== false,
     caja: o.caja ?? !!o.cajas, mediana: o.mediana ?? !!o.cajas, bigotes: o.bigotes ?? !!o.cajas, media: o.media ?? !!o.cajas,
     puntos: o.puntos !== false, valores: o.valores !== false, errores: !!o.errores, rotar: o.rotar ?? 45,
-    errorTipo: o.error, valoresClase: !!o.valoresClase,
+    errorTipo: o.error, valoresClase: !!o.valoresClase, cv: !!o.cv && o.modo !== 'pocillo',
     errorNombre: { sd: 'desviación estándar', sem: 'error estándar de la media', ic95: 'intervalo de confianza del 95 %', ninguno: 'error' }[o.error] || 'error',
   }
   const sinElementos = !el.barras && !el.caja && !el.mediana && !el.bigotes && !el.media && !el.puntos
@@ -48,7 +49,7 @@ export function CompararTab({ s, grupoVista }) {
   const unaPlaca = modo === 'todas' && porPlacaG && placasSel.length < 2
   const nCols = grupos.reduce((a, g) => a + g.barras.length, 0)
   const grafico = (ref, tam, ctx) => <CompararChart ref={ref} grupos={grupos} leyenda={leyenda} o={el} est={s.estilos.comparar} eje={eje} onContext={ctx} tam={tam} nota={nota}
-    clases={rel && o.lineas !== false} escala={escala} unidad={rel ? ESCALAS[escala].corto : 'OD'} />
+    clases={rel && o.lineas !== false} escala={escala} unidad={rel ? ESCALAS[escala].corto : 'OD'} cvLim={cvLim} />
 
   const cambiarCelda = (id, m, v) => { const k = clave(id, m); const sin = (o.ocultos || []).filter((x) => x !== k); setO('ocultos', v ? sin : [...sin, k]) }
   const cambiarFila = (m, v) => {
@@ -95,6 +96,7 @@ export function CompararTab({ s, grupoVista }) {
           <InterruptorCinta icono="puntos" texto="Puntos" valor={el.puntos} onChange={(v) => poner({ puntos: v })} tip="Cada valor medido" />
           <InterruptorCinta simbolo="0,4" texto="Valores" valor={el.valores} onChange={(v) => poner({ valores: v })} tip="Escribe la media sobre cada columna" />
           <InterruptorCinta simbolo="±" texto="± error" valor={el.errores} onChange={(v) => poner({ errores: v })} deshabilitado={!el.valores} tip="Agrega el error al valor escrito" />
+          <InterruptorCinta simbolo="%" texto="CV" valor={el.cv} onChange={(v) => poner({ cv: v })} deshabilitado={modo === 'pocillo'} tip={`Fila con el CV de cada columna (100 × DE ÷ media, con los mismos datos que la barra) debajo de los nombres.\nEn naranja si supera el ${cvLim} % (límite de CV de «Calidad»).`} />
           {rel && <InterruptorCinta icono="umbral" texto="Clases" valor={o.lineas !== false} onChange={(v) => setO('lineas', v)} tip={`Líneas en ${umbTxt} (ODc, 2 × ODc y 4 × ODc de cada placa) con el nombre de cada clase.\nEn esta escala los umbrales son los mismos para todas las placas.`} />}
           {rel && <InterruptorCinta simbolo="0,3" texto="Umbrales" valor={!!o.valoresClase} onChange={(v) => setO('valoresClase', v)} deshabilitado={o.lineas === false} tip="Escribe el rango de cada clase bajo su nombre" />}
         </Grupo>

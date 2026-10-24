@@ -142,6 +142,7 @@ export function GraficoTab({ s, grupoVista }) {
   const puntos = a.estado.filter((e) => e.Usado && filas.some((f) => f.Muestra === e.Muestra))
   const sinOdc = !Number.isFinite(a.odc.odc)
   const escG = escalaValida(o.escala, a.odc.odc)
+  const cvLim = Number(s.deteccion.cvMax) || 20
   const ejeG = escG === 'od' ? s.ejeOD : ESCALAS[escG].eje
 
   return (
@@ -159,6 +160,7 @@ export function GraficoTab({ s, grupoVista }) {
           <InterruptorCinta simbolo="±" texto="Error" valor={o.errores} onChange={(v) => setO('errores', v)} deshabilitado={!o.medias} tip="Agrega el error junto al valor medio" />
           <InterruptorCinta icono="umbral" texto="Clases" valor={o.lineas} onChange={(v) => setO('lineas', v)} deshabilitado={sinOdc} tip="Líneas de ODc, 2 × ODc y 4 × ODc con el nombre de cada clase" />
           <InterruptorCinta simbolo="0,3" texto="Umbrales" valor={o.valoresClase} onChange={(v) => setO('valoresClase', v)} deshabilitado={sinOdc || !o.lineas} tip="Escribe el valor numérico bajo el nombre de cada clase" />
+          <InterruptorCinta simbolo="%" texto="CV" valor={!!o.cv} onChange={(v) => setO('cv', v)} tip={`Fila con el CV de cada muestra (100 × DE ÷ media) debajo de los nombres.\nEn naranja si supera el ${cvLim} % (límite de CV de «Calidad»).`} />
         </Grupo>
         <Grupo titulo="Barras">
           <CampoCinta etiqueta="Error"><Select value={o.error} onChange={(v) => setO('error', v)} opciones={[...ERRORES, ['ninguno', 'Ninguno']]} /></CampoCinta>
@@ -184,7 +186,7 @@ export function GraficoTab({ s, grupoVista }) {
           <span className="ayuda">Pasá el mouse por una barra para ver el cálculo<Nota>Clic derecho sobre el gráfico: estilo de los textos, rango del eje Y y guardar la imagen.</Nota></span>
         </div>
         {filas.length ? (
-          <div className="figura"><BarChart ref={svg} filas={filas} puntos={puntos} odc={a.odc.odc} o={o} est={s.estilos.barras} eje={ejeG} escala={escG} onContext={abrirMenu} /></div>
+          <div className="figura"><BarChart ref={svg} filas={filas} puntos={puntos} odc={a.odc.odc} o={o} est={s.estilos.barras} eje={ejeG} escala={escG} cvLim={cvLim} onContext={abrirMenu} /></div>
         ) : <Vacio texto="Elegí al menos una muestra con réplicas aceptadas." />}
       </section>
       <MenuContextual menu={menu} items={[
@@ -199,7 +201,7 @@ export function GraficoTab({ s, grupoVista }) {
       {exp && svg.current && (
         <ExportDialog nombre={`barras_${s.a.nombre}`} size0={tamDe(svg.current)} onClose={() => setExp(false)}
           render={(ref, tam) => <BarChart ref={ref} filas={filas} puntos={puntos} odc={a.odc.odc} o={o} est={s.estilos.barras}
-            eje={ejeG} escala={escG} onContext={(e) => e.preventDefault()} tam={tam} />} />
+            eje={ejeG} escala={escG} cvLim={cvLim} onContext={(e) => e.preventDefault()} tam={tam} />} />
       )}
     </div>
   )
@@ -278,7 +280,7 @@ function PopoverFiltro({ col, pos, valor, onChange, onClose }) {
   const set = (k, v) => onChange({ ...f, [k]: v })
   return (
     <div ref={ref} className="popover-filtro" style={{ left: pos.x, top: pos.y }}>
-      <h5>Filtrar: {col.replace(/_/g, ' ')}</h5>
+      <h5>Filtrar: {nombreCol(col)}</h5>
       <Select value={f.op} onChange={(v) => set('op', v)} opciones={OPERADORES} />
       <Campo label={f.op === 'entre' ? 'Desde' : 'Valor'}>
         <input autoFocus type="number" step="any" value={f.a} onChange={(e) => set('a', e.target.value)} />
@@ -293,6 +295,10 @@ function PopoverFiltro({ col, pos, valor, onChange, onClose }) {
     </div>
   )
 }
+
+// nombres que se muestran en las cabeceras (la clave queda igual en la exportación y en las vistas guardadas)
+const NOMBRE_COL = { CV_pct: '% DE (CV)' }
+const nombreCol = (c) => NOMBRE_COL[c] || c.replace(/_/g, ' ')
 
 export function TablaAvanzada({ id, titulo, columnas, filas, onVista, tips }) {
   const [orden, setOrden] = useState(columnas)
@@ -344,7 +350,7 @@ export function TablaAvanzada({ id, titulo, columnas, filas, onVista, tips }) {
                 <th key={c} draggable onDragStart={() => { arrastre.current = c }} onDragOver={(e) => e.preventDefault()}
                   onDrop={() => soltar(c)} title="Arrastrá para mover la columna · clic para ordenar"
                   onClick={() => setSort(sort?.col === c ? (sort.dir === 'asc' ? { col: c, dir: 'desc' } : null) : { col: c, dir: 'asc' })}>
-                  <span className="agarre">⋮⋮</span> {c.replace(/_/g, ' ')}
+                  <span className="agarre">⋮⋮</span> {nombreCol(c)}
                   {sort?.col === c && <span> {sort.dir === 'asc' ? '▲' : '▼'}</span>}
                   {esNum[c] && (
                     <button className={`th-filtro ${filtroActivo(filtros[c]) ? 'activo' : ''}`}
