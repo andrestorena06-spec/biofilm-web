@@ -134,10 +134,10 @@ export function abrirInforme(s) {
     if (D.grupos.length && (el.barras || el.caja || el.mediana || el.bigotes || el.media || el.puntos)) {
       const fig = svgStr(<CompararChart grupos={D.grupos} leyenda={D.leyenda} o={{ ...el, valoresClase: !!s.opts.comparar.valoresClase }} est={s.estilos.comparar} eje={D.rel ? ESCALAS[D.escala].eje : ejeDe(D.placasSel[0])} tam={{ w: 900, h: 560 }} nota={D.nota} clases={D.rel && s.opts.comparar.lineas !== false} escala={D.escala} unidad={D.rel ? ESCALAS[D.escala].corto : 'OD'} />)
       const filasT = D.grupos.flatMap((g) => g.barras.map((b) => ({
-        Muestra: g.etiqueta, [D.modo === 'medio' ? 'Medio' : D.modo === 'pocillo' ? 'Pocillo' : 'Placa']: b.placa,
+        Muestra: g.etiqueta, [{ medio: 'Medio', pocillo: 'Pocillo', todas: 'Placas' }[D.modo] || 'Placa']: b.placa,
         OD_media: r4(b.media), Error: b.err === null || b.err === undefined ? '' : r4(b.err), N: (b.vp || b.pts).length,
       })))
-      comparacion = `<section class="placa salto"><h2>Comparación entre placas${D.modo === 'medio' ? ' por medio de cultivo' : D.modo === 'pocillo' ? ' (pocillo por pocillo)' : ''}</h2>
+      comparacion = `<section class="placa salto"><h2>Comparación entre placas${D.modo === 'medio' ? ' por medio de cultivo' : D.modo === 'todas' ? ' (todas las placas juntas)' : D.modo === 'pocillo' ? ' (pocillo por pocillo)' : ''}</h2>
         <p class="meta">${D.placasSel.map((p) => `<b>${esc(p.nombre)}</b>${p.medio ? ' (' + esc(p.medio) + ')' : ''}`).join(' · ')}</p>
         <div class="fig">${fig}</div>${tabla(Object.keys(filasT[0]), filasT)}</section>`
     }

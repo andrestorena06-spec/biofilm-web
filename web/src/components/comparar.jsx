@@ -45,6 +45,7 @@ export function CompararTab({ s, grupoVista }) {
   // con un valor por placa y una sola placa en algún medio no hay error ni dispersión entre placas
   const porPlacaG = o.puntosMedio === 'placas'
   const medios1 = modo === 'medio' && porPlacaG ? [...new Set(grupos.flatMap((g) => g.barras.filter((b) => b.nPlacas < 2).map((b) => b.medio)))] : []
+  const unaPlaca = modo === 'todas' && porPlacaG && placasSel.length < 2
   const nCols = grupos.reduce((a, g) => a + g.barras.length, 0)
   const grafico = (ref, tam, ctx) => <CompararChart ref={ref} grupos={grupos} leyenda={leyenda} o={el} est={s.estilos.comparar} eje={eje} onContext={ctx} tam={tam} nota={nota}
     clases={rel && o.lineas !== false} escala={escala} unidad={rel ? ESCALAS[escala].corto : 'OD'} />
@@ -70,10 +71,11 @@ export function CompararTab({ s, grupoVista }) {
           <OpcionesCinta valor={modo} onChange={(v) => setO('modo', v)} opciones={[
             ['placas', 'Por placa', null, 'placas', 'Una columna por placa (la altura es la OD media de sus réplicas)'],
             ['medio', 'Por medio', null, 'matraz', 'Una columna por medio de cultivo: las placas del mismo medio juntas (el medio se elige en «Pocillos»)'],
+            ['todas', 'Todas', 'x̄', null, 'Una columna por cepa con todas las placas juntas, sin separar por medio: el promedio de cada cepa en todo el experimento'],
             ['pocillo', 'Por pocillo', null, 'puntos', 'Una columna por pocillo (sin error: un solo valor por columna)'],
           ]} />
-          {modo === 'medio' && (
-            <CampoCinta etiqueta="Datos de cada medio" tip={'Define los puntos, la media, el error y la dispersión.\nPocillos: todos los pocillos del medio.\nUn valor por placa: cada placa es una réplica biológica (hacen falta 2 o más placas por medio para el error).'}>
+          {(modo === 'medio' || modo === 'todas') && (
+            <CampoCinta etiqueta={modo === 'medio' ? 'Datos de cada medio' : 'Datos'} tip={`Define los puntos, la media, el error y la dispersión.\nPocillos: todos los pocillos ${modo === 'medio' ? 'del medio' : 'de todas las placas'}.\nUn valor por placa: cada placa es una réplica biológica (hacen falta 2 o más placas para el error).`}>
               <Select value={o.puntosMedio || 'pocillos'} onChange={(v) => setO('puntosMedio', v)} opciones={[['pocillos', 'Pocillos'], ['placas', 'Un valor por placa']]} />
             </CampoCinta>
           )}
@@ -150,10 +152,11 @@ export function CompararTab({ s, grupoVista }) {
 
       {sinOdc.length > 0 && <p className="aviso-caja">Sin ODc (faltan blancos aceptados), no entran en la escala {ESCALAS[escala].eje}: {sinOdc.map((p) => p.nombre).join(', ')}.</p>}
       {modo === 'medio' && sinMedio.length > 0 && <p className="aviso-caja">Placas sin medio indicado (no se muestran): {sinMedio.map((p) => p.nombre).join(', ')}. Elegí su medio en «Pocillos» o en «Placas».</p>}
+      {unaPlaca && <p className="aviso-caja">Con una sola placa no hay error ni dispersión entre placas. Elegí «Pocillos» para verlos.</p>}
       {medios1.length > 0 && <p className="aviso-caja">Con una sola placa en {medios1.join(', ')} no hay error ni dispersión entre placas. Elegí «Pocillos» para verlos.</p>}
       <section className="tarjeta">
         <div className="cabeza-tarjeta">
-          <span className="etiqueta-seccion">{modo === 'medio' ? 'Por medio de cultivo' : modo === 'pocillo' ? 'Pocillo por pocillo' : 'Placa por placa'} · {placasSel.length} {placasSel.length === 1 ? 'placa' : 'placas'} · {nCols} columnas</span>
+          <span className="etiqueta-seccion">{modo === 'medio' ? 'Por medio de cultivo' : modo === 'todas' ? 'Todas las placas juntas' : modo === 'pocillo' ? 'Pocillo por pocillo' : 'Placa por placa'} · {placasSel.length} {placasSel.length === 1 ? 'placa' : 'placas'} · {nCols} columnas</span>
           <span className="ayuda">Pasá el mouse por una barra, caja o punto para ver su valor y el cálculo<Nota>Las pruebas estadísticas entre cepas, medios y placas están en «Estadística». Clic derecho sobre el gráfico: estilo de los textos, rango del eje Y y guardar la imagen.</Nota></span>
         </div>
         {grupos.length && !sinElementos ? <div className="figura">{grafico(svg, undefined, abrirMenu)}</div>
