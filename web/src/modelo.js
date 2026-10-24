@@ -47,6 +47,10 @@ const optsDe = (x) => {
   ;['test', 'control', 'testG', 'controlG', 'controlM'].forEach((k) => delete o.comparar[k])
   // el selector «ANOVAs a realizar» se reemplazó por el modo «A medida»: sus comparaciones guardadas ya no se usan
   delete o.comparar.sets
+  // la escala 1 + log₂(OD ÷ ODc) se retiró: lo que estaba en esa escala pasa a OD ÷ ODc
+  if (o.barras.escala === 'logodc') o.barras.escala = 'odc'
+  if (o.excluir.escala === 'logodc') o.excluir.escala = 'odc'
+  if (o.comparar.variable === 'logodc') o.comparar.variable = 'odc'
   return o
 }
 const estilosDe = (x) => ({ barras: normalizarEstilo(x?.barras), excluir: normalizarEstilo(x?.excluir), comparar: normalizarEstilo(x?.comparar) })

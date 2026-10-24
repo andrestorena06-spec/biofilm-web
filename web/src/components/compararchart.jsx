@@ -22,7 +22,6 @@ const cuantil = (v, q) => {
 // en las escalas relativas al ODc los umbrales de clase son iguales en todas las placas: [clase, dónde va el nombre, rango]
 const CLASES_ESC = {
   odc: [['Productor fuerte', 4.45, '> 4'], ['Productor moderado', 3, '2 – 4'], ['Productor débil', 1.5, '1 – 2'], ['No productor', 0.5, '≤ 1']],
-  logodc: [['Productor fuerte', 3.45, '> 3'], ['Productor moderado', 2.5, '2 – 3'], ['Productor débil', 1.5, '1 – 2'], ['No productor', 0.5, '≤ 1']],
 }
 
 export const CompararChart = forwardRef(function CompararChart({ grupos, leyenda, o, est, eje, onContext, tam, nota, clases: conClases, escala = 'od', unidad = 'OD' }, svgRef) {
@@ -50,7 +49,7 @@ export const CompararChart = forwardRef(function CompararChart({ grupos, leyenda
   const lo = Math.min(0, ...todosPisos)
   let hi = Math.max(0.1, ...todasCimas)
   hi += (hi - lo) * (o.valores ? (o.errores ? 0.2 : 0.13) : 0.05)
-  if (clases) hi = Math.max(hi, escala === 'logodc' ? 3.9 : 4.9)
+  if (clases) hi = Math.max(hi, 4.9)
   const eY = ejeConRango(ticksBonitos(lo, hi, 6), estiloEscala(est, escala))
   const estC = est.clases || { size: 11, color: '#333333' }
   const textosC = clases ? CL.map(([n, , r]) => (o.valoresClase ? `${n}\n(${r})` : n)) : []

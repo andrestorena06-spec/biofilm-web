@@ -6,7 +6,6 @@ import { armarComparacion } from '../comparacion.js'
 import { analizar, anidada, levene, parcelasDivididas, placaCepa, razonSD } from '../decision.js'
 import { anovaTabla, desvio, holm, marcaSig, media, varianza } from '../estadistica.js'
 import { chi2Sup, qnorm, rangos, shapiro } from '../reproducibilidad.js'
-import { TXT_LOGODC, logOdc } from '../utils.js'
 
 const finito = Number.isFinite
 const f = (x, d = 4) => (finito(x) ? x.toFixed(d) : x === Infinity ? '∞' : '–')
@@ -176,7 +175,7 @@ function prepararBloques(s, D, o) {
   const esPl = obj === 'placas' || obj === 'placastodas'
   const libres = obj === 'libre' ? (o.libres || []).filter((c) => c.grupos.length >= 2) : []
   const nivel = esPl || libres.some((c) => c.grupos.some((g) => g.placa)) ? 'pocillo' : o.nivel || 'placa'
-  const fx = (y, odc) => (variable === 'ln' ? (y > 0 ? Math.log(y) : NaN) : variable === 'odc' ? (odc > 0 ? y / odc : NaN) : variable === 'logodc' ? logOdc(y, odc) : y)
+  const fx = (y, odc) => (variable === 'ln' ? (y > 0 ? Math.log(y) : NaN) : variable === 'odc' ? (odc > 0 ? y / odc : NaN) : y)
   const obsPlaca0 = [], obsPozo0 = []
   D.conAnalisis.forEach((p) => {
     const a = s.analisisMap[p.id]
@@ -224,7 +223,7 @@ function prepararBloques(s, D, o) {
   const cepaF = cepas.includes(o.selCepa) ? o.selCepa : cepas[0]
   const medioF = medios.includes(o.selMedio) ? o.selMedio : medios[0]
   const foco = { medios: `${cepaF}: entre medios`, cepas: `Medio ${medioF}: entre cepas`, cepastodas: 'Todos los medios: entre cepas', placas: `${cepaF} · ${medioF}: entre placas`, placastodas: `${cepaF}: entre todas las placas`, libre: `ANOVA ${(o.selLibre || 0) + 1}:` }[obj]
-  return { obj, foco, variable, nivel, forzado: o.prueba || 'auto', ajuste: o.ajuste === 'lsd' ? 'lsd' : 'holm', bloques, obsPlaca, obsPozo, unidad: variable === 'ln' ? 'ln(OD)' : variable === 'odc' ? 'OD ÷ ODc' : variable === 'logodc' ? TXT_LOGODC : 'OD' }
+  return { obj, foco, variable, nivel, forzado: o.prueba || 'auto', ajuste: o.ajuste === 'lsd' ? 'lsd' : 'holm', bloques, obsPlaca, obsPozo, unidad: variable === 'ln' ? 'ln(OD)' : variable === 'odc' ? 'OD ÷ ODc' : 'OD' }
 }
 
 // ---------------------------------------------------------------
@@ -447,8 +446,7 @@ export function MetodoEstadistico({ s }) {
           <li><b>OD tal cual:</b> la medida original.</li>
           <li><b>ln(OD):</b> logaritmo natural de cada OD. En la OD de biofilm la desviación estándar suele crecer con la media (coeficiente de variación casi constante). El logaritmo convierte ese error proporcional en uno de tamaño parecido y estabiliza las varianzas, que es el supuesto del ANOVA. Con ln, las diferencias son <b>razones</b> (veces), no restas.</li>
           <li><b>OD ÷ ODc:</b> cada OD dividida por el punto de corte de su placa (ODc = media de los blancos + 3 DE de los blancos). Reduce las diferencias de nivel entre placas.</li>
-          <li><b>log ODc = 1 + log₂(OD ÷ ODc):</b> cada OD medida contra el ODc de su placa en escala logarítmica de base 2. El ODc vale 1, el doble del ODc vale 2 y el cuádruple vale 3, así que los umbrales de Stepanović (no productor ≤ 1, débil 1–2, moderado 2–3, fuerte &gt; 3) son los mismos en todas las placas. Junta las dos ventajas: quita la diferencia de tinción entre placas (cada una se mide contra su propio ODc) y, como ln(OD), estabiliza la varianza que crece con la OD. Una diferencia de 1 equivale a una OD del doble. Las placas sin ODc no entran.</li>
-          <li><b>Media por placa</b> (réplica «Placa»): promedio de los pocillos aceptados de la cepa en esa placa; si se elige una escala transformada (ln, OD ÷ ODc o log ODc), se transforma esa media.</li>
+          <li><b>Media por placa</b> (réplica «Placa»): promedio de los pocillos aceptados de la cepa en esa placa; si se elige una escala transformada (ln u OD ÷ ODc), se transforma esa media.</li>
         </ul>
       </Sec>
 

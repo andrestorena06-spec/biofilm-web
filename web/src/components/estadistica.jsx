@@ -11,42 +11,14 @@ import { Chip, DiagnosticoGlobal, Hip, MatrizP, NOMBRE_TEST, Tabla, diagnosticoG
 import { ComparadorLibre, GrupoModo, modoBase } from './seleccion.jsx'
 import { ReproTab } from './repro.jsx'
 import { armarComparacion } from '../comparacion.js'
+import { SIN_MEDIO, UNIDAD, prepararDatos } from '../resumenes.js'
 import { analizar, anidada, parcelasDivididas, placaCepa } from '../decision.js'
 import { desvio, marcaSig, media } from '../estadistica.js'
-import { COLOR_CLASE, TXT_LOGODC, fmtTick, logOdc, ticksBonitos } from '../utils.js'
+import { COLOR_CLASE, fmtTick, ticksBonitos } from '../utils.js'
 
 const finito = Number.isFinite
-const SIN_MEDIO = '(sin medio)'
-const UNIDAD = { od: 'OD', ln: 'ln(OD)', odc: 'OD ÷ ODc', logodc: TXT_LOGODC }
 // líneas de clase que se dibujan en el gráfico de los grupos (las escalas relativas al ODc tienen umbrales fijos)
-const UMBRALES = { odc: [[1, 'ODc'], [2, '2 × ODc'], [4, '4 × ODc']], logodc: [[1, 'ODc'], [2, '2 × ODc'], [3, '4 × ODc']] }
-
-// Valores de cada cepa en cada placa: uno por placa (la OD media de sus pocillos aceptados) y uno por pocillo
-function prepararDatos(s, D, variable) {
-  const fx = (y, odc) => (variable === 'ln' ? (y > 0 ? Math.log(y) : NaN) : variable === 'odc' ? (odc > 0 ? y / odc : NaN) : variable === 'logodc' ? logOdc(y, odc) : y)
-  const orden = [...new Set(s.placas.map((p) => p.medio).filter(Boolean))]
-  const placas = [...D.conAnalisis].sort((a, b) => (a.medio ? orden.indexOf(a.medio) : 999) - (b.medio ? orden.indexOf(b.medio) : 999))
-  const obsPlaca = [], obsPozo = [], fuera = []
-  placas.forEach((p) => {
-    const a = s.analisisMap[p.id], odc = a.odc?.odc, medio = p.medio || SIN_MEDIO
-    a.resumen.forEach((r) => {
-      const y = finito(r.Media) ? fx(r.Media, odc) : NaN
-      if (finito(y)) obsPlaca.push({ cepa: r.Muestra, medio, placaId: p.id, placa: p.nombre, y, etq: p.nombre, clase: r.Clasificacion })
-    })
-    a.estado.forEach((e) => {
-      if (e.EsBlanco) return
-      if (!e.Usado) { fuera.push({ cepa: e.Muestra, placaId: p.id, etq: `${p.nombre} · ${e.Pocillo}`, od: e.OD, motivo: e.Manual ? 'excluido a mano' : 'valor atípico' }); return }
-      const y = fx(e.OD, odc)
-      if (finito(y)) obsPozo.push({ cepa: e.Muestra, medio, placaId: p.id, placa: p.nombre, y, etq: `${p.nombre} · ${e.Pocillo}` })
-    })
-  })
-  const presentes = [...new Set(obsPlaca.map((x) => x.cepa))]
-  const cepas = [...s.muestras.filter((m) => presentes.includes(m)), ...presentes.filter((m) => !s.muestras.includes(m))]
-  const medios = orden.filter((m) => placas.some((p) => p.medio === m))
-  // las escalas relativas al ODc dejan afuera las placas sin ODc
-  const sinOdc = variable === 'odc' || variable === 'logodc' ? placas.filter((p) => !(s.analisisMap[p.id].odc?.odc > 0)) : []
-  return { placas, obsPlaca, obsPozo, fuera, cepas, medios, sinOdc }
-}
+const UMBRALES = { odc: [[1, 'ODc'], [2, '2 × ODc'], [4, '4 × ODc']] }
 
 // ---------------------------------------------------------------
 // fichas seleccionables
@@ -467,7 +439,6 @@ export function EstadisticaTab({ s }) {
         <Grupo titulo="Datos">
           <OpcionesCinta valor={variable} onChange={(v) => setO('variable', v)} opciones={[
             ['od', 'OD', 'OD', null, 'OD tal cual'], ['ln', 'ln(OD)', 'ln', null, 'Logaritmo natural de la OD\nEstabiliza la varianza cuando la DE crece con la media'], ['odc', 'OD ÷ ODc', '÷', null, 'Cada OD dividida por el ODc de su placa: cada unidad es un ODc (1 = ODc, 2 = 2 × ODc, 4 = 4 × ODc)\nQuita la diferencia de tinción entre placas; la dispersión sigue creciendo con la OD'],
-            ['logodc', 'log ODc', 'log', null, `${TXT_LOGODC}\nCada OD medida contra el ODc de su placa en escala logarítmica: 1 = ODc, 2 = 2 × ODc, 3 = 4 × ODc.\nQuita la variación de la tinción entre placas y la varianza que crece con la OD: los grupos se comparan con los mismos umbrales de clase.`],
           ]} />
         </Grupo>
         {modo !== 'placas' && !usaPlacaLibre && (

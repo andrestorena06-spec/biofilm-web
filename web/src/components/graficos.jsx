@@ -1,9 +1,7 @@
 import { CompararTab } from './comparar.jsx'
 import { GraficoTab } from './tabs2.jsx'
 import { Grupo, OpcionesCinta } from './cinta.jsx'
-import { TXT_LOGODC } from '../utils.js'
-
-const ESCALA_OPC = ['od', 'odc', 'logodc']
+const ESCALA_OPC = ['od', 'odc']
 
 // Pestaña «Gráfico»: en la cinta se elige qué mirar, la placa activa (barras y clasificación) o la comparación entre placas
 export function GraficoPestana({ s }) {
@@ -21,7 +19,6 @@ export function GraficoPestana({ s }) {
       <OpcionesCinta valor={escala} onChange={(v) => s.setOpts((o) => ({ ...o, barras: { ...o.barras, escala: v } }))} opciones={[
         ['od', 'OD', 'OD', null, 'OD tal cual'],
         ['odc', 'OD ÷ ODc', '÷', null, 'Escala OD ÷ ODc\nCada OD dividida por el ODc de su placa: cada unidad es un ODc (1 = ODc, 2 = 2 × ODc, 4 = 4 × ODc).\nQuita la variación de la tinción entre placas; las líneas de clase quedan en 1, 2 y 4.'],
-        ['logodc', 'log ODc', 'log', null, `Escala ${TXT_LOGODC}\nCada OD se mide contra el ODc de su placa en escala logarítmica: 1 = ODc, 2 = 2 × ODc, 3 = 4 × ODc.\nQuita la variación de la tinción entre placas; las líneas de clase quedan en 1, 2 y 3.`],
       ]} />
     </Grupo>
   </>)

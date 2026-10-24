@@ -610,6 +610,3 @@ button[data-tip], .chip-placa[data-tip] { cursor: pointer; }
 @media (max-width: 1100px) { .est-paneles { grid-template-columns: 1fr; } }
 @media (max-width: 760px) { .fila-sel { grid-template-columns: 1fr; gap: 2px; } }
 
-/* gráfico de la función log ODc en Métodos */
-.figura-curva { max-width: 820px; margin: 4px 0 12px; }
-.curva-logodc { width: 100%; height: auto; display: block; }

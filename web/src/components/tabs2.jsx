@@ -14,7 +14,7 @@ import { resumenBlancos } from '../blancos.js'
 import { excelDe } from '../api.js'
 import { Q_TABLA } from '../criticos.js'
 import { criticoGrubbs, normalizarMetodo } from '../motor.js'
-import { ESCALAS, TXT_LOGODC, conRango, escalaValida, estiloEscala, descargarBlob, estiloDefecto, fmt, tCuantil } from '../utils.js'
+import { ESCALAS, conRango, escalaValida, estiloEscala, descargarBlob, estiloDefecto, fmt, tCuantil } from '../utils.js'
 
 const nombreMetodo = { q: 'Test Q de Dixon', grubbs: 'Test de Grubbs', cv: 'Coeficiente de variación (%RSD)' }
 const ERRORES = [['ic95', 'IC 95 %'], ['sd', 'DE'], ['sem', 'SEM']]
@@ -78,7 +78,6 @@ export function ExcluirTab({ s }) {
           <OpcionesCinta valor={ESCALAS[o.escala] ? o.escala : 'od'} onChange={(v) => setO('escala', v)} opciones={[
             ['od', 'OD', 'OD', null, 'OD tal cual'],
             ['odc', 'OD ÷ ODc', '÷', null, 'OD ÷ ODc con el ODc de esta placa: cada unidad es un ODc (1 = ODc, 2 = 2 × ODc, 4 = 4 × ODc).\nSolo cambia el dibujo: los valores atípicos se buscan siempre sobre la OD.'],
-            ['logodc', 'log ODc', 'log', null, `${TXT_LOGODC} con el ODc de esta placa: 1 = ODc, 2 = 2 × ODc, 3 = 4 × ODc.\nSolo cambia el dibujo: los valores atípicos se buscan siempre sobre la OD.`],
           ]} />
         </Grupo>
         <GrupoImagen onGuardar={() => setExp(true)} onEstilo={() => setDlg(true)} onRango={() => setRng(true)} />
@@ -480,8 +479,7 @@ function MetodoDetalle({ d, odc }) {
         <li>Productor moderado: 2 × ODc &lt; OD ≤ 4 × ODc</li>
         <li>Productor fuerte: OD &gt; 4 × ODc</li>
       </ul>
-      <p>En la escala <b>1 + log₂(OD ÷ ODc)</b> (botón «Escala» en Calidad y Gráfico, «log ODc» en Estadística) cada OD se mide contra el ODc de su placa en escala logarítmica: el ODc vale 1, 2 × ODc vale 2 y 4 × ODc vale 3, así que los umbrales son los mismos en todas las placas. Cada escalón de 1 es una OD del doble. El gráfico de la función con el ODc de la placa activa está en el paso a paso.</p>
-      <p>En la escala <b>OD ÷ ODc</b> (también en el botón «Escala» y en Estadística) cada unidad es un ODc: los umbrales quedan en 1, 2 y 4, iguales en todas las placas, pero la escala es lineal y la dispersión sigue creciendo con la OD.</p>
+      <p>En la escala <b>OD ÷ ODc</b> (botón «Escala» en Calidad y Gráfico, y «Datos» en Estadística) cada OD se divide por el ODc de su placa y cada unidad es un ODc: los umbrales quedan en 1, 2 y 4, iguales en todas las placas, pero la escala es lineal y la dispersión sigue creciendo con la OD.</p>
       <h3>2. Media y errores del gráfico (SD, SEM, IC 95 %)</h3>
       <p>Para cada muestra solo se usan las <b>n réplicas aceptadas</b>; los pocillos excluidos no entran en ningún cálculo. Con n &lt; 2 no se puede calcular ningún error. Sea <code>xᵢ</code> la OD de cada réplica:</p>
       <ul>
@@ -534,7 +532,7 @@ function MetodoDetalle({ d, odc }) {
       <p className="ayuda">Un test estadístico no distingue un error experimental de una variación biológica real: revisá cada sospechoso antes de excluirlo y no elimines datos solo porque no te gusta el resultado.</p>
 
       <h3>8. Comparación entre placas</h3>
-      <p>En <b>Gráfico › Comparar placas</b> cada muestra se dibuja con <b>una columna por placa</b> (la altura es la OD media de sus réplicas aceptadas), <b>una por medio de cultivo</b> (las placas del mismo medio juntas, con todos sus pocillos o un valor por placa) o <b>una por pocillo</b>. Se puede mostrar barras con error, cajas (Q1–Q3, con 5 o más datos por columna), mediana, mínimo y máximo, media y los puntos. En OD no hay líneas de ODc (cada placa tiene el suyo); con las escalas OD ÷ ODc y log ODc cada valor se mide contra el ODc de su placa y las líneas de clase quedan en 1, 2 y 4 o en 1, 2 y 3, iguales para todas.</p>
+      <p>En <b>Gráfico › Comparar placas</b> cada muestra se dibuja con <b>una columna por placa</b> (la altura es la OD media de sus réplicas aceptadas), <b>una por medio de cultivo</b> (las placas del mismo medio juntas, con todos sus pocillos o un valor por placa) o <b>una por pocillo</b>. Se puede mostrar barras con error, cajas (Q1–Q3, con 5 o más datos por columna), mediana, mínimo y máximo, media y los puntos. En OD no hay líneas de ODc (cada placa tiene el suyo); con la escala OD ÷ ODc cada valor se divide por el ODc de su placa y las líneas de clase quedan en 1, 2 y 4, iguales para todas.</p>
       <h4>Qué cuenta como réplica</h4>
       <p>Los pocillos de una misma placa son <b>réplicas técnicas</b>: salen del mismo cultivo, el mismo día y el mismo lector. Las <b>placas</b> (hechas en días o experimentos distintos) son las <b>réplicas biológicas</b>. Para las pruebas cada placa aporta <b>un solo número por muestra</b> (su OD media), así que el <b>n es el número de placas</b>. Contar los pocillos como réplicas independientes produce diferencias «significativas» que no lo son (pseudorreplicación).</p>
       <h4>Barras de error del gráfico</h4>
@@ -551,7 +549,7 @@ function MetodoDetalle({ d, odc }) {
       <h4>Precauciones</h4>
       <ul>
         <li><b>Pocas placas, poca potencia.</b> Con 2 o 3 placas solo se detectan diferencias grandes; un p alto no prueba que no haya diferencia. Idealmente, 3 o más placas independientes por condición.</li>
-        <li><b>La OD se compara tal cual.</b> Si las placas tienen fondos muy distintos (mirá el ODc de cada una), conviene comparar en la escala <b>log ODc</b> (o OD ÷ ODc, o ln(OD)), que se elige en Estadística y en Gráfico.</li>
+        <li><b>La OD se compara tal cual.</b> Si las placas tienen fondos muy distintos (mirá el ODc de cada una), conviene comparar en la escala <b>OD ÷ ODc</b> (o ln(OD)), que se elige en Estadística y en Gráfico.</li>
         <li>Las placas leídas a distintas longitudes de onda no son comparables (el Resumen lo avisa).</li>
       </ul>
       <p className="ayuda">Los cálculos se verificaron contra R (t.test, p.adjust, aov, oneway.test, kruskal.test, shapiro.test, car::Anova y psych::ICC) con los mismos datos.</p>

@@ -73,11 +73,11 @@ export const LeyendaX = ({ L, est }) => est.leyendaX.texto ? (
 export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, est, eje, onContext, tam, nota, leyendaPuntos, escala }, svgRef) {
   const [wrap, Wmed] = useAncho()
   const W = tam ? tam.w : Wmed
-  // escalas relativas al ODc de la placa: OD ÷ ODc (clases en 1, 2 y 4) o 1 + log₂(OD ÷ ODc) (clases en 1, 2 y 3)
+  // escala relativa al ODc de la placa: OD ÷ ODc, con las clases en 1, 2 y 4
   const esc = escalaValida(escala, odc)
-  const log = esc === 'logodc', rel = esc !== 'od'
+  const rel = esc !== 'od'
   const tv = fEscala(esc, odc)
-  const tvB = (v) => (Number.isFinite(tv(v)) ? tv(v) : 0)   // altura de barra (OD ≤ 0 en log: sin barra)
+  const tvB = (v) => (Number.isFinite(tv(v)) ? tv(v) : 0)
   const lineas = o.lineas && Number.isFinite(odc)
   const umbrales = rel ? ESCALAS[esc].umbrales.map((u) => u[0]) : [odc, 2 * odc, 4 * odc]
   const errTxt = { ic95: 'IC 95 %', sd: 'desviación estándar', sem: 'error estándar', ninguno: '' }[o.error]
@@ -88,15 +88,13 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
   const topDe = filas.map((f) => {
     const e = errDe(f)
     const p = puntos.filter((q) => q.Muestra === f.Muestra).map((q) => tv(q.OD)).filter(Number.isFinite)
-    return Math.max(...[tv(f.Media + (Number.isFinite(e) ? e : 0)), ...p].filter(Number.isFinite), log ? 0 : -Infinity)
+    return Math.max(...[tv(f.Media + (Number.isFinite(e) ? e : 0)), ...p].filter(Number.isFinite))
   })
-  // con la escala logarítmica los valores pueden ser negativos (OD menor que la mitad del ODc)
-  const bajos = log ? filas.flatMap((f) => { const e = errDe(f); return [tv(f.Media), Number.isFinite(e) && f.Media - e > 0 ? tv(f.Media - e) : NaN, ...puntos.filter((q) => q.Muestra === f.Muestra).map((q) => tv(q.OD))] }).filter(Number.isFinite) : []
-  const lo = log ? Math.min(0, ...bajos) : 0
+  const lo = 0
   // textos "media ± error"; si no caben al lado de los vecinos se apilan en dos líneas
   const textoValor = (f) => {
     const e = errDe(f)
-    return { m: fmt(tv(f.Media), rel ? 2 : 3), e: !log && o.errores && Number.isFinite(e) ? fmt(rel ? e / odc : e, rel ? 2 : 3) : null }
+    return { m: fmt(tv(f.Media), rel ? 2 : 3), e: o.errores && Number.isFinite(e) ? fmt(rel ? e / odc : e, rel ? 2 : 3) : null }
   }
   const wMaxTxt = Math.max(0, ...filas.map((f) => {
     const t = textoValor(f)
@@ -106,22 +104,22 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
   const apilar = o.medias && wMaxTxt > wDisponible * 0.92
   let tope = Math.max(0, ...topDe)
   if (o.medias) tope *= 1 + (est.valores.size * (apilar ? 2.8 : 1.6)) / 340
-  if (lineas) tope = Math.max(tope * 1.05, log ? 3.9 : rel ? 4.9 : odc * 4.9)
+  if (lineas) tope = Math.max(tope * 1.05, rel ? 4.9 : odc * 4.9)
   if (!(tope > 0)) tope = 1
   const eY = ejeConRango(ticksBonitos(lo, tope, 6), estiloEscala(est, esc))
-  // las barras salen del 0 (en log ODc, 0 = la mitad del ODc): las que quedan por debajo bajan
+  // las barras salen del 0
   const base = Math.min(Math.max(0, eY.min), eY.max)
   const yLabels = eY.ticks.map((t) => fmtTick(t, eY.paso))
 
   const [u1, u2, u3] = rel ? ESCALAS[esc].umbrales.map((u) => String(u[0])) : [fmt(odc), fmt(2 * odc), fmt(4 * odc)]
   // posición de cada nombre de clase (a mitad de su franja)
-  const posC = (mLin, mLog) => (log ? mLog : rel ? mLin : mLin * odc)
+  const posC = (m) => (rel ? m : m * odc)
   const clasesTxt = lineas
     ? [
-        ['Productor fuerte', posC(4.45, 3.45), o.valoresClase ? `Productor fuerte\n(> ${u3})` : 'Productor fuerte'],
-        ['Productor moderado', posC(3, 2.5), o.valoresClase ? `Productor moderado\n(${u2} – ${u3})` : 'Productor moderado'],
-        ['Productor débil', posC(1.5, 1.5), o.valoresClase ? `Productor débil\n(${u1} – ${u2})` : 'Productor débil'],
-        ['No productor', posC(0.5, 0.5), o.valoresClase ? `No productor\n(≤ ${u1})` : 'No productor'],
+        ['Productor fuerte', posC(4.45), o.valoresClase ? `Productor fuerte\n(> ${u3})` : 'Productor fuerte'],
+        ['Productor moderado', posC(3), o.valoresClase ? `Productor moderado\n(${u2} – ${u3})` : 'Productor moderado'],
+        ['Productor débil', posC(1.5), o.valoresClase ? `Productor débil\n(${u1} – ${u2})` : 'Productor débil'],
+        ['No productor', posC(0.5), o.valoresClase ? `No productor\n(≤ ${u1})` : 'No productor'],
       ]
     : []
   const wClases = lineas
@@ -177,7 +175,7 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
                 data-tip={(rel ? ESCALAS[esc].cuenta(f.Media, odc) + '\n' : '') + dBarra(`${f.Muestra}${f.EsBlanco ? ' (blanco)' : ''} · OD media = ${fmt(f.Media)}`, pts.map((q) => q.OD), o.error, f.EsBlanco ? NaN : odc, f.Clasificacion)} />
               {Number.isFinite(e) && e > 0 && (
                 <g stroke="#111" strokeWidth="1.3">
-                  {(() => { const hi = y(tv(f.Media + e)), bajo = y(log ? (f.Media - e > 0 ? Math.max(tv(f.Media - e), eY.min) : eY.min) : Math.max(tv(f.Media - e), 0)); return <>
+                  {(() => { const hi = y(tv(f.Media + e)), bajo = y(Math.max(tv(f.Media - e), 0)); return <>
                     <line x1={cx(i)} x2={cx(i)} y1={bajo} y2={hi} />
                     <line x1={cx(i) - bw * 0.18} x2={cx(i) + bw * 0.18} y1={hi} y2={hi} />
                     <line x1={cx(i) - bw * 0.18} x2={cx(i) + bw * 0.18} y1={bajo} y2={bajo} /></> })()}

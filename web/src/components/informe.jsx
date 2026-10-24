@@ -4,10 +4,76 @@ import { CompararChart } from './compararchart.jsx'
 import { armarComparacion } from '../comparacion.js'
 import { ESCALAS, escalaValida, fmt } from '../utils.js'
 import { resumenBlancos } from '../blancos.js'
+import { resumenesInforme } from '../resumenes.js'
+import { marcaSig, media } from '../estadistica.js'
 
 const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
 const r4 = (x, d = 4) => (Number.isFinite(x) ? Number(x.toFixed(d)) : '')
 const METODOS = { q: 'Test Q de Dixon', grubbs: 'Test de Grubbs', cv: 'Coeficiente de variación máximo' }
+
+// ---- resúmenes de las pruebas (entre placas, entre medios y entre variantes de cada cepa) ----
+const NOMBRE_TEST = { anova: 'ANOVA', welch: 'ANOVA de Welch', kw: 'Kruskal-Wallis' }
+const pT = (p) => (!Number.isFinite(p) ? '–' : p < 0.0001 ? '&lt; 0.0001' : p.toFixed(4))
+const n3 = (x) => (Number.isFinite(x) ? x.toFixed(3) : '–')
+const glTxt = (g) => (g.df2 === null || g.df2 === undefined ? `${g.df1}` : `${g.df1}; ${Number.isInteger(g.df2) ? g.df2 : g.df2.toFixed(1)}`)
+// celdas de una fila de resultados: prueba, p y conclusión (o el motivo por el que no se pudo hacer)
+function celdasPrueba(r, extra) {
+  if (!r) return `<td colspan="${extra ? 4 : 3}" class="tenue">menos de dos grupos con datos</td>`
+  if (!r.ok) return `<td colspan="${extra ? 4 : 3}" class="tenue">${esc(r.motivo)}</td>`
+  const p = r.global.p, sig = p < 0.05
+  const orden = [...r.grupos].sort((a, z) => media(z.v) - media(a.v))
+  const concl = !sig ? 'sin diferencias' : orden.length === 2 ? `${esc(orden[0].nombre)} &gt; ${esc(orden[1].nombre)}` : 'difieren'
+  const pares = extra ? r.pares.filter((x) => Number.isFinite(x.pa) && x.pa < 0.05) : []
+  return `<td>${NOMBRE_TEST[r.tipo]}<br><small>${r.global.est}(${glTxt(r.global)}) = ${r.global.valor.toFixed(2)}</small></td>
+    <td class="num">${pT(p)} ${sig ? marcaSig(p) : ''}</td><td class="${sig ? 'sig' : ''}">${concl}</td>${extra ? `<td>${pares.length ? pares.map((x) => `${esc(x.a)} vs ${esc(x.b)} <small>(p ${pT(x.pa)})</small>`).join('<br>') : r.grupos.length > 2 ? 'ninguno' : '–'}</td>` : ''}`
+}
+// celda de un grupo: media ± DE (n) y la letra de la comparación
+const celdaGrupo = (g, r, conDE) => (g && g.v.length
+  ? `<td class="num">${n3(g.m)}${conDE && Number.isFinite(g.de) ? ` ± ${n3(g.de)}` : ''} <small>(${g.v.length})</small>${r?.ok && r.letras?.[g.nombre] ? ` <b class="letra">${r.letras[g.nombre]}</b>` : ''}</td>`
+  : '<td class="tenue">–</td>')
+
+function estadisticaHTML(R) {
+  const unidadTxt = esc(R.unidad)
+  const prueba = R.forzado === 'auto' ? 'automática (ANOVA clásico, ANOVA de Welch o Kruskal-Wallis según la normalidad de los residuos y la igualdad de varianzas)' : NOMBRE_TEST[R.forzado]
+  const nPl = R.nivel === 'placa' ? 'placas' : 'pocillos'
+  // método de los pares que se usó de verdad (LSD solo se aplica con el ANOVA clásico; con Welch o Kruskal-Wallis va Holm)
+  const todos = [...R.placas.flatMap((b) => b.filas.map((f) => f.r)), ...R.medios.map((f) => f.r), ...R.familias.flatMap((fm) => fm.porMedio.map((f) => f.r))]
+  const metodos = new Set(todos.filter((r) => r?.ok && r.pares[0]).map((r) => r.pares[0].metodo))
+  const metodoTxt = metodos.has('LSD') && metodos.has('Holm') ? 'LSD de Fisher con el ANOVA clásico y Holm con Welch o Kruskal-Wallis' : metodos.has('LSD') ? 'LSD de Fisher' : 'Holm'
+  const ajTxt = metodos.has('LSD') && metodos.has('Holm') ? 'por LSD o Holm' : metodos.has('LSD') ? 'por LSD' : 'por Holm'
+  const avisos = [
+    R.fueraPl.length ? `Placas sacadas de las pruebas en «Estadística»: ${R.fueraPl.map((p) => esc(p.nombre)).join(', ')}.` : '',
+    R.sinOdc.length ? `Sin ODc (no entran con OD ÷ ODc): ${R.sinOdc.map((p) => esc(p.nombre)).join(', ')}.` : '',
+    R.sinMedio.length ? `Sin medio indicado (no entran en las comparaciones por medio): ${R.sinMedio.map((p) => esc(p.nombre)).join(', ')}.` : '',
+  ].filter(Boolean)
+  let h = `<section class="placa salto est"><h2>Estadística</h2>
+    <p class="meta">Variable: <b>${unidadTxt}</b> · réplica para comparar medios y cepas: <b>${R.nivel === 'placa' ? 'la placa (un valor por placa: la media de sus pocillos aceptados)' : 'el pocillo'}</b> · prueba: ${prueba} · comparaciones de a pares: ${metodoTxt}.</p>
+    ${avisos.length ? `<p class="meta">${avisos.join(' ')}</p>` : ''}`
+
+  // 1. entre placas
+  h += `<h3>1. Entre las placas de cada medio</h3><p class="meta">Para cada cepa se comparan las placas del mismo medio con sus pocillos aceptados como réplicas: muestra si la cepa da lo mismo en los distintos experimentos. Cada celda: media ± DE (n pocillos) y letra.</p>`
+  if (!R.placas.length) h += '<p class="tenue">Hace falta un medio con dos o más placas.</p>'
+  R.placas.forEach((b) => {
+    h += `<h4>${esc(b.medio)} · ${b.placas.length} placas</h4><table><thead><tr><th>Cepa</th>${b.placas.map((p) => `<th>${esc(p.nombre)}</th>`).join('')}<th>Prueba</th><th>p</th><th>Resultado</th></tr></thead><tbody>
+      ${b.filas.map((f) => `<tr><td><b>${esc(f.cepa)}</b></td>${f.grupos.map((g) => celdaGrupo(g, f.r, true)).join('')}${celdasPrueba(f.r)}</tr>`).join('')}</tbody></table>`
+  })
+
+  // 2. entre medios
+  h += `<h3>2. Entre medios de cultivo</h3><p class="meta">Para cada cepa se compara su producción en cada medio. Cada celda: media ± DE (n ${nPl}) y letra.</p>`
+  if (!R.medios.length) h += '<p class="tenue">Hacen falta placas de dos o más medios.</p>'
+  else h += `<table><thead><tr><th>Cepa</th>${R.mediosLista.map((m) => `<th>${esc(m)}</th>`).join('')}<th>Prueba</th><th>p</th><th>Resultado</th></tr></thead><tbody>
+    ${R.medios.map((f) => `<tr><td><b>${esc(f.cepa)}</b></td>${f.grupos.map((g) => celdaGrupo(g, f.r, true)).join('')}${celdasPrueba(f.r)}</tr>`).join('')}</tbody></table>`
+
+  // 3. variantes de cada cepa
+  h += `<h3>3. Variantes de cada cepa</h3><p class="meta">Se comparan las cepas que comparten el nombre base (por ejemplo L100A1, L100A1 Rug y L100A1 SCV), en cada medio por separado. Cada celda: media ± DE (n ${nPl}) y letra.</p>`
+  if (!R.familias.length) h += '<p class="tenue">No hay cepas con variantes (nombres que compartan la primera palabra).</p>'
+  R.familias.forEach((fm) => {
+    h += `<h4>${fm.cepas.map(esc).join(' · ')}</h4><table><thead><tr><th>Medio</th>${fm.cepas.map((c) => `<th>${esc(c)}</th>`).join('')}<th>Prueba</th><th>p</th><th>Resultado</th><th>Pares que difieren</th></tr></thead><tbody>
+      ${fm.porMedio.map((f) => `<tr><td><b>${esc(f.medio)}</b></td>${f.grupos.map((g) => celdaGrupo(g, f.r, true)).join('')}${celdasPrueba(f.r, true)}</tr>`).join('')}</tbody></table>`
+  })
+  h += `<p class="meta">Letras: dentro de cada fila, los grupos que comparten una letra no difieren (p ajustado ${ajTxt} ≥ 0.05). * p &lt; 0.05 · ** p &lt; 0.01 · *** p &lt; 0.001. Con pocas réplicas solo se detectan diferencias grandes: un p alto no prueba que los grupos sean iguales.</p></section>`
+  return h
+}
 
 const tabla = (cols, filas) => `<table><thead><tr>${cols.map((c) => `<th>${esc(c.replace(/_/g, ' '))}</th>`).join('')}</tr></thead><tbody>${
   filas.map((f) => `<tr>${cols.map((c) => `<td>${esc(f[c])}</td>`).join('')}</tr>`).join('')}</tbody></table>`
@@ -76,6 +142,9 @@ export function abrirInforme(s) {
         <div class="fig">${fig}</div>${tabla(Object.keys(filasT[0]), filasT)}</section>`
     }
   }
+  // resúmenes de las pruebas, con las opciones de la pestaña Estadística
+  let estadistica = ''
+  if (conAn.length > 1) { try { estadistica = estadisticaHTML(resumenesInforme(s)) } catch (e) { estadistica = `<section class="placa salto"><h2>Estadística</h2><p>No se pudieron calcular los resúmenes: ${esc(e.message)}</p></section>` } }
   const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Informe de biofilm</title><style>
     @page { size: A4; margin: 14mm 12mm; }
     body { font-family: 'Segoe UI', Arial, sans-serif; color: #2b2118; font-size: 11px; line-height: 1.4; }
@@ -88,6 +157,9 @@ export function abrirInforme(s) {
     tr { page-break-inside: avoid; } thead { display: table-header-group; }
     .salto { page-break-before: always; }
     .portada p { margin: 3px 0; }
+    h4 { font-size: 12px; margin: 10px 0 2px; color: #3b2a1a; }
+    .est td.num { white-space: nowrap; } .est td small { color: #6b5d4f; } .est .letra { color: #993c1d; }
+    .est td.sig { font-weight: 700; color: #7a2e0e; } .tenue { color: #8a7d70; }
   </style></head><body>
     <div class="portada"><h1>Informe de producción de biofilm</h1>
       <p class="meta">Generado el ${esc(fecha)} · ${conAn.length} ${conAn.length === 1 ? 'placa' : 'placas'}</p>
@@ -95,7 +167,7 @@ export function abrirInforme(s) {
       <p><b>Valores atípicos.</b> Método: ${esc(METODOS[det.metodo] || det.metodo)}${det.metodo === 'cv' ? ` (CV máximo ${esc(det.cvMax)} %)` : ` (confianza ${esc(det.conf)} %)`}; ${det.usar ? 'los sospechosos se excluyeron automáticamente' : 'los sospechosos solo se marcaron'}. Las exclusiones manuales están reflejadas en las tablas.</p>
       <p><b>Errores.</b> DE = desviación estándar muestral (n − 1); SEM = DE/√n; IC 95 % = t(0,975; n − 1) × SEM. En las comparaciones cada placa es una réplica.</p>
     </div>
-    ${secciones.join('')}${comparacion}
+    ${secciones.join('')}${comparacion}${estadistica}
   </body></html>`
 
   // en el celular el cuadro de impresión no se abre desde un marco oculto: el informe se abre en otra pestaña
