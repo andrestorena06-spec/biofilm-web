@@ -37,17 +37,21 @@ export const dCV = (v) => {
   return e.n < 2 ? 'Coeficiente de variación (CV)\nNecesita n ≥ 2' : `Coeficiente de variación (CV)\nCV = 100 × DE / x̄\n   = 100 × ${F(e.sd, 4)} / ${F(e.m, 4)}\n   = ${F(e.cv, 2)} %`
 }
 export const dError = (tipo, v) => (tipo === 'sd' ? dDE(v) : tipo === 'sem' ? dSEM(v) : tipo === 'ic95' ? dIC(v) : '')
-export const dRazon = (media, odc) => `Razón OD / ODc\nOD / ODc = ${F(media, 4)} / ${F(odc, 4)}\n         = ${F(media / odc, 2)}`
-export const dClase = (media, odc, clase) => `Clasificación (Stepanović et al., 2000)\nODc = ${F(odc, 4)} · 2×ODc = ${F(2 * odc, 4)} · 4×ODc = ${F(4 * odc, 4)}\nOD media = ${F(media, 4)}\n≤ ODc: no productor · ≤ 2×ODc: débil\n≤ 4×ODc: moderado · > 4×ODc: fuerte\n→ ${clase}`
+export const dRazon = (media, odc, resta = 0) => (resta
+  ? `Razón OD / ODc (con la OD leída)\nOD / ODc = (${F(media - resta, 4)} + ${F(resta, 4)}) / ${F(odc, 4)}\n         = ${F(media / odc, 2)}`
+  : `Razón OD / ODc\nOD / ODc = ${F(media, 4)} / ${F(odc, 4)}\n         = ${F(media / odc, 2)}`)
+// media: OD media leída. resta: blanco restado (si la OD está corregida), para mostrar de dónde sale la OD leída
+export const dClase = (media, odc, clase, resta = 0) => `Clasificación (Stepanović et al., 2000)\nODc = ${F(odc, 4)} · 2×ODc = ${F(2 * odc, 4)} · 4×ODc = ${F(4 * odc, 4)}\n${resta ? `Se clasifica con la OD leída = corregida + blanco\n= ${F(media - resta, 4)} + ${F(resta, 4)} = ${F(media, 4)}` : `OD media = ${F(media, 4)}`}\n≤ ODc: no productor · ≤ 2×ODc: débil\n≤ 4×ODc: moderado · > 4×ODc: fuerte\n→ ${clase}`
 export const dODc = (bl) => {
   const e = estad(bl)
   return `Punto de corte (ODc)\nODc = media(blancos) + 3 × DE(blancos)\n    = ${F(e.m, 4)} + 3 × ${F(e.sd, 4)}\n    = ${F(e.m + 3 * e.sd, 4)}\nblancos aceptados (n = ${e.n}): ${lista(bl)}`
 }
 // bloque completo de una barra: media, error elegido y, si corresponde, clasificación
-export const dBarra = (titulo, v, tipoError, odc, clase) => {
+// resta: blanco restado a cada OD de v (la clasificación usa la OD leída)
+export const dBarra = (titulo, v, tipoError, odc, clase, resta = 0) => {
   const partes = [dMedia(v)]
   if (tipoError && tipoError !== 'ninguno' && v.length > 1) partes.push(dError(tipoError, v))
-  if (Number.isFinite(odc) && clase) partes.push(dClase(estad(v).m, odc, clase))
+  if (Number.isFinite(odc) && clase) partes.push(dClase(estad(v).m + resta, odc, clase, resta))
   return `${titulo}\n${partes.join('\n\n')}`
 }
 // posición de un cuantil por interpolación lineal (la misma que usa R por defecto)

@@ -7,23 +7,30 @@ import { desvio, media } from './estadistica.js'
 const finito = Number.isFinite
 export const SIN_MEDIO = '(sin medio)'
 export const UNIDAD = { od: 'OD', ln: 'ln(OD)', odc: 'OD ÷ ODc' }
+// nombre de la variable con la OD corregida por blanco (Calidad › Restar blanco); OD ÷ ODc usa siempre la OD leída
+export const unidadDe = (variable, corregida) => (corregida && variable === 'od' ? 'OD corregida' : corregida && variable === 'ln' ? 'ln(OD corregida)' : UNIDAD[variable] || 'OD')
 
 // Valores de cada cepa en cada placa: uno por placa (la OD media de sus pocillos aceptados) y uno por pocillo
 export function prepararDatos(s, D, variable) {
-  const fx = (y, odc) => (variable === 'ln' ? (y > 0 ? Math.log(y) : NaN) : variable === 'odc' ? (odc > 0 ? y / odc : NaN) : y)
+  // resta: blanco restado a la OD; la razón con el ODc se hace con la OD leída
+  let noPos = 0
+  const fx = (y, odc, resta = 0) => {
+    if (variable === 'ln') { if (y > 0) return Math.log(y); noPos++; return NaN }
+    return variable === 'odc' ? (odc > 0 ? (y + resta) / odc : NaN) : y
+  }
   const orden = [...new Set(s.placas.map((p) => p.medio).filter(Boolean))]
   const placas = [...D.conAnalisis].sort((a, b) => (a.medio ? orden.indexOf(a.medio) : 999) - (b.medio ? orden.indexOf(b.medio) : 999))
   const obsPlaca = [], obsPozo = [], fuera = []
   placas.forEach((p) => {
-    const a = s.analisisMap[p.id], odc = a.odc?.odc, medio = p.medio || SIN_MEDIO
+    const a = s.analisisMap[p.id], odc = a.odc?.odc, resta = a.odc?.resta || 0, medio = p.medio || SIN_MEDIO
     a.resumen.forEach((r) => {
-      const y = finito(r.Media) ? fx(r.Media, odc) : NaN
+      const y = finito(r.Media) ? fx(r.Media, odc, resta) : NaN
       if (finito(y)) obsPlaca.push({ cepa: r.Muestra, medio, placaId: p.id, placa: p.nombre, y, etq: p.nombre, clase: r.Clasificacion })
     })
     a.estado.forEach((e) => {
       if (e.EsBlanco) return
       if (!e.Usado) { fuera.push({ cepa: e.Muestra, placaId: p.id, etq: `${p.nombre} · ${e.Pocillo}`, od: e.OD, motivo: e.Manual ? 'excluido a mano' : 'valor atípico' }); return }
-      const y = fx(e.OD, odc)
+      const y = fx(e.OD, odc, resta)
       if (finito(y)) obsPozo.push({ cepa: e.Muestra, medio, placaId: p.id, placa: p.nombre, y, etq: `${p.nombre} · ${e.Pocillo}` })
     })
   })
@@ -32,7 +39,8 @@ export function prepararDatos(s, D, variable) {
   const medios = orden.filter((m) => placas.some((p) => p.medio === m))
   // la escala relativa al ODc deja afuera las placas sin ODc
   const sinOdc = variable === 'odc' ? placas.filter((p) => !(s.analisisMap[p.id].odc?.odc > 0)) : []
-  return { placas, obsPlaca, obsPozo, fuera, cepas, medios, sinOdc }
+  // con ln, los valores ≤ 0 (posibles con la OD corregida) quedan afuera
+  return { placas, obsPlaca, obsPozo, fuera, cepas, medios, sinOdc, noPos, corregida: !!D.corregida }
 }
 
 // familia de una cepa: el nombre hasta el primer espacio (L100A1 Rug y L100A1 SCV son variantes de L100A1)
@@ -83,7 +91,7 @@ export function resumenesInforme(s) {
     }))
 
   return {
-    variable, unidad: UNIDAD[variable], nivel, forzado, ajuste, mediosLista: X.medios, placas, medios, familias,
+    variable, unidad: unidadDe(variable, X.corregida), nivel, forzado, ajuste, mediosLista: X.medios, placas, medios, familias,
     fueraPl: X.placas.filter((p) => fueraPl.has(p.id)), sinOdc: X.sinOdc, sinMedio: X.placas.filter((p) => !p.medio),
   }
 }

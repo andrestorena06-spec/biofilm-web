@@ -238,17 +238,21 @@ export const escalaY = (L, eY) => (v) => {
 
 // Escala relativa al ODc de cada placa (botón «Escala» de Gráfico y Calidad): OD ÷ ODc, cada unidad es un ODc
 // y las clases quedan en 1, 2 y 4 en todas las placas. umbrales: [valor, nombre, múltiplo del ODc]
+// resta: blanco que se le restó a la OD (Calidad › Restar blanco). El ODc se calcula con la OD leída,
+// así que la razón se hace con la OD leída: (OD corregida + blanco) ÷ ODc.
 export const ESCALAS = {
   od: { eje: null, corto: 'OD' },
   odc: {
-    eje: 'OD ÷ ODc', corto: 'OD ÷ ODc', f: (od, odc) => (Number.isFinite(od) && odc > 0 ? od / odc : NaN),
+    eje: 'OD ÷ ODc', corto: 'OD ÷ ODc', f: (od, odc, resta = 0) => (Number.isFinite(od) && odc > 0 ? (od + (resta || 0)) / odc : NaN),
     umbrales: [[1, 'ODc', 1], [2, '2 × ODc', 2], [4, '4 × ODc', 4]], nota: '1 = ODc, 2 = 2 × ODc, 4 = 4 × ODc',
-    cuenta: (od, odc) => `OD ÷ ODc = ${od.toFixed(4)} ÷ ${odc.toFixed(4)} = ${(od / odc).toFixed(3)}`,
+    cuenta: (od, odc, resta = 0) => (resta
+      ? `OD ÷ ODc = (OD corregida + blanco) ÷ ODc\n= (${od.toFixed(4)} + ${resta.toFixed(4)}) ÷ ${odc.toFixed(4)} = ${((od + resta) / odc).toFixed(3)}`
+      : `OD ÷ ODc = ${od.toFixed(4)} ÷ ${odc.toFixed(4)} = ${(od / odc).toFixed(3)}`),
   },
 }
 // la escala que se puede usar con ese ODc (sin ODc, OD)
 export const escalaValida = (e, odc) => (ESCALAS[e]?.f && odc > 0 ? e : 'od')
-export const fEscala = (e, odc) => (ESCALAS[e]?.f && odc > 0 ? (v) => ESCALAS[e].f(v, odc) : (v) => v)
+export const fEscala = (e, odc, resta = 0) => (ESCALAS[e]?.f && odc > 0 ? (v) => ESCALAS[e].f(v, odc, resta) : (v) => v)
 // el rango del eje Y elegido a mano se guarda aparte para cada escala (sus números no son de OD)
 const claveRango = (e) => (e === 'odc' ? 'rangoOdc' : 'rango')
 export const estiloEscala = (est, e) => ({ ...est, rango: est[claveRango(e)] })

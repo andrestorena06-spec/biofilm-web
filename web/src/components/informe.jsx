@@ -84,7 +84,11 @@ export function abrirInforme(s) {
   const conAn = s.placas.filter((p) => !p.oculta && s.analisisMap[p.id]?.resumen?.length)
   if (!conAn.length) return false
   const noop = () => {}
-  const ejeDe = (p) => (Number.isFinite(p.placa?.onda) ? `DO a ${p.placa.onda} nm` : 'Densidad óptica (OD)')
+  // con «Restar blanco» (Calidad) todo el informe va en OD corregida, salvo el ODc y la clasificación
+  const corr = !!s.restarBlanco
+  const ejeDe = (p) => (corr
+    ? (Number.isFinite(p.placa?.onda) ? `OD corregida a ${p.placa.onda} nm` : 'OD corregida (OD − blanco)')
+    : (Number.isFinite(p.placa?.onda) ? `DO a ${p.placa.onda} nm` : 'Densidad óptica (OD)'))
   const svgStr = (el) => renderToStaticMarkup(el)
   const det = s.deteccion
   const fecha = new Date().toLocaleString('es', { dateStyle: 'long', timeStyle: 'short' })
@@ -97,24 +101,26 @@ export function abrirInforme(s) {
     if (ob.orden === 'desc') filas = [...filas].sort((x, y) => y.Media - x.Media)
     const puntos = a.estado.filter((e) => e.Usado && filas.some((f) => f.Muestra === e.Muestra))
     const orden = [...new Set(a.estado.map((e) => e.Muestra))]
+    const resta = a.odc?.resta || 0
+    const restada = !!a.blanco?.restado
     const muestras = a.resumen.map((m) => ({
-      Muestra: m.Muestra, Pocillos: m.N_total, Aceptadas: m.N_aceptadas, Excluidas: m.N_excluidas, Media_OD: r4(m.Media), DE: r4(m.SD), SEM: r4(m.SEM),
-      IC95_mas_menos: r4(m.IC95), CV_pct: r4(m.CV_pct, 2), OD_sobre_ODc: r4(m.Razon_ODc, 2), Clasificacion: m.Clasificacion || '',
+      Muestra: m.Muestra, Pocillos: m.N_total, Aceptadas: m.N_aceptadas, Excluidas: m.N_excluidas, ...(restada ? { Media_OD_corregida: r4(m.Media) } : { Media_OD: r4(m.Media) }), DE: r4(m.SD), SEM: r4(m.SEM),
+      IC95_mas_menos: r4(m.IC95), CV_pct: r4(m.CV_pct, 2), ...(restada ? { Media_OD_leida: r4(m.MediaLeida) } : {}), OD_sobre_ODc: r4(m.Razon_ODc, 2), Clasificacion: m.Clasificacion || '',
     }))
     const pocillos = a.estado.map((e) => ({
-      Pocillo: e.Pocillo, Muestra: e.Muestra, Replica: e.Replica, Blanco: e.EsBlanco ? 'Sí' : 'No', OD: r4(e.OD),
+      Pocillo: e.Pocillo, Muestra: e.Muestra, Replica: e.Replica, Blanco: e.EsBlanco ? 'Sí' : 'No', ...(restada ? { OD_corregida: r4(e.OD), OD_leida: r4(e.ODleida) } : { OD: r4(e.OD) }),
       Estado: e.Usado ? 'Aceptado' : 'Excluido', Sospechoso: e.Sospechoso ? 'Sí' : 'No', Motivo: e.Manual ? 'Excluido manualmente' : e.Motivo || '',
     }))
     const escB = escalaValida(s.opts.barras.escala, a.odc.odc)
-    const gBarras = filas.length ? svgStr(<BarChart filas={filas} puntos={puntos} odc={a.odc.odc} o={ob} est={s.estilos.barras} eje={escB === 'od' ? eje : ESCALAS[escB].eje} escala={escB} cvLim={Number(det.cvMax) || 20} tam={{ w: 900, h: 520 }} />) : ''
+    const gBarras = filas.length ? svgStr(<BarChart filas={filas} puntos={puntos} odc={a.odc.odc} o={ob} est={s.estilos.barras} eje={escB === 'od' ? eje : ESCALAS[escB].eje} escala={escB} cvLim={Number(det.cvMax) || 20} resta={resta} tam={{ w: 900, h: 520 }} />) : ''
     const escE = escalaValida(s.opts.excluir.escala, a.odc.odc)
-    const gExcluir = svgStr(<ExcluirChart estado={a.estado} orden={orden} o={s.opts.excluir} est={s.estilos.excluir} eje={escE === 'od' ? eje : ESCALAS[escE].eje} odc={a.odc.odc} escala={escE} onClickPunto={noop} tam={{ w: 900, h: 520 }} />)
+    const gExcluir = svgStr(<ExcluirChart estado={a.estado} orden={orden} o={s.opts.excluir} est={s.estilos.excluir} eje={escE === 'od' ? eje : ESCALAS[escE].eje} odc={a.odc.odc} escala={escE} resta={resta} onClickPunto={noop} tam={{ w: 900, h: 520 }} />)
     return `<section class="placa ${i ? 'salto' : ''}">
       <h2>${esc(p.nombre)}${p.medio ? ' <small>· ' + esc(p.medio) + '</small>' : ''}</h2>
       <p class="meta">Archivo: ${esc(p.archivo?.nombre || '–')}${p.archivo?.hoja && p.archivo.hoja !== 'csv' ? ' · hoja ' + esc(p.archivo.hoja) : ''}
         · ${Number.isFinite(p.placa?.onda) ? p.placa.onda + ' nm' : 'sin longitud de onda'}${p.placa?.fecha ? ' · lectura ' + esc(p.placa.fecha) : ''}
         · ${p.config.length} pocillos configurados</p>
-      <p class="odc"><b>ODc = ${Number.isFinite(a.odc?.odc) ? fmt(a.odc.odc, 4) : 'sin calcular'}</b>${a.odc?.n ? ` (n = ${a.odc.n} blancos aceptados)` : ''}</p>
+      <p class="odc"><b>ODc = ${Number.isFinite(a.odc?.odc) ? fmt(a.odc.odc, 4) : 'sin calcular'}</b>${a.odc?.n ? ` (n = ${a.odc.n} blancos aceptados)` : ''}${restada ? ` · <b>OD corregida</b> = OD leída − ${fmt(resta, 4)} (media de los blancos). El ODc y la clasificación usan la OD leída.` : corr ? ' · sin blancos aceptados: OD leída (sin restar el blanco)' : ''}</p>
       <h3>Clasificación por muestra</h3>${gBarras ? `<div class="fig">${gBarras}</div>` : ''}
       ${tabla(Object.keys(muestras[0] || { Muestra: 1 }), muestras)}
       <h3 class="salto">Control de calidad de los pocillos</h3><div class="fig">${gExcluir}</div>
@@ -132,10 +138,10 @@ export function abrirInforme(s) {
       valores: oc.valores !== false, errores: !!oc.errores, rotar: oc.rotar ?? 45, cv: !!oc.cv && oc.modo !== 'pocillo', errorTipo: oc.error,
     }
     if (D.grupos.length && (el.barras || el.caja || el.mediana || el.bigotes || el.media || el.puntos)) {
-      const fig = svgStr(<CompararChart grupos={D.grupos} leyenda={D.leyenda} o={{ ...el, valoresClase: !!s.opts.comparar.valoresClase }} est={s.estilos.comparar} eje={D.rel ? ESCALAS[D.escala].eje : ejeDe(D.placasSel[0])} tam={{ w: 900, h: 560 }} nota={D.nota} clases={D.rel && s.opts.comparar.lineas !== false} escala={D.escala} unidad={D.rel ? ESCALAS[D.escala].corto : 'OD'} cvLim={Number(det.cvMax) || 20} />)
+      const fig = svgStr(<CompararChart grupos={D.grupos} leyenda={D.leyenda} o={{ ...el, valoresClase: !!s.opts.comparar.valoresClase }} est={s.estilos.comparar} eje={D.rel ? ESCALAS[D.escala].eje : ejeDe(D.placasSel[0])} tam={{ w: 900, h: 560 }} nota={D.nota} clases={D.rel && s.opts.comparar.lineas !== false} escala={D.escala} unidad={D.rel ? ESCALAS[D.escala].corto : D.corregida ? 'OD corregida' : 'OD'} cvLim={Number(det.cvMax) || 20} />)
       const filasT = D.grupos.flatMap((g) => g.barras.map((b) => ({
         Muestra: g.etiqueta, [{ medio: 'Medio', pocillo: 'Pocillo', todas: 'Placas' }[D.modo] || 'Placa']: b.placa,
-        OD_media: r4(b.media), Error: b.err === null || b.err === undefined ? '' : r4(b.err), N: (b.vp || b.pts).length,
+        [D.corregida && !D.rel ? 'OD_corregida_media' : 'OD_media']: r4(b.media), Error: b.err === null || b.err === undefined ? '' : r4(b.err), N: (b.vp || b.pts).length,
       })))
       comparacion = `<section class="placa salto"><h2>Comparación entre placas${D.modo === 'medio' ? ' por medio de cultivo' : D.modo === 'todas' ? ' (todas las placas juntas)' : D.modo === 'pocillo' ? ' (pocillo por pocillo)' : ''}</h2>
         <p class="meta">${D.placasSel.map((p) => `<b>${esc(p.nombre)}</b>${p.medio ? ' (' + esc(p.medio) + ')' : ''}`).join(' · ')}</p>

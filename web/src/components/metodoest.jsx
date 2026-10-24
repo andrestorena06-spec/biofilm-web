@@ -3,6 +3,7 @@ import { Campo, Select } from './ui.jsx'
 import { Nota } from './tip.jsx'
 import { dentroDeSel, objetivoDe, usaMedio } from './pruebas.jsx'
 import { armarComparacion } from '../comparacion.js'
+import { unidadDe } from '../resumenes.js'
 import { analizar, anidada, levene, parcelasDivididas, placaCepa, razonSD } from '../decision.js'
 import { anovaTabla, desvio, holm, marcaSig, media, varianza } from '../estadistica.js'
 import { chi2Sup, qnorm, rangos, shapiro } from '../reproducibilidad.js'
@@ -175,14 +176,15 @@ function prepararBloques(s, D, o) {
   const esPl = obj === 'placas' || obj === 'placastodas'
   const libres = obj === 'libre' ? (o.libres || []).filter((c) => c.grupos.length >= 2) : []
   const nivel = esPl || libres.some((c) => c.grupos.some((g) => g.placa)) ? 'pocillo' : o.nivel || 'placa'
-  const fx = (y, odc) => (variable === 'ln' ? (y > 0 ? Math.log(y) : NaN) : variable === 'odc' ? (odc > 0 ? y / odc : NaN) : y)
+  // resta: blanco restado (Calidad › Restar blanco); OD ÷ ODc se calcula con la OD leída
+  const fx = (y, odc, resta = 0) => (variable === 'ln' ? (y > 0 ? Math.log(y) : NaN) : variable === 'odc' ? (odc > 0 ? (y + resta) / odc : NaN) : y)
   const obsPlaca0 = [], obsPozo0 = []
   D.conAnalisis.forEach((p) => {
     const a = s.analisisMap[p.id]
-    const odc = a.odc?.odc
+    const odc = a.odc?.odc, resta = a.odc?.resta || 0
     const medio = p.medio || '(sin medio)'
-    a.resumen.forEach((r) => { if (finito(r.Media)) obsPlaca0.push({ cepa: r.Muestra, medio, placa: p.nombre, placaId: p.id, y: fx(r.Media, odc) }) })
-    a.estado.forEach((e) => { if (e.Usado && !e.EsBlanco) obsPozo0.push({ cepa: e.Muestra, medio, placa: p.nombre, placaId: p.id, y: fx(e.OD, odc) }) })
+    a.resumen.forEach((r) => { if (finito(r.Media)) obsPlaca0.push({ cepa: r.Muestra, medio, placa: p.nombre, placaId: p.id, y: fx(r.Media, odc, resta) }) })
+    a.estado.forEach((e) => { if (e.Usado && !e.EsBlanco) obsPozo0.push({ cepa: e.Muestra, medio, placa: p.nombre, placaId: p.id, y: fx(e.OD, odc, resta) }) })
   })
   const sel = (x) => (obj === 'libre' || dentroDeSel(o, x)) && !(usaMedio(obj) && x.medio === '(sin medio)')
   const obsPlaca = obsPlaca0.filter(sel), obsPozo = obsPozo0.filter(sel)
@@ -223,7 +225,7 @@ function prepararBloques(s, D, o) {
   const cepaF = cepas.includes(o.selCepa) ? o.selCepa : cepas[0]
   const medioF = medios.includes(o.selMedio) ? o.selMedio : medios[0]
   const foco = { medios: `${cepaF}: entre medios`, cepas: `Medio ${medioF}: entre cepas`, cepastodas: 'Todos los medios: entre cepas', placas: `${cepaF} · ${medioF}: entre placas`, placastodas: `${cepaF}: entre todas las placas`, libre: `ANOVA ${(o.selLibre || 0) + 1}:` }[obj]
-  return { obj, foco, variable, nivel, forzado: o.prueba || 'auto', ajuste: o.ajuste === 'lsd' ? 'lsd' : 'holm', bloques, obsPlaca, obsPozo, unidad: variable === 'ln' ? 'ln(OD)' : variable === 'odc' ? 'OD ÷ ODc' : 'OD' }
+  return { obj, foco, variable, nivel, forzado: o.prueba || 'auto', ajuste: o.ajuste === 'lsd' ? 'lsd' : 'holm', bloques, obsPlaca, obsPozo, unidad: unidadDe(variable, D.corregida) }
 }
 
 // ---------------------------------------------------------------

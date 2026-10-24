@@ -36,14 +36,14 @@ export function ReproTab({ s, D, o, setO, grupoModo }) {
     if (exps.length < 2 || !cepas.length) return null
     const valores = (e, c) => {
       const a = s.analisisMap[e.id]
-      const odc = a.odc?.odc
+      const odc = a.odc?.odc, resta = a.odc?.resta || 0   // OD ÷ ODc con la OD leída aunque se reste el blanco
       return a.estado.filter((x) => x.Muestra === c && x.Usado && !x.EsBlanco && finito(x.OD))
-        .map((x) => (variable === 'odc' ? (finito(odc) && odc > 0 ? x.OD / odc : NaN) : x.OD)).filter(finito)
+        .map((x) => (variable === 'odc' ? (finito(odc) && odc > 0 ? (x.OD + resta) / odc : NaN) : x.OD)).filter(finito)
     }
     return reproducibilidad(exps, cepas, valores)
   }, [s.analisisMap, exps.map((e) => e.id).join(), cepas.join(), variable]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const nomVar = variable === 'odc' ? 'OD ÷ ODc' : 'OD'
+  const nomVar = variable === 'odc' ? 'OD ÷ ODc' : D.corregida ? 'OD corregida' : 'OD'
   const evalCv = (cv) => (!finito(cv) ? '–' : cv <= cvBueno ? 'Buena' : cv <= cvMax ? 'Aceptable' : 'Alta variabilidad')
 
   // texto de resumen (para copiar)

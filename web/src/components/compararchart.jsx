@@ -178,7 +178,7 @@ export const CompararChart = forwardRef(function CompararChart({ grupos, leyenda
             const m = v.reduce((a, b) => a + b, 0) / v.length
             const sd = Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / (v.length - 1)), sem = sd / Math.sqrt(v.length)
             const err = tr === 'sd' ? sd : tr === 'sem' ? sem : tCuantil(0.975, v.length - 1) * sem
-            return m > 0 ? { v: (100 * err) / m, err, m, cv: (100 * sd) / m } : { v: NaN }
+            return m > 1e-6 ? { v: (100 * err) / m, err, m, cv: (100 * sd) / m } : { v: NaN }
           }
           const items = grupos.flatMap((g, gi) => {
             const x0 = cx(gi) - (g.barras.length * sw) / 2

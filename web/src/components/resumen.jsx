@@ -24,6 +24,7 @@ export async function descargarExcelCompleto(s) {
     ['Valores atípicos', `${METODO[d.metodo] || d.metodo}${d.metodo === 'cv' ? ` (CV máximo ${d.cvMax} %)` : ` (confianza ${d.conf} %)`}`],
     ['Exclusión automática de sospechosos', d.usar ? 'Sí' : 'No'],
     ['Punto de corte', 'ODc = media(blancos) + 3 × DE(blancos) (Stepanović et al., 2000)'],
+    ['Corrección por blanco', s.restarBlanco ? 'Sí: OD corregida = OD leída − media de los blancos aceptados de cada placa (el ODc y la clasificación usan la OD leída)' : 'No (OD leída)'],
     ['Exportado', new Date().toLocaleString('es')],
   ].map(([Campo, Valor]) => ({ Campo, Valor: Valor ?? '' }))
   const hPlacas = [], hMuestras = [], hPocillos = [], hCrudas = []
@@ -34,12 +35,14 @@ export async function descargarExcelCompleto(s) {
       Pocillos_con_datos: p.placa?.datos.length || 0, Configurados: p.config.length, Blancos_usados: (p.blancosUsados ?? a?.blancos ?? []).join(', '),
       N_blancos: a?.odc?.n ?? null, Media_blancos: r4(a?.odc?.media), DE_blancos: r4(a?.odc?.sd), ODc: r4(a?.odc?.odc),
     })
+    const corr = !!a?.blanco?.restado
+    if (corr) hPlacas[hPlacas.length - 1].Blanco_restado = r4(a.odc.resta)
     ;(a?.resumen || []).forEach((m) => hMuestras.push({
       Placa: p.nombre, Medio: p.medio || '', Muestra: m.Muestra, Pocillos: m.N_total, Aceptadas: m.N_aceptadas, Excluidas: m.N_excluidas,
-      Media_OD: r4(m.Media), DE: r4(m.SD), SEM: r4(m.SEM), IC95_mas_menos: r4(m.IC95), CV_pct: r4(m.CV_pct, 2), OD_sobre_ODc: r4(m.Razon_ODc, 3), Clasificacion: m.Clasificacion || '',
+      [corr ? 'Media_OD_corregida' : 'Media_OD']: r4(m.Media), ...(corr ? { Media_OD_leida: r4(m.MediaLeida) } : {}), DE: r4(m.SD), SEM: r4(m.SEM), IC95_mas_menos: r4(m.IC95), CV_pct: r4(m.CV_pct, 2), OD_sobre_ODc: r4(m.Razon_ODc, 3), Clasificacion: m.Clasificacion || '',
     }))
     ;(a?.estado || []).forEach((e) => hPocillos.push({
-      Placa: p.nombre, Medio: p.medio || '', Pocillo: e.Pocillo, Muestra: e.Muestra, Replica: e.Replica, Blanco: e.EsBlanco ? 'Sí' : 'No', OD: r4(e.OD),
+      Placa: p.nombre, Medio: p.medio || '', Pocillo: e.Pocillo, Muestra: e.Muestra, Replica: e.Replica, Blanco: e.EsBlanco ? 'Sí' : 'No', ...(corr ? { OD_corregida: r4(e.OD), OD_leida: r4(e.ODleida) } : { OD: r4(e.OD) }),
       Estado: e.Usado ? 'Aceptado' : 'Excluido', Sospechoso: e.Sospechoso ? 'Sí' : 'No', Motivo: e.Manual ? 'Excluido manualmente' : e.Motivo || '',
     }))
     ;(p.placa?.datos || []).forEach((x) => hCrudas.push({ Placa: p.nombre, Pocillo: x.Pocillo, OD: x.OD, Muestra: p.config.find((c) => c.Pocillo === x.Pocillo)?.Muestra || '' }))
@@ -61,7 +64,9 @@ export async function descargarExcelCompleto(s) {
 }
 
 export function Resumen({ s }) {
-  const { exp, analisisMap } = s
+  const { exp } = s
+  // el resumen va antes de Calidad: muestra la OD leída (la misma con la que se clasifica), aunque se reste el blanco
+  const analisisMap = s.analisisMapLeido || s.analisisMap
   const i = exp.info
   const pend = pendientes(exp, analisisMap)
   const hechos = PASOS_TRABAJO.filter((p) => s.listo(p)).length

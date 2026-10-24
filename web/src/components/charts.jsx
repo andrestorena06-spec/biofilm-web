@@ -82,7 +82,7 @@ export function FilaCV({ L, items, lim, size = 12, tipo = 'sd' }) {
         return (
           <text key={i} x={it.x} y={y} textAnchor="middle" data-tip={it.tip}
             style={{ fontSize: size, fill: alto ? '#c25e00' : '#5b6672', fontWeight: alto ? 700 : 400 }}>
-            {Number.isFinite(it.v) ? (it.corto ? it.v.toFixed(0) : `${it.v.toFixed(0)} %`) : '–'}
+            {Number.isFinite(it.v) ? (it.v > 999 ? (it.corto ? '>999' : '> 999 %') : it.corto ? it.v.toFixed(0) : `${it.v.toFixed(0)} %`) : '–'}
           </text>
         )
       })}
@@ -102,16 +102,18 @@ export const LeyendaX = ({ L, est }) => est.leyendaX.texto ? (
 // ---------------------------------------------------------------
 // GRÁFICO DE BARRAS
 // ---------------------------------------------------------------
-export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, est, eje, onContext, tam, nota, leyendaPuntos, escala, cvLim = 20 }, svgRef) {
+// resta: blanco restado a la OD (Calidad › Restar blanco). Los umbrales de clase son de la OD leída,
+// así que en OD corregida las líneas quedan en k × ODc − blanco.
+export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, est, eje, onContext, tam, nota, leyendaPuntos, escala, cvLim = 20, resta = 0 }, svgRef) {
   const [wrap, Wmed] = useAncho()
   const W = tam ? tam.w : Wmed
   // escala relativa al ODc de la placa: OD ÷ ODc, con las clases en 1, 2 y 4
   const esc = escalaValida(escala, odc)
   const rel = esc !== 'od'
-  const tv = fEscala(esc, odc)
+  const tv = fEscala(esc, odc, resta)
   const tvB = (v) => (Number.isFinite(tv(v)) ? tv(v) : 0)
   const lineas = o.lineas && Number.isFinite(odc)
-  const umbrales = rel ? ESCALAS[esc].umbrales.map((u) => u[0]) : [odc, 2 * odc, 4 * odc]
+  const umbrales = rel ? ESCALAS[esc].umbrales.map((u) => u[0]) : [odc - resta, 2 * odc - resta, 4 * odc - resta]
   const errTxt = { ic95: 'IC 95 %', sd: 'desviación estándar', sem: 'error estándar', ninguno: '' }[o.error]
   const labels = filas.map((f) => (f.EsBlanco ? `${f.Muestra} (blanco)` : f.Muestra))
   const hayBlanco = filas.some((f) => f.EsBlanco)
@@ -122,7 +124,8 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
     const p = puntos.filter((q) => q.Muestra === f.Muestra).map((q) => tv(q.OD)).filter(Number.isFinite)
     return Math.max(...[tv(f.Media + (Number.isFinite(e) ? e : 0)), ...p].filter(Number.isFinite))
   })
-  const lo = 0
+  // con la OD corregida puede haber medias o réplicas por debajo de 0
+  const lo = Math.min(0, ...[...filas.map((f) => tv(f.Media)), ...puntos.map((q) => tv(q.OD))].filter(Number.isFinite))
   // textos "media ± error"; si no caben al lado de los vecinos se apilan en dos líneas
   const textoValor = (f) => {
     const e = errDe(f)
@@ -136,22 +139,22 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
   const apilar = o.medias && wMaxTxt > wDisponible * 0.92
   let tope = Math.max(0, ...topDe)
   if (o.medias) tope *= 1 + (est.valores.size * (apilar ? 2.8 : 1.6)) / 340
-  if (lineas) tope = Math.max(tope * 1.05, rel ? 4.9 : odc * 4.9)
+  if (lineas) tope = Math.max(tope * 1.05, rel ? 4.9 : odc * 4.9 - resta)
   if (!(tope > 0)) tope = 1
   const eY = ejeConRango(ticksBonitos(lo, tope, 6), estiloEscala(est, esc))
   // las barras salen del 0
   const base = Math.min(Math.max(0, eY.min), eY.max)
   const yLabels = eY.ticks.map((t) => fmtTick(t, eY.paso))
 
-  const [u1, u2, u3] = rel ? ESCALAS[esc].umbrales.map((u) => String(u[0])) : [fmt(odc), fmt(2 * odc), fmt(4 * odc)]
-  // posición de cada nombre de clase (a mitad de su franja)
-  const posC = (m) => (rel ? m : m * odc)
+  const [u1, u2, u3] = rel ? ESCALAS[esc].umbrales.map((u) => String(u[0])) : umbrales.map((u) => fmt(u))
+  // posición de cada nombre de clase (a mitad de su franja; «No productor», entre 0 y la primera línea)
+  const posC = (m) => (rel ? m : m * odc - resta)
   const clasesTxt = lineas
     ? [
         ['Productor fuerte', posC(4.45), o.valoresClase ? `Productor fuerte\n(> ${u3})` : 'Productor fuerte'],
         ['Productor moderado', posC(3), o.valoresClase ? `Productor moderado\n(${u2} – ${u3})` : 'Productor moderado'],
         ['Productor débil', posC(1.5), o.valoresClase ? `Productor débil\n(${u1} – ${u2})` : 'Productor débil'],
-        ['No productor', posC(0.5), o.valoresClase ? `No productor\n(≤ ${u1})` : 'No productor'],
+        ['No productor', rel ? 0.5 : (odc - resta) / 2, o.valoresClase ? `No productor\n(≤ ${u1})` : 'No productor'],
       ]
     : []
   const wClases = lineas
@@ -204,10 +207,10 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
             <g key={f.Muestra}>
               <rect x={cx(i) - bw / 2} y={y(Math.max(tvB(f.Media), base))} width={bw} height={Math.max(Math.abs(y(base) - y(tvB(f.Media))), 0.5)}
                 fill={colorBarra(f)} stroke="#333" strokeWidth="0.8" strokeDasharray={f.EsBlanco ? '4 2' : undefined}
-                data-tip={(rel ? ESCALAS[esc].cuenta(f.Media, odc) + '\n' : '') + dBarra(`${f.Muestra}${f.EsBlanco ? ' (blanco)' : ''} · OD media = ${fmt(f.Media)}`, pts.map((q) => q.OD), o.error, f.EsBlanco ? NaN : odc, f.Clasificacion)} />
+                data-tip={(rel ? ESCALAS[esc].cuenta(f.Media, odc, resta) + '\n' : '') + dBarra(`${f.Muestra}${f.EsBlanco ? ' (blanco)' : ''} · ${resta ? 'OD corregida' : 'OD'} media = ${fmt(f.Media)}`, pts.map((q) => q.OD), o.error, f.EsBlanco ? NaN : odc, f.Clasificacion, resta)} />
               {Number.isFinite(e) && e > 0 && (
                 <g stroke="#111" strokeWidth="1.3">
-                  {(() => { const hi = y(tv(f.Media + e)), bajo = y(Math.max(tv(f.Media - e), 0)); return <>
+                  {(() => { const hi = y(tv(f.Media + e)), bajo = y(Math.max(tv(f.Media - e), eY.min)); return <>
                     <line x1={cx(i)} x2={cx(i)} y1={bajo} y2={hi} />
                     <line x1={cx(i) - bw * 0.18} x2={cx(i) + bw * 0.18} y1={hi} y2={hi} />
                     <line x1={cx(i) - bw * 0.18} x2={cx(i) + bw * 0.18} y1={bajo} y2={bajo} /></> })()}
@@ -215,7 +218,7 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
               )}
               {o.puntos && pts.map((q, k) => (
                 <circle key={q.Pocillo} cx={cx(i) + (pts.length > 1 ? (k / (pts.length - 1) - 0.5) * bw * 0.45 : 0)} cy={y(Number.isFinite(tv(q.OD)) ? Math.max(tv(q.OD), eY.min) : eY.min)} r={q.color ? 4.4 : 3.3}
-                  fill={q.color || '#1b1f23'} fillOpacity="0.9" stroke={q.color ? '#fff' : 'none'} strokeWidth="1" data-tip={`Pocillo ${q.Pocillo}\nOD = ${fmt(q.OD, 4)}${rel ? `\n${ESCALAS[esc].eje} = ${fmt(tv(q.OD), 3)}` : ''}`}>
+                  fill={q.color || '#1b1f23'} fillOpacity="0.9" stroke={q.color ? '#fff' : 'none'} strokeWidth="1" data-tip={`Pocillo ${q.Pocillo}\n${resta ? `OD corregida = ${fmt(q.OD, 4)} (leída ${fmt(q.OD + resta, 4)} − blanco ${fmt(resta, 4)})` : `OD = ${fmt(q.OD, 4)}`}${rel ? `\n${ESCALAS[esc].eje} = ${fmt(tv(q.OD), 3)}` : ''}`}>
                 </circle>
               ))}
               {o.medias && (
@@ -240,12 +243,14 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
           const tr = tipoRel(o.error), R = ERROR_REL[tr]
           return <FilaCV L={L} lim={cvLim} tipo={tr} items={filas.map((f, i) => {
             const err = tr === 'sd' ? f.SD : tr === 'sem' ? f.SEM : f.IC95
-            const v = (100 * err) / f.Media
+            // con la OD corregida el blanco queda en 0 y no tiene % de la media
+            const v = f.Media > 1e-6 && !(resta && f.EsBlanco) ? (100 * err) / f.Media : NaN
             return {
               x: cx(i), v,
               tip: Number.isFinite(v)
-                ? `${R.nombre} de ${f.Muestra}\n= 100 × ${R.sigla} ÷ media = 100 × ${fmt(err, 4)} ÷ ${fmt(f.Media, 4)} = ${fmt(v, 1)} %\n(${f.N_aceptadas ?? '?'} réplicas aceptadas)${tr === 'sd' && v > cvLim ? `\nSupera el límite de ${cvLim} %` : ''}${tr !== 'sd' && Number.isFinite(f.CV_pct) ? `\nCV (DE %) = ${fmt(f.CV_pct, 1)} %` : ''}`
-                : `${f.Muestra}: hacen falta 2 o más réplicas`,
+                ? `${R.nombre} de ${f.Muestra}\n= 100 × ${R.sigla} ÷ media = 100 × ${fmt(err, 4)} ÷ ${fmt(f.Media, 4)} = ${fmt(v, 1)} %\n(${f.N_aceptadas ?? '?'} réplicas aceptadas)${resta ? '\nCon la OD corregida (media menos el blanco)' : ''}${tr === 'sd' && v > cvLim ? `\nSupera el límite de ${cvLim} %` : ''}${tr !== 'sd' && Number.isFinite(f.CV_pct) ? `\nCV (DE %) = ${fmt(f.CV_pct, 1)} %` : ''}`
+                : resta && f.EsBlanco ? `${f.Muestra}: con la OD corregida el blanco queda en 0, no hay % de la media`
+                  : Number.isFinite(f.Media) && f.Media <= 0 ? `${f.Muestra}: la media corregida no es positiva, no hay % de la media` : `${f.Muestra}: hacen falta 2 o más réplicas`,
             }
           })} />
         })()}
@@ -289,7 +294,7 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
           </g>
         )}
         <text x={L.left + L.plotW} y={L.H - 8} textAnchor="end" style={{ fontSize: 11, fill: '#6b7785' }}>
-          {nota ?? `Barras: media de las réplicas aceptadas${errTxt ? `; error: ${errTxt}` : ''}${rel ? ` · escala ${ESCALAS[esc].eje}: ${ESCALAS[esc].nota}` : ''}`}
+          {nota ?? `Barras: media de las réplicas aceptadas${errTxt ? `; error: ${errTxt}` : ''}${rel ? ` · escala ${ESCALAS[esc].eje}: ${ESCALAS[esc].nota}` : resta ? ` · OD corregida = OD leída − blanco (${fmt(resta, 3)})` : ''}`}
         </text>
       </svg>
     </div>
@@ -311,13 +316,13 @@ export function resumenGrupo(g, tipo, tv = (v) => v) {
   return { m, err, n: u.length }
 }
 
-export const ExcluirChart = forwardRef(function ExcluirChart({ estado, orden, o, est, eje, onClickPunto, onContext, tam, odc, escala }, svgRef) {
+export const ExcluirChart = forwardRef(function ExcluirChart({ estado, orden, o, est, eje, onClickPunto, onContext, tam, odc, escala, resta = 0 }, svgRef) {
   const [wrap, Wmed] = useAncho()
   const W = tam ? tam.w : Wmed
-  // escalas relativas al ODc: solo cambia cómo se dibuja; los valores atípicos se buscan siempre sobre la OD
+  // escalas relativas al ODc: solo cambia cómo se dibuja; los valores atípicos se buscan siempre sobre la OD leída
   const esc = escalaValida(escala, odc)
   const rel = esc !== 'od'
-  const tv = fEscala(esc, odc)
+  const tv = fEscala(esc, odc, resta)
   const labels = orden
   const idx = Object.fromEntries(orden.map((m, i) => [m, i]))
   const porMuestra = orden.map((m) => estado.filter((e) => e.Muestra === m))
@@ -378,7 +383,7 @@ export const ExcluirChart = forwardRef(function ExcluirChart({ estado, orden, o,
 
         {o.puntos && estado.map((e) => (
           <g key={e.Pocillo} onClick={() => onClickPunto(e.Pocillo)} style={{ cursor: 'pointer' }}
-            data-tip={`${e.Pocillo} · ${e.Muestra} R${e.Replica}\nOD = ${fmt(e.OD, 4)}${rel ? `\n${ESCALAS[esc].eje} = ${fmt(tv(e.OD), 3)}` : ''}\n${e.Manual ? 'Excluido manualmente' : e.Motivo || (e.Usado ? 'Aceptado' : 'Excluido')}\nClic: ${e.Usado ? 'excluir' : 'reincorporar'}`}>
+            data-tip={`${e.Pocillo} · ${e.Muestra} R${e.Replica}\n${resta ? `OD corregida = ${fmt(e.OD, 4)} (leída ${fmt(e.OD + resta, 4)} − blanco ${fmt(resta, 4)})` : `OD = ${fmt(e.OD, 4)}`}${rel ? `\n${ESCALAS[esc].eje} = ${fmt(tv(e.OD), 3)}` : ''}\n${e.Manual ? 'Excluido manualmente' : e.Motivo || (e.Usado ? 'Aceptado' : 'Excluido')}\nClic: ${e.Usado ? 'excluir' : 'reincorporar'}`}>
             <circle cx={px(e)} cy={vy(e)} r="14" fill="transparent" />
             {e.Sospechoso && <circle cx={px(e)} cy={vy(e)} r="9" fill="none" stroke="#f0932b" strokeWidth="2.4" />}
             {e.Usado ? (

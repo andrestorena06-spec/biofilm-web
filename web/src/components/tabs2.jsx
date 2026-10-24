@@ -15,6 +15,7 @@ import { excelDe } from '../api.js'
 import { Q_TABLA } from '../criticos.js'
 import { criticoGrubbs, normalizarMetodo } from '../motor.js'
 import { ESCALAS, conRango, escalaValida, estiloEscala, descargarBlob, estiloDefecto, fmt, tCuantil } from '../utils.js'
+import { textoBlanco } from '../correccion.js'
 
 const nombreMetodo = { q: 'Test Q de Dixon', grubbs: 'Test de Grubbs', cv: 'Coeficiente de variación (%RSD)' }
 const ERRORES = [['ic95', 'IC 95 %'], ['sd', 'DE'], ['sem', 'SEM']]
@@ -47,6 +48,8 @@ export function ExcluirTab({ s }) {
   if (!s.analisis?.estado?.length) return <Vacio titulo="Faltan los pocillos" texto="Indicá qué muestra hay en cada pocillo para revisar las réplicas." accion={<button className="primario" onClick={() => s.irA('pocillos')}>Ir a Pocillos</button>} />
   const estado = s.analisis.estado
   const odcP = s.analisis.odc?.odc
+  const resta = s.analisis.odc?.resta || 0
+  const sinBlancoResta = s.restarBlanco && !s.analisis.blanco?.restado
   const escE = escalaValida(o.escala, odcP)
   const ejeE = escE === 'od' ? s.ejeOD : ESCALAS[escE].eje
   const excluidos = estado.filter((e) => !e.Usado)
@@ -74,10 +77,14 @@ export function ExcluirTab({ s }) {
           <CampoCinta etiqueta="Error"><Select value={o.error} onChange={(v) => setO('error', v)} opciones={ERRORES} /></CampoCinta>
           <CampoCinta etiqueta="Rotación (°)"><Num value={o.rotar} min={0} max={90} ancho={56} onChange={(v) => setO('rotar', v === '' ? 0 : v)} /></CampoCinta>
         </Grupo>
+        <Grupo titulo="Blanco">
+          <InterruptorCinta icono="matraz" texto="Restar blanco" valor={s.restarBlanco} onChange={s.setRestarBlanco}
+            tip={'OD corregida = OD leída − media de los blancos aceptados de cada placa (los mismos del ODc).\nSe aplica desde acá en adelante: gráficos, comparaciones, estadística, datos e informe (en todas las placas).\nLos valores atípicos, el ODc y la clasificación se siguen calculando con la OD leída.'} />
+        </Grupo>
         <Grupo titulo="Escala">
           <OpcionesCinta valor={ESCALAS[o.escala] ? o.escala : 'od'} onChange={(v) => setO('escala', v)} opciones={[
-            ['od', 'OD', 'OD', null, 'OD tal cual'],
-            ['odc', 'OD ÷ ODc', '÷', null, 'OD ÷ ODc con el ODc de esta placa: cada unidad es un ODc (1 = ODc, 2 = 2 × ODc, 4 = 4 × ODc).\nSolo cambia el dibujo: los valores atípicos se buscan siempre sobre la OD.'],
+            ['od', 'OD', 'OD', null, s.restarBlanco ? 'OD corregida (OD leída − blanco)' : 'OD tal cual'],
+            ['odc', 'OD ÷ ODc', '÷', null, 'OD ÷ ODc con el ODc de esta placa: cada unidad es un ODc (1 = ODc, 2 = 2 × ODc, 4 = 4 × ODc).\nSe calcula con la OD leída, aunque se reste el blanco.\nSolo cambia el dibujo: los valores atípicos se buscan siempre sobre la OD.'],
           ]} />
         </Grupo>
         <GrupoImagen onGuardar={() => setExp(true)} onEstilo={() => setDlg(true)} onRango={() => setRng(true)} />
@@ -89,12 +96,14 @@ export function ExcluirTab({ s }) {
           <span className="ayuda">Clic sobre un punto para excluirlo o incluirlo <Nota>Azul: aceptado. Cruz roja: excluido. Anillo naranja: sospechoso según el test. Lo que decidís a mano tiene prioridad sobre el test. El desarrollo del cálculo está en «Métodos».</Nota></span>
         </div>
         <div className="figura">
-          <ExcluirChart ref={svg} estado={estado} orden={s.ordenMuestras} o={o} est={s.estilos.excluir} eje={ejeE} odc={odcP} escala={escE} onClickPunto={s.alternarPocillo} onContext={abrirMenu} />
+          <ExcluirChart ref={svg} estado={estado} orden={s.ordenMuestras} o={o} est={s.estilos.excluir} eje={ejeE} odc={odcP} escala={escE} resta={resta} onClickPunto={s.alternarPocillo} onContext={abrirMenu} />
         </div>
         {ESCALAS[o.escala]?.f && escE === 'od' && <p className="aviso-caja">Sin ODc (faltan blancos aceptados): se muestra en OD.</p>}
+        {sinBlancoResta && <p className="aviso-caja">Esta placa no tiene blancos aceptados: no se le puede restar el blanco y queda con la OD leída.</p>}
         <div className="fila" style={{ marginTop: 10 }}>
+          {s.analisis.blanco?.restado && <span className="chip" data-tip={`${textoBlanco(s.analisis)}\nSe resta a todos los pocillos de esta placa, desde Calidad en adelante.\nLos tests de atípicos, el ODc y la clasificación usan la OD leída.`}>OD corregida · blanco {fmt(resta, 3)}</span>}
           {sospechosos.length > 0 && <span className="chip aviso" data-tip={`Sospechosos dentro del análisis\n${sospechosos.map((e) => `${e.Pocillo} (${e.Muestra} R${e.Replica}): ${e.Motivo || ''}`).join('\n')}`}>{sospechosos.length} sospechoso{sospechosos.length > 1 ? 's' : ''} sin excluir</span>}
-          {excluidos.length ? <span className="ayuda"><b>Excluidos:</b> {excluidos.map((e) => <span key={e.Pocillo} className="chip peligro chip-boton" style={{ margin: '0 4px 4px 0' }} data-tip={`${e.Pocillo} · ${e.Muestra} R${e.Replica}\nOD = ${fmt(e.OD, 4)}\n${e.Manual ? 'Excluido a mano' : e.Motivo || ''}\nClic para volver a incluirlo`} onClick={() => s.alternarPocillo(e.Pocillo)}>{e.Pocillo} · {e.Muestra}</span>)}</span>
+          {excluidos.length ? <span className="ayuda"><b>Excluidos:</b> {excluidos.map((e) => <span key={e.Pocillo} className="chip peligro chip-boton" style={{ margin: '0 4px 4px 0' }} data-tip={`${e.Pocillo} · ${e.Muestra} R${e.Replica}\n${resta ? 'OD corregida' : 'OD'} = ${fmt(e.OD, 4)}\n${e.Manual ? 'Excluido a mano' : e.Motivo || ''}\nClic para volver a incluirlo`} onClick={() => s.alternarPocillo(e.Pocillo)}>{e.Pocillo} · {e.Muestra}</span>)}</span>
             : <span className="ayuda">No hay pocillos excluidos en esta placa.</span>}
         </div>
       </section>
@@ -110,7 +119,7 @@ export function ExcluirTab({ s }) {
       {exp && svg.current && (
         <ExportDialog nombre={`calidad_${s.a.nombre}`} size0={tamDe(svg.current)} onClose={() => setExp(false)}
           render={(ref, tam) => <ExcluirChart ref={ref} estado={estado} orden={s.ordenMuestras} o={o} est={s.estilos.excluir}
-            eje={ejeE} odc={odcP} escala={escE} onClickPunto={() => {}} onContext={(e) => e.preventDefault()} tam={tam} />} />
+            eje={ejeE} odc={odcP} escala={escE} resta={resta} onClickPunto={() => {}} onContext={(e) => e.preventDefault()} tam={tam} />} />
       )}
     </div>
   )
@@ -144,6 +153,7 @@ export function GraficoTab({ s, grupoVista }) {
   const escG = escalaValida(o.escala, a.odc.odc)
   const cvLim = Number(s.deteccion.cvMax) || 20
   const ejeG = escG === 'od' ? s.ejeOD : ESCALAS[escG].eje
+  const resta = a.odc?.resta || 0
 
   return (
     <div>
@@ -182,11 +192,11 @@ export function GraficoTab({ s, grupoVista }) {
       {sinOdc && <p className="aviso-caja">Sin ODc (faltan blancos aceptados): las barras no se pueden clasificar{ESCALAS[o.escala]?.f ? ` ni pasar a la escala ${ESCALAS[o.escala].eje} (se muestran en OD)` : ''}.</p>}
       <section className="tarjeta">
         <div className="cabeza-tarjeta">
-          <span className="etiqueta-seccion">OD media de las réplicas aceptadas · {NOMBRE_ERROR[o.error]}</span>
+          <span className="etiqueta-seccion">{a.blanco?.restado ? 'OD corregida' : 'OD'} media de las réplicas aceptadas · {NOMBRE_ERROR[o.error]}</span>
           <span className="ayuda">Pasá el mouse por una barra para ver el cálculo<Nota>Clic derecho sobre el gráfico: estilo de los textos, rango del eje Y y guardar la imagen.</Nota></span>
         </div>
         {filas.length ? (
-          <div className="figura"><BarChart ref={svg} filas={filas} puntos={puntos} odc={a.odc.odc} o={o} est={s.estilos.barras} eje={ejeG} escala={escG} cvLim={cvLim} onContext={abrirMenu} /></div>
+          <div className="figura"><BarChart ref={svg} filas={filas} puntos={puntos} odc={a.odc.odc} o={o} est={s.estilos.barras} eje={ejeG} escala={escG} cvLim={cvLim} resta={resta} onContext={abrirMenu} /></div>
         ) : <Vacio texto="Elegí al menos una muestra con réplicas aceptadas." />}
       </section>
       <MenuContextual menu={menu} items={[
@@ -201,7 +211,7 @@ export function GraficoTab({ s, grupoVista }) {
       {exp && svg.current && (
         <ExportDialog nombre={`barras_${s.a.nombre}`} size0={tamDe(svg.current)} onClose={() => setExp(false)}
           render={(ref, tam) => <BarChart ref={ref} filas={filas} puntos={puntos} odc={a.odc.odc} o={o} est={s.estilos.barras}
-            eje={ejeG} escala={escG} cvLim={cvLim} onContext={(e) => e.preventDefault()} tam={tam} />} />
+            eje={ejeG} escala={escG} cvLim={cvLim} resta={resta} onContext={(e) => e.preventDefault()} tam={tam} />} />
       )}
     </div>
   )
@@ -297,7 +307,7 @@ function PopoverFiltro({ col, pos, valor, onChange, onClose }) {
 }
 
 // nombres que se muestran en las cabeceras (la clave queda igual en la exportación y en las vistas guardadas)
-const NOMBRE_COL = { CV_pct: '% DE (CV)' }
+const NOMBRE_COL = { CV_pct: '% DE (CV)', Media_OD_leida: 'Media OD leída', OD_leida: 'OD leída' }
 const nombreCol = (c) => NOMBRE_COL[c] || c.replace(/_/g, ' ')
 
 export function TablaAvanzada({ id, titulo, columnas, filas, onVista, tips }) {
@@ -402,14 +412,21 @@ export function DatosTab({ s }) {
   )
   if (!a?.resumen) return <>{cinta}<Vacio titulo="Todavía no hay datos para esta placa" texto="Cargá los datos e indicá qué muestra hay en cada pocillo." /></>
   const r = (x, d = 4) => (Number.isFinite(x) ? Number(x.toFixed(d)) : null)
+  // con «Restar blanco» la tabla muestra la OD corregida y, al lado, la leída y el blanco restado
+  const corr = !!a.blanco?.restado
+  const resta = a.odc?.resta || 0
   const muestras = a.resumen.map((m) => ({
     Muestra: m.Muestra, Pocillos: m.N_total, Aceptadas: m.N_aceptadas, Excluidas: m.N_excluidas,
-    Media_OD: r(m.Media), DE: r(m.SD), SEM: r(m.SEM), IC95_mas_menos: r(m.IC95), CV_pct: r(m.CV_pct, 2),
+    ...(corr ? { Media_OD_corregida: r(m.Media) } : { Media_OD: r(m.Media) }),
+    DE: r(m.SD), SEM: r(m.SEM), IC95_mas_menos: r(m.IC95), CV_pct: r(m.CV_pct, 2),
+    ...(corr ? { Media_OD_leida: r(m.MediaLeida), Blanco_restado: r(resta) } : {}),
     OD_sobre_ODc: r(m.Razon_ODc, 2), Clasificacion: m.Clasificacion || '',
     _v: a.estado.filter((e) => e.Muestra === m.Muestra && e.Usado).map((e) => e.OD),
+    _leida: corr ? m.MediaLeida : m.Media,
   }))
   const pocillos = a.estado.map((e) => ({
-    Pocillo: e.Pocillo, Muestra: e.Muestra, Replica: e.Replica, Blanco: e.EsBlanco ? 'Sí' : 'No', OD: r(e.OD),
+    Pocillo: e.Pocillo, Muestra: e.Muestra, Replica: e.Replica, Blanco: e.EsBlanco ? 'Sí' : 'No',
+    ...(corr ? { OD_corregida: r(e.OD), OD_leida: r(e.ODleida) } : { OD: r(e.OD) }),
     Estado: e.Usado ? 'Aceptado' : 'Excluido', Sospechoso: e.Sospechoso ? 'Sí' : 'No',
     Motivo: e.Manual ? 'Excluido manualmente' : e.Motivo || '',
   }))
@@ -417,17 +434,19 @@ export function DatosTab({ s }) {
   const tipsMuestras = (f, c) => {
     const v = f._v
     if (!v || !v.length) return null
-    if (c === 'Media_OD') return dMedia(v)
+    if (c === 'Media_OD' || c === 'Media_OD_corregida') return dMedia(v) + (corr ? `\nOD corregida: cada OD leída menos el blanco (${fmt(resta, 4)})` : '')
+    if (c === 'Media_OD_leida' || c === 'Blanco_restado') return textoBlanco(a)
     if (c === 'DE') return dDE(v)
     if (c === 'SEM') return dSEM(v)
     if (c === 'IC95_mas_menos') return dIC(v)
     if (c === 'CV_pct') return dCV(v)
-    if (c === 'OD_sobre_ODc' && Number.isFinite(odcNum)) return dRazon(f.Media_OD, odcNum)
-    if (c === 'Clasificacion' && Number.isFinite(odcNum) && f.Clasificacion) return dClase(f.Media_OD, odcNum, f.Clasificacion)
+    if (c === 'OD_sobre_ODc' && Number.isFinite(odcNum)) return dRazon(f._leida, odcNum, resta)
+    if (c === 'Clasificacion' && Number.isFinite(odcNum) && f.Clasificacion) return dClase(f._leida, odcNum, f.Clasificacion, resta)
     if (c === 'Aceptadas') return `Réplicas aceptadas\n${f.Aceptadas} de ${f.Pocillos} pocillos entran en los cálculos\nExcluidas: ${f.Excluidas} (a mano o por valor atípico)`
     return null
   }
-  const tipsPocillos = (f, c) => (c === 'Estado' || c === 'Motivo' || c === 'Sospechoso' ? `Pocillo ${f.Pocillo} (${f.Muestra} R${f.Replica})\nOD = ${f.OD}\nEstado: ${f.Estado}${f.Sospechoso === 'Sí' ? ' · sospechoso (valor atípico)' : ''}\n${f.Motivo || 'Sin observaciones'}` : null)
+  const tipsPocillos = (f, c) => (c === 'OD_corregida' || c === 'OD_leida' ? `Pocillo ${f.Pocillo}\nOD corregida = OD leída − blanco\n= ${f.OD_leida} − ${fmt(resta, 4)} = ${f.OD_corregida}`
+    : c === 'Estado' || c === 'Motivo' || c === 'Sospechoso' ? `Pocillo ${f.Pocillo} (${f.Muestra} R${f.Replica})\n${corr ? `OD corregida = ${f.OD_corregida} (leída ${f.OD_leida})` : `OD = ${f.OD}`}\nEstado: ${f.Estado}${f.Sospechoso === 'Sí' ? ' · sospechoso (valor atípico)' : ''}\n${f.Motivo || 'Sin observaciones'}` : null)
   const cm = Object.keys(muestras[0] || {}).filter((k) => !k.startsWith('_'))
   const cp = Object.keys(pocillos[0] || {})
   return (
@@ -459,7 +478,7 @@ export function MetodosTab({ s }) {
       </Cinta>
       <div id="m-pasos">{a?.resumen ? <PasoAPaso s={s} /> : <Vacio texto="El cálculo paso a paso aparece cuando la placa activa tiene pocillos configurados." />}</div>
       <div id="m-estadistica"><MetodoEstadistico s={s} /></div>
-      <div id="m-detalle"><MetodoDetalle d={s.deteccion} odc={a?.odc} /></div>
+      <div id="m-detalle"><MetodoDetalle d={s.deteccion} odc={a?.odc} restar={s.restarBlanco} /></div>
     </div>
   )
 }
@@ -467,7 +486,7 @@ export function MetodosTab({ s }) {
 // ===============================================================
 // MÉTODO (descripción de los cálculos)
 // ===============================================================
-function MetodoDetalle({ d, odc }) {
+function MetodoDetalle({ d, odc, restar }) {
   const metodo = normalizarMetodo(d.metodo)
   const cvMax = Number(d.cvMax) || 20
   const activo = nombreMetodo[metodo]
@@ -486,6 +505,7 @@ function MetodoDetalle({ d, odc }) {
         <li>Productor fuerte: OD &gt; 4 × ODc</li>
       </ul>
       <p>En la escala <b>OD ÷ ODc</b> (botón «Escala» en Calidad y Gráfico, y «Datos» en Estadística) cada OD se divide por el ODc de su placa y cada unidad es un ODc: los umbrales quedan en 1, 2 y 4, iguales en todas las placas, pero la escala es lineal y la dispersión sigue creciendo con la OD.</p>
+      <p><b>Corrección por blanco</b> (Calidad › Restar blanco; ahora {restar ? 'activada' : 'desactivada'}): <code>OD corregida = OD leída − x̄(blancos)</code>, con los mismos blancos aceptados del ODc de cada placa. Desde Calidad en adelante los gráficos, las comparaciones, la estadística, los datos y el informe usan la OD corregida, y el eje dice «OD corregida». El ODc, la clasificación y los tests de atípicos se siguen haciendo con la OD leída: restar una constante no cambia el Q de Dixon ni el G de Grubbs, y los umbrales de Stepanović están definidos sobre la OD leída. Por eso, en OD corregida las líneas de clase quedan en ODc − blanco, 2 × ODc − blanco y 4 × ODc − blanco, y la escala OD ÷ ODc se calcula con la OD leída. La DE no cambia, pero la media corregida es menor: el CV y los errores relativos suben, y con medias cerca de 0 dejan de tener sentido.</p>
       <h3>2. Media y errores del gráfico (SD, SEM, IC 95 %)</h3>
       <p>Para cada muestra solo se usan las <b>n réplicas aceptadas</b>; los pocillos excluidos no entran en ningún cálculo. Con n &lt; 2 no se puede calcular ningún error. Sea <code>xᵢ</code> la OD de cada réplica:</p>
       <ul>

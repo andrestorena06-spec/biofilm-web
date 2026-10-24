@@ -25,6 +25,7 @@ export const optsDef = () => ({
     blancos: true,
   },
   archivo: { layoutBase: '', verOcultas: false },   // layoutBase: placa cuyo layout copian las nuevas
+  blanco: { restar: false },                         // Calidad › Restar blanco: OD corregida = OD − media de los blancos
 })
 export const deteccionDef = () => ({ metodo: 'q', usar: false, conf: '95', cvMax: 20 })
 // sesiones con métodos que ya no existen (Hampel, Dixon general) pasan al test Q

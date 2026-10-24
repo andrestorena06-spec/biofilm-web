@@ -14,7 +14,7 @@ export function resumenBlancos(estado) {
     const f = (x) => (Number.isFinite(x) ? x : null)
     return {
       Muestra: m, EsBlanco: true, N_total: g.length, N_aceptadas: n, N_excluidas: g.length - n, Media: f(media), SD: f(sd), SEM: f(sem),
-      IC95: n > 1 ? tCuantil(0.975, n - 1) * sem : null, CV_pct: f((100 * sd) / media), Sospechosos: g.filter((e) => e.Sospechoso).length,
+      IC95: n > 1 ? tCuantil(0.975, n - 1) * sem : null, CV_pct: media > 1e-6 ? f((100 * sd) / media) : null, Sospechosos: g.filter((e) => e.Sospechoso).length,
       Razon_ODc: null, Clasificacion: null,
     }
   })

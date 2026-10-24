@@ -11,7 +11,7 @@ import { Chip, DiagnosticoGlobal, Hip, MatrizP, NOMBRE_TEST, Tabla, diagnosticoG
 import { ComparadorLibre, GrupoModo, modoBase } from './seleccion.jsx'
 import { ReproTab } from './repro.jsx'
 import { armarComparacion } from '../comparacion.js'
-import { SIN_MEDIO, UNIDAD, prepararDatos } from '../resumenes.js'
+import { SIN_MEDIO, UNIDAD, prepararDatos, unidadDe } from '../resumenes.js'
 import { analizar, anidada, parcelasDivididas, placaCepa } from '../decision.js'
 import { desvio, marcaSig, media } from '../estadistica.js'
 import { COLOR_CLASE, fmtTick, ticksBonitos } from '../utils.js'
@@ -312,8 +312,8 @@ export function EstadisticaTab({ s }) {
   const nivel = modo === 'placas' || usaPlacaLibre ? 'pocillo' : o.nivel === 'pocillo' ? 'pocillo' : 'placa'
   const obsN = nivel === 'placa' ? X.obsPlaca : X.obsPozo
   const forzado = o.prueba || 'auto', comp = o.comp || 'pares', ajuste = o.ajuste === 'lsd' ? 'lsd' : 'holm'
-  const unidad = UNIDAD[variable]
-  const nivelTxt = nivel === 'placa' ? `cada punto es una placa (${variable === 'od' ? 'OD media de sus pocillos' : 'calculado con la OD media de sus pocillos'})` : 'cada punto es un pocillo'
+  const unidad = unidadDe(variable, X.corregida)
+  const nivelTxt = nivel === 'placa' ? `cada punto es una placa (${variable === 'od' ? `${unidad} media de sus pocillos` : 'calculado con la OD media de sus pocillos'})` : 'cada punto es un pocillo'
 
   // ---- qué se compara ----
   const juntar = juntarDe(o)
@@ -487,8 +487,9 @@ export function EstadisticaTab({ s }) {
           <ComparadorLibre o={o} setO={setO} cepas={X.cepas.map((c) => ({ id: c, nombre: c }))} medios={X.medios.map((m) => ({ id: m, nombre: m }))} placas={X.placas.map((p) => ({ id: p.id, nombre: p.nombre }))} />
           {libres.length > 1 && <Fichas etiqueta="Ver" opciones={libres.map((c, i) => ({ id: i, texto: `ANOVA ${i + 1}` }))} activa={(id) => id === iLibre} onClick={(id) => setO('selLibre', id)} />}
         </>}
-        {(sinAnalisis.length > 0 || X.sinOdc.length > 0 || (modo !== 'libre' && sinMedio.length > 0 && modo === 'medios')) && (
+        {(sinAnalisis.length > 0 || X.sinOdc.length > 0 || X.noPos > 0 || (modo !== 'libre' && sinMedio.length > 0 && modo === 'medios')) && (
           <p className="aviso-sel">
+            {X.noPos > 0 && <>{X.noPos} {X.noPos === 1 ? 'valor' : 'valores'} de OD corregida ≤ 0 no {X.noPos === 1 ? 'tiene' : 'tienen'} logaritmo y {X.noPos === 1 ? 'queda' : 'quedan'} afuera con {unidad}. </>}
             {X.sinOdc.length > 0 && <>{X.sinOdc.map((p) => `«${p.nombre}»`).join(', ')} no {X.sinOdc.length === 1 ? 'tiene' : 'tienen'} ODc (faltan blancos aceptados): no {X.sinOdc.length === 1 ? 'entra' : 'entran'} con {unidad}. </>}
             {sinAnalisis.length > 0 && <>{sinAnalisis.map((p) => `«${p.nombre}»`).join(', ')} todavía no {sinAnalisis.length === 1 ? 'entra' : 'entran'}: {sinAnalisis.some((p) => !p.placa) ? 'faltan datos o ' : ''}falta configurar los pocillos. </>}
             {modo === 'medios' && sinMedio.length > 0 && <>{sinMedio.map((p) => `«${p.nombre}»`).join(', ')} no {sinMedio.length === 1 ? 'tiene' : 'tienen'} medio: no {sinMedio.length === 1 ? 'entra' : 'entran'} al comparar medios.</>}

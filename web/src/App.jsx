@@ -17,6 +17,7 @@ import { CintaCtx } from './components/cinta.jsx'
 import { Icono, LogoPlaca } from './components/iconos.jsx'
 import { Campo, MenuContextual, Modal, Select, useMenuContextual } from './components/ui.jsx'
 import { descargarBlob, paletaMuestras } from './utils.js'
+import { corregirAnalisis } from './correccion.js'
 
 const CLAVE_VIEJA = 'biofilm-react-v3'            // guardado de la versión 2 (un solo trabajo)
 const CLAVE_RECIENTES = 'biofilm-v3-recientes'
@@ -71,7 +72,7 @@ export default function App() {
   const [editar, setEditar] = useState(false)
   const [avisoChrome, setAvisoChrome] = useState(() => !esChrome() && !leer(CLAVE_CHROME))
   const [nodoCinta, setNodoCinta] = useState(null)
-  const [analisisMap, setAnalisisMap] = useState({})
+  const [analisisLeido, setAnalisisMap] = useState({})   // análisis de cada placa con la OD leída
   const [avisos, setAvisos] = useState([])
   const [motor, setMotor] = useState(true)
   const [menu, abrirMenu, cerrarMenu] = useMenuContextual()
@@ -263,13 +264,19 @@ export default function App() {
     return () => clearTimeout(t)
   }, [placas, deteccion, avisar]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Calidad › Restar blanco: desde Calidad en adelante todo usa la OD corregida (OD leída − media de los blancos)
+  const restarBlanco = !!exp?.opts?.blanco?.restar
+  const analisisMap = useMemo(() => (restarBlanco
+    ? Object.fromEntries(Object.entries(analisisLeido).map(([id, a]) => [id, a ? corregirAnalisis(a) : a]))
+    : analisisLeido), [analisisLeido, restarBlanco])
   const analisis = activa ? analisisMap[activa.id] || null : null
   const muestras = exp?.muestras || []
   const ordenMuestras = useMemo(() => {
     const pres = [...new Set((analisis?.estado || []).map((e) => e.Muestra))]
     return [...muestras.filter((m) => pres.includes(m)), ...pres.filter((m) => !muestras.includes(m))]
   }, [analisis, muestras])
-  const ejeOD = Number.isFinite(activa?.placa?.onda) ? `DO a ${activa.placa.onda} nm` : 'Densidad óptica (OD)'
+  const ejeODLeida = Number.isFinite(activa?.placa?.onda) ? `DO a ${activa.placa.onda} nm` : 'Densidad óptica (OD)'
+  const ejeOD = restarBlanco ? (Number.isFinite(activa?.placa?.onda) ? `OD corregida a ${activa.placa.onda} nm` : 'OD corregida (OD − blanco)') : ejeODLeida
 
   // ---------- placas: agregar, quitar, renombrar, copiar configuración ----------
   const nombreUnico = (base, existentes) => {
@@ -468,7 +475,10 @@ export default function App() {
     archivo: activa?.archivo || null, placa: activa?.placa || null,
     config: activa?.config || [], setConfig: (c) => activa && actualizar(activa.id, { config: c }),
     blancosUsados: activa?.blancosUsados ?? null, setBlancosUsados: (b) => activa && actualizar(activa.id, { blancosUsados: b }),
-    analisis, ordenMuestras, ejeOD,
+    analisis, ordenMuestras, ejeOD, ejeODLeida,
+    // corrección por blanco: la placa activa y todas con la OD leída (para Pocillos y ODc)
+    restarBlanco, setRestarBlanco: (v) => upd((e) => ({ opts: { ...e.opts, blanco: { ...e.opts.blanco, restar: !!v } } })),
+    analisisLeido: activa ? analisisLeido[activa.id] || null : null, analisisMapLeido: analisisLeido,
     // globales
     muestras, setMuestras: (m) => upd((e) => ({ muestras: typeof m === 'function' ? m(e.muestras) : m })),
     deteccion: exp.deteccion, setDeteccion: (d) => upd({ deteccion: d }),

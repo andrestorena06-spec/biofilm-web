@@ -50,7 +50,7 @@ export function CompararTab({ s, grupoVista }) {
   const unaPlaca = modo === 'todas' && porPlacaG && placasSel.length < 2
   const nCols = grupos.reduce((a, g) => a + g.barras.length, 0)
   const grafico = (ref, tam, ctx) => <CompararChart ref={ref} grupos={grupos} leyenda={leyenda} o={el} est={s.estilos.comparar} eje={eje} onContext={ctx} tam={tam} nota={nota}
-    clases={rel && o.lineas !== false} escala={escala} unidad={rel ? ESCALAS[escala].corto : 'OD'} cvLim={cvLim} />
+    clases={rel && o.lineas !== false} escala={escala} unidad={rel ? ESCALAS[escala].corto : D.corregida ? 'OD corregida' : 'OD'} cvLim={cvLim} />
 
   const cambiarCelda = (id, m, v) => { const k = clave(id, m); const sin = (o.ocultos || []).filter((x) => x !== k); setO('ocultos', v ? sin : [...sin, k]) }
   const cambiarFila = (m, v) => {

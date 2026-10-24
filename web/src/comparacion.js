@@ -29,10 +29,12 @@ export function armarComparacion(s) {
   const escala = ESCALAS[s.opts.barras?.escala]?.f ? s.opts.barras.escala : 'od'
   const rel = escala !== 'od'
   const odcDe = (p) => s.analisisMap[p.id]?.odc?.odc
+  const restaDe = (p) => s.analisisMap[p.id]?.odc?.resta || 0     // blanco restado (la razón usa la OD leída)
+  const corregida = conAnalisis.some((p) => s.analisisMap[p.id]?.blanco?.restado)
   const sinOdc = rel ? conAnalisis.filter((p) => !fueraPl.has(p.id) && !(odcDe(p) > 0)) : []
   const sel0 = conAnalisis.filter((p) => !fueraPl.has(p.id) && !sinOdc.includes(p))
-  const tv = rel ? (p, v) => ESCALAS[escala].f(v, odcDe(p)) : (p, v) => v
-  const V = (p, v) => (rel ? `${tv(p, v).toFixed(3)} (OD ${v.toFixed(3)})` : v.toFixed(3))
+  const tv = rel ? (p, v) => ESCALAS[escala].f(v, odcDe(p), restaDe(p)) : (p, v) => v
+  const V = (p, v) => (rel ? `${tv(p, v).toFixed(3)} (OD ${(v + restaDe(p)).toFixed(3)})` : v.toFixed(3))
   // las placas se ordenan por medio de cultivo (las del mismo medio quedan juntas)
   const ordenMedios = [...new Set(s.placas.map((p) => p.medio || ''))].filter(Boolean)
   const placasSel = [...sel0].sort((a, b) => (a.medio ? ordenMedios.indexOf(a.medio) : 999) - (b.medio ? ordenMedios.indexOf(b.medio) : 999))
@@ -116,9 +118,9 @@ export function armarComparacion(s) {
     : modo === 'pocillo'
       ? 'Cada columna es un pocillo aceptado (OD)'
       : `Barra: OD media de las réplicas aceptadas de cada placa${ERR_TXT[o.error] ? `; error: ${ERR_TXT[o.error]} entre pocillos` : ''}`
-  const nota = rel ? `${notaOD} · escala ${ESCALAS[escala].eje} con el ODc de cada placa` : notaOD
+  const nota = rel ? `${notaOD} · escala ${ESCALAS[escala].eje} con el ODc de cada placa` : corregida ? `${notaOD} · OD corregida = OD leída − blanco de cada placa` : notaOD
   return {
     modo, verBlancos, conAnalisis, placasSel, mediosPres, coloresMedio, colorBase, colores, ocultos, clave, filasDe, muestras, esBlanco, etiqueta,
-    tieneMuestra, grupos, leyenda, nota, sinMedio: placasSel.filter((p) => !p.medio), escala, rel, sinOdc,
+    tieneMuestra, grupos, leyenda, nota, sinMedio: placasSel.filter((p) => !p.medio), escala, rel, sinOdc, corregida,
   }
 }

@@ -266,7 +266,8 @@ export function PlacaTab({ s }) {
 // ===============================================================
 export function AnalisisTab({ s }) {
   const [det, setDet] = useState(null)
-  const a = s.analisis
+  // el ODc y el mapa se hacen siempre con la OD leída (aunque esté activo «Restar blanco» en Calidad)
+  const a = s.analisisLeido || s.analisis
   if (!s.placa) return <Vacio titulo="Esta placa no tiene datos" texto="Cargá el Excel o escribí las OD en «Placas»." accion={<button className="primario" onClick={() => s.irA('placas')}>Ir a Placas</button>} />
   if (!a?.estado?.length) return <Vacio titulo="Faltan los pocillos" texto="Indicá qué muestra hay en cada pocillo para ver el mapa." accion={<button className="primario" onClick={() => s.irA('pocillos')}>Ir a Pocillos</button>} />
   const odc = a.odc.odc
@@ -308,7 +309,7 @@ export function AnalisisTab({ s }) {
 
       <div className="grid-kpi">
         <div className="kpi" data-tip={`Blancos aceptados\nPocillos de ${usados.join(', ') || 'blanco'} que no están excluidos`}><small>Blancos aceptados</small><b>{a.odc.n}</b></div>
-        <div className="kpi" data-tip={`Media de blancos\n${dMedia(odBl)}`}><small>Media de los blancos</small><b>{fmt(a.odc.media, 4)}</b></div>
+        <div className="kpi" data-tip={`Media de blancos\n${dMedia(odBl)}${s.restarBlanco ? '\nEs lo que se resta a cada OD desde Calidad (Restar blanco)' : ''}`}><small>{s.restarBlanco ? 'Media de los blancos · se resta' : 'Media de los blancos'}</small><b>{fmt(a.odc.media, 4)}</b></div>
         <div className="kpi" data-tip={dDE(odBl)}><small>DE de los blancos</small><b>{fmt(a.odc.sd, 4)}</b></div>
         <div className="kpi destacado" data-tip={a.odc.n > 1 ? dODc(odBl) : 'Punto de corte (ODc)\nHacen falta al menos 2 blancos aceptados'}><small>ODc = media + 3 × DE</small><b>{fmt(odc, 4)}</b></div>
       </div>
@@ -317,7 +318,7 @@ export function AnalisisTab({ s }) {
 
       <section className="tarjeta">
         <div className="cabeza-tarjeta">
-          <span className="etiqueta-seccion">Mapa de la placa · {s.ejeOD}</span>
+          <span className="etiqueta-seccion">Mapa de la placa · {s.ejeODLeida}</span>
           <span className="ayuda">Clic en un pocillo para ver su clasificación y excluirlo o incluirlo
             <Nota>Stepanović et al. (2000): cada muestra se clasifica con la media de sus réplicas aceptadas; acá se colorea cada pocillo con su propia OD.</Nota></span>
         </div>

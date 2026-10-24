@@ -29,9 +29,11 @@ export function PasoAPaso({ s }) {
   const muestra = muestras.includes(m) ? m : muestras[0]
   const det = s.deteccion
   const odc = a.odc.odc
+  const resta = a.odc.resta || 0          // blanco restado (Calidad › Restar blanco)
+  const leida = (e) => (Number.isFinite(e.ODleida) ? e.ODleida : e.OD)
 
-  // 1. punto de corte
-  const bl = a.estado.filter((e) => e.EsBlanco && e.Usado)
+  // 1. punto de corte (siempre con la OD leída)
+  const bl = (s.analisisLeido || a).estado.filter((e) => e.EsBlanco && e.Usado)
   const eb = estad(bl.map((e) => e.OD))
 
   // 2. una muestra
@@ -41,7 +43,7 @@ export function PasoAPaso({ s }) {
 
   // 3. valores atípicos de la muestra (todas sus réplicas no excluidas a mano)
   const todas = a.estado.filter((e) => e.Muestra === muestra && !e.Manual)
-  const x = todas.map((e) => e.OD)
+  const x = todas.map(leida)   // los tests de atípicos usan la OD leída
   const d = det.metodo === 'grubbs' ? detectarGrubbs(x, det.conf) : det.metodo === 'cv' ? detectarCV(x, Number(det.cvMax)) : detectarQ(x, det.conf)
   const orden = x.map((v, i) => ({ v, e: todas[i] })).sort((p, q) => p.v - q.v)
   const rango = orden.length ? orden[orden.length - 1].v - orden[0].v : NaN
@@ -63,13 +65,14 @@ export function PasoAPaso({ s }) {
       {res && (
         <>
           <h3>2. Media y errores de «{muestra}»</h3>
-          <Tabla cols={['Pocillo', 'Réplica', 'OD original', 'Se resta la media', 'Diferencia', 'Diferencia al cuadrado']}
-            filas={reps.map((e) => [e.Pocillo, e.Replica, f(e.OD), f(es.m), f(e.OD - es.m), f((e.OD - es.m) ** 2, 6)])}
+          {resta ? <p className="ayuda">Con «Restar blanco» (Calidad): OD corregida = OD leída − {f(resta)} (media de los blancos aceptados).</p> : null}
+          <Tabla cols={[...(resta ? ['Pocillo', 'Réplica', 'OD leída', 'OD corregida'] : ['Pocillo', 'Réplica', 'OD original']), 'Se resta la media', 'Diferencia', 'Diferencia al cuadrado']}
+            filas={reps.map((e) => [e.Pocillo, e.Replica, ...(resta ? [f(leida(e))] : []), f(e.OD), f(es.m), f(e.OD - es.m), f((e.OD - es.m) ** 2, 6)])}
             pie={[['n (réplicas aceptadas)', es.n], ['Σ OD', f(reps.reduce((t, e) => t + e.OD, 0))], ['Media x̄ = Σ OD / n', f(es.m)], ['Σ diferencias²', f(es.ss, 6)],
               ['DE = √(Σ / (n − 1))', f(es.sd)], ['SEM = DE / √n', f(es.sem)], [`t(0.975; ${es.n - 1})`, f(es.t, 3)], ['IC 95 % = t × SEM', f(es.ic)],
-              ['CV = 100 × DE / x̄ (%)', f(es.cv, 2)], ...(Number.isFinite(odc) ? [['OD / ODc', f(es.m / odc, 2)], [`Umbrales: ODc ${f(odc)} · 2×ODc ${f(2 * odc)} · 4×ODc ${f(4 * odc)}`, res.Clasificacion || '–']] : [])]} />
+              ['CV = 100 × DE / x̄ (%)', f(es.cv, 2)], ...(Number.isFinite(odc) ? [[resta ? `OD / ODc = (x̄ + ${f(resta)}) / ODc (con la OD leída)` : 'OD / ODc', f((es.m + resta) / odc, 2)], [`Umbrales (OD leída): ODc ${f(odc)} · 2×ODc ${f(2 * odc)} · 4×ODc ${f(4 * odc)}`, res.Clasificacion || '–']] : [])]} />
 
-          <h3>3. Valores atípicos de «{muestra}» ({det.metodo === 'grubbs' ? 'test de Grubbs' : det.metodo === 'cv' ? 'coeficiente de variación' : 'test Q de Dixon'})</h3>
+          <h3>3. Valores atípicos de «{muestra}» ({det.metodo === 'grubbs' ? 'test de Grubbs' : det.metodo === 'cv' ? 'coeficiente de variación' : 'test Q de Dixon'}{resta ? ', con la OD leída' : ''})</h3>
           {orden.length >= 3 ? (
             <>
               <Tabla cols={['Orden', 'Pocillo', 'OD', 'Distancia al siguiente', det.metodo === 'q' ? 'Distancia / rango' : '|OD − x̄|']}
