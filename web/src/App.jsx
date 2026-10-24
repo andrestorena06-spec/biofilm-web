@@ -477,7 +477,13 @@ export default function App() {
     blancosUsados: activa?.blancosUsados ?? null, setBlancosUsados: (b) => activa && actualizar(activa.id, { blancosUsados: b }),
     analisis, ordenMuestras, ejeOD, ejeODLeida,
     // corrección por blanco: la placa activa y todas con la OD leída (para Pocillos y ODc)
-    restarBlanco, setRestarBlanco: (v) => upd((e) => ({ opts: { ...e.opts, blanco: { ...e.opts.blanco, restar: !!v } } })),
+    // al activarla, Calidad y Gráfico pasan a OD: en OD ÷ ODc la razón se hace con la OD leída y no se vería el cambio
+    restarBlanco, setRestarBlanco: (v) => {
+      const o0 = expRef.current?.opts
+      const enOdc = v && (o0?.excluir?.escala === 'odc' || o0?.barras?.escala === 'odc')
+      upd((e) => ({ opts: { ...e.opts, blanco: { ...e.opts.blanco, restar: !!v }, ...(v ? { excluir: { ...e.opts.excluir, escala: 'od' }, barras: { ...e.opts.barras, escala: 'od' } } : {}) } }))
+      if (enOdc) avisar('Blanco restado: los gráficos pasaron a la escala OD (OD corregida). La escala OD ÷ ODc se calcula siempre con la OD leída.')
+    },
     analisisLeido: activa ? analisisLeido[activa.id] || null : null, analisisMapLeido: analisisLeido,
     // globales
     muestras, setMuestras: (m) => upd((e) => ({ muestras: typeof m === 'function' ? m(e.muestras) : m })),

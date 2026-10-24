@@ -100,6 +100,7 @@ export function ExcluirTab({ s }) {
         </div>
         {ESCALAS[o.escala]?.f && escE === 'od' && <p className="aviso-caja">Sin ODc (faltan blancos aceptados): se muestra en OD.</p>}
         {sinBlancoResta && <p className="aviso-caja">Esta placa no tiene blancos aceptados: no se le puede restar el blanco y queda con la OD leída.</p>}
+        {s.restarBlanco && escE === 'odc' && <p className="aviso-caja info">La escala OD ÷ ODc se calcula con la OD leída: restar el blanco no la cambia. Elegí <b>OD</b> en «Escala» para ver la OD corregida.</p>}
         <div className="fila" style={{ marginTop: 10 }}>
           {s.analisis.blanco?.restado && <span className="chip" data-tip={`${textoBlanco(s.analisis)}\nSe resta a todos los pocillos de esta placa, desde Calidad en adelante.\nLos tests de atípicos, el ODc y la clasificación usan la OD leída.`}>OD corregida · blanco {fmt(resta, 3)}</span>}
           {sospechosos.length > 0 && <span className="chip aviso" data-tip={`Sospechosos dentro del análisis\n${sospechosos.map((e) => `${e.Pocillo} (${e.Muestra} R${e.Replica}): ${e.Motivo || ''}`).join('\n')}`}>{sospechosos.length} sospechoso{sospechosos.length > 1 ? 's' : ''} sin excluir</span>}
@@ -189,6 +190,7 @@ export function GraficoTab({ s, grupoVista }) {
         </div>
       </Cajon>
 
+      {s.restarBlanco && escG === 'odc' && <p className="aviso-caja info">La escala OD ÷ ODc se calcula con la OD leída: restar el blanco no la cambia. Elegí <b>OD</b> en «Escala» para ver la OD corregida.</p>}
       {sinOdc && <p className="aviso-caja">Sin ODc (faltan blancos aceptados): las barras no se pueden clasificar{ESCALAS[o.escala]?.f ? ` ni pasar a la escala ${ESCALAS[o.escala].eje} (se muestran en OD)` : ''}.</p>}
       <section className="tarjeta">
         <div className="cabeza-tarjeta">
