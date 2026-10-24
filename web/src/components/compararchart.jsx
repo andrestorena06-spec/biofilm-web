@@ -1,8 +1,8 @@
 import { forwardRef } from 'react'
 import { dBigotes, dCaja, dError, dMedia, dMediana } from '../calculos.js'
 import { calcularLayout } from '../layout.js'
-import { ESCALAS, FUENTE, estiloEscala, ejeConRango, escalaY, fmt, fmtTick, medir, ticksBonitos } from '../utils.js'
-import { ALTO_FILA_CV, EjeY, EtiquetaFondo, EtiquetasX, FilaCV, LeyendaX, Titulo, useAncho } from './charts.jsx'
+import { ESCALAS, FUENTE, estiloEscala, ejeConRango, escalaY, fmt, fmtTick, medir, tCuantil, ticksBonitos } from '../utils.js'
+import { ALTO_FILA_CV, ERROR_REL, EjeY, EtiquetaFondo, EtiquetasX, FilaCV, LeyendaX, Titulo, tipoRel, useAncho } from './charts.jsx'
 
 // ---------------------------------------------------------------
 // GRÁFICO DE COMPARACIÓN: cada elemento se muestra u oculta por separado (barras, barras de error, caja de cuartiles,
@@ -171,13 +171,28 @@ export const CompararChart = forwardRef(function CompararChart({ grupos, leyenda
 
         <EtiquetasX labels={labels} cx={cx} yBase={y(eY.min)} ang={o.rotar} est={est} />
         {o.cv && (() => {
-          // un CV por columna, con los mismos datos que la media y el error de esa columna
-          const cvDe = (v) => { if (v.length < 2) return NaN; const m = v.reduce((a, b) => a + b, 0) / v.length; const sd = Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / (v.length - 1)); return m > 0 ? (100 * sd) / m : NaN }
+          // el error relativo de cada columna, con los mismos datos y el mismo tipo de error que la barra
+          const tr = tipoRel(o.errorTipo), R = ERROR_REL[tr]
+          const relDe = (v) => {
+            if (v.length < 2) return { v: NaN }
+            const m = v.reduce((a, b) => a + b, 0) / v.length
+            const sd = Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / (v.length - 1)), sem = sd / Math.sqrt(v.length)
+            const err = tr === 'sd' ? sd : tr === 'sem' ? sem : tCuantil(0.975, v.length - 1) * sem
+            return m > 0 ? { v: (100 * err) / m, err, m, cv: (100 * sd) / m } : { v: NaN }
+          }
           const items = grupos.flatMap((g, gi) => {
             const x0 = cx(gi) - (g.barras.length * sw) / 2
-            return g.barras.map((b, k) => { const v = b.vp || b.pts; const cv = cvDe(v); return { x: x0 + k * sw + sw / 2, cv, corto: sw < 34, tip: Number.isFinite(cv) ? `${g.etiqueta || g.muestra} · ${b.placa}\nCV = 100 × DE ÷ media = ${cv.toFixed(1)} % (n = ${v.length})${cv > cvLim ? `\nSupera el límite de ${cvLim} %` : ''}` : `${g.etiqueta || g.muestra} · ${b.placa}\nhacen falta 2 o más datos` } })
+            return g.barras.map((b, k) => {
+              const d = b.vp || b.pts, r = relDe(d), cab = `${g.etiqueta || g.muestra} · ${b.placa}`
+              return {
+                x: x0 + k * sw + sw / 2, v: r.v, corto: sw < 34,
+                tip: Number.isFinite(r.v)
+                  ? `${cab}\n${R.nombre} = 100 × ${R.sigla} ÷ media = 100 × ${fmt(r.err, 4)} ÷ ${fmt(r.m, 4)} = ${r.v.toFixed(1)} % (n = ${d.length})${tr === 'sd' && r.v > cvLim ? `\nSupera el límite de ${cvLim} %` : ''}${tr !== 'sd' ? `\nCV (DE %) = ${r.cv.toFixed(1)} %` : ''}`
+                  : `${cab}\nhacen falta 2 o más datos`,
+              }
+            })
           })
-          return <FilaCV L={L} lim={cvLim} items={items} size={Math.max(9.5, Math.min(12, sw * 0.42))} />
+          return <FilaCV L={L} lim={cvLim} tipo={tr} items={items} size={Math.max(9.5, Math.min(12, sw * 0.42))} />
         })()}
         <LeyendaX L={L} est={est} />
 

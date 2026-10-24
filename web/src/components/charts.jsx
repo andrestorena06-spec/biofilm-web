@@ -58,22 +58,31 @@ export function EtiquetasX({ labels, cx, yBase, ang, est }) {
   ))
 }
 
-// Fila con el CV (100 × DE ÷ media) de cada columna, debajo de los nombres del eje X.
-// En naranja si supera el límite de CV de «Calidad». items: [{ x, cv, tip, corto }]
+// Error relativo de la fila de abajo: el mismo error que muestran las barras, en % de la media
+export const ERROR_REL = {
+  sd: { etq: 'DE %', nombre: 'Desviación estándar relativa (CV)', sigla: 'DE' },
+  sem: { etq: 'EE %', nombre: 'Error estándar relativo', sigla: 'EE' },
+  ic95: { etq: 'IC %', nombre: 'IC 95 % relativo (semiancho del intervalo)', sigla: 'IC 95 %' },
+}
+export const tipoRel = (e) => (ERROR_REL[e] ? e : 'sd')   // sin barras de error: DE %
+
+// Fila con el error relativo (100 × error ÷ media) de cada columna, debajo de los nombres del eje X.
+// Con DE, en naranja si supera el límite de CV de «Calidad». items: [{ x, v, tip, corto }]
 export const ALTO_FILA_CV = 32
-export function FilaCV({ L, items, lim, size = 12 }) {
+export function FilaCV({ L, items, lim, size = 12, tipo = 'sd' }) {
   const y = L.top + L.plotH + 10 + L.altoEtiquetas + 12 + L.altoLeyX + 16
+  const R = ERROR_REL[tipo] || ERROR_REL.sd
   return (
     <g>
       <line x1={L.left} x2={L.left + L.plotW} y1={y - 15} y2={y - 15} stroke="#e5ddd0" />
       <text x={L.left - 8} y={y} textAnchor="end" style={{ fontSize: 11, fill: '#6b7785' }}
-        data-tip={`CV = 100 × DE ÷ media de cada columna\nEn naranja: más del ${lim} % (límite de CV de «Calidad»)`}>CV %</text>
+        data-tip={`${R.nombre} = 100 × ${R.sigla} ÷ media de cada columna (el mismo error que las barras)${tipo === 'sd' ? `\nEn naranja: más del ${lim} % (límite de CV de «Calidad»)` : ''}`}>{R.etq}</text>
       {items.map((it, i) => {
-        const alto = Number.isFinite(it.cv) && it.cv > lim
+        const alto = tipo === 'sd' && Number.isFinite(it.v) && it.v > lim
         return (
           <text key={i} x={it.x} y={y} textAnchor="middle" data-tip={it.tip}
             style={{ fontSize: size, fill: alto ? '#c25e00' : '#5b6672', fontWeight: alto ? 700 : 400 }}>
-            {Number.isFinite(it.cv) ? (it.corto ? it.cv.toFixed(0) : `${it.cv.toFixed(0)} %`) : '–'}
+            {Number.isFinite(it.v) ? (it.corto ? it.v.toFixed(0) : `${it.v.toFixed(0)} %`) : '–'}
           </text>
         )
       })}
@@ -227,10 +236,19 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
 
         <EtiquetasX labels={labels} cx={cx} yBase={y(eY.min)} ang={o.rotar} est={est} />
         <LeyendaX L={L} est={est} />
-        {o.cv && <FilaCV L={L} lim={cvLim} items={filas.map((f, i) => ({
-          x: cx(i), cv: f.CV_pct,
-          tip: Number.isFinite(f.CV_pct) ? `CV de ${f.Muestra} = 100 × DE ÷ media\n= 100 × ${fmt(f.SD, 4)} ÷ ${fmt(f.Media, 4)} = ${fmt(f.CV_pct, 1)} %\n(${f.N_aceptadas ?? '?'} réplicas aceptadas)${f.CV_pct > cvLim ? `\nSupera el límite de ${cvLim} %` : ''}` : `${f.Muestra}: hacen falta 2 o más réplicas`,
-        }))} />}
+        {o.cv && (() => {
+          const tr = tipoRel(o.error), R = ERROR_REL[tr]
+          return <FilaCV L={L} lim={cvLim} tipo={tr} items={filas.map((f, i) => {
+            const err = tr === 'sd' ? f.SD : tr === 'sem' ? f.SEM : f.IC95
+            const v = (100 * err) / f.Media
+            return {
+              x: cx(i), v,
+              tip: Number.isFinite(v)
+                ? `${R.nombre} de ${f.Muestra}\n= 100 × ${R.sigla} ÷ media = 100 × ${fmt(err, 4)} ÷ ${fmt(f.Media, 4)} = ${fmt(v, 1)} %\n(${f.N_aceptadas ?? '?'} réplicas aceptadas)${tr === 'sd' && v > cvLim ? `\nSupera el límite de ${cvLim} %` : ''}${tr !== 'sd' && Number.isFinite(f.CV_pct) ? `\nCV (DE %) = ${fmt(f.CV_pct, 1)} %` : ''}`
+                : `${f.Muestra}: hacen falta 2 o más réplicas`,
+            }
+          })} />
+        })()}
 
         {(leyenda || hayBlanco) && (
           <g transform={`translate(${L.left + L.plotW / 2},${yLeyenda})`}>

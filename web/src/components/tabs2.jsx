@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { BarChart, ExcluirChart } from './charts.jsx'
+import { BarChart, ERROR_REL, ExcluirChart, tipoRel } from './charts.jsx'
 import { Check, EstiloDialog, MenuContextual, Num, RangoDialog, Select, Vacio, tamDe, useMenuContextual } from './ui.jsx'
 import { BotonCinta, Cajon, CampoCinta, Cinta, Grupo, InterruptorCinta, OpcionesCinta } from './cinta.jsx'
 import { Icono } from './iconos.jsx'
@@ -160,7 +160,7 @@ export function GraficoTab({ s, grupoVista }) {
           <InterruptorCinta simbolo="±" texto="Error" valor={o.errores} onChange={(v) => setO('errores', v)} deshabilitado={!o.medias} tip="Agrega el error junto al valor medio" />
           <InterruptorCinta icono="umbral" texto="Clases" valor={o.lineas} onChange={(v) => setO('lineas', v)} deshabilitado={sinOdc} tip="Líneas de ODc, 2 × ODc y 4 × ODc con el nombre de cada clase" />
           <InterruptorCinta simbolo="0,3" texto="Umbrales" valor={o.valoresClase} onChange={(v) => setO('valoresClase', v)} deshabilitado={sinOdc || !o.lineas} tip="Escribe el valor numérico bajo el nombre de cada clase" />
-          <InterruptorCinta simbolo="%" texto="CV" valor={!!o.cv} onChange={(v) => setO('cv', v)} tip={`Fila con el CV de cada muestra (100 × DE ÷ media) debajo de los nombres.\nEn naranja si supera el ${cvLim} % (límite de CV de «Calidad»).`} />
+          <InterruptorCinta simbolo="%" texto={ERROR_REL[tipoRel(o.error)].etq} valor={!!o.cv} onChange={(v) => setO('cv', v)} tip={`Fila debajo de los nombres con el error de las barras en % de la media:\nDE → DE % (desviación estándar relativa, CV) · SEM → EE % (error estándar relativo) · IC 95 % → IC %.\nCon DE, en naranja si supera el ${cvLim} % (límite de CV de «Calidad»).`} />
         </Grupo>
         <Grupo titulo="Barras">
           <CampoCinta etiqueta="Error"><Select value={o.error} onChange={(v) => setO('error', v)} opciones={[...ERRORES, ['ninguno', 'Ninguno']]} /></CampoCinta>

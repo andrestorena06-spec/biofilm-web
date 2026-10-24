@@ -5,6 +5,7 @@ import { ExportDialog } from './exportar.jsx'
 import { Check, EstiloDialog, MenuContextual, Num, RangoDialog, Select, Vacio, tamDe, useMenuContextual } from './ui.jsx'
 import { BotonCinta, Cajon, CampoCinta, Cinta, Grupo, InterruptorCinta, OpcionesCinta } from './cinta.jsx'
 import { armarComparacion } from '../comparacion.js'
+import { ERROR_REL, tipoRel } from './charts.jsx'
 import { ESCALAS, conRango, estiloDefecto, estiloEscala } from '../utils.js'
 
 // Comparación entre placas: el gráfico (por placa, por medio de cultivo o por pocillo). Las pruebas están en «Estadística».
@@ -96,7 +97,7 @@ export function CompararTab({ s, grupoVista }) {
           <InterruptorCinta icono="puntos" texto="Puntos" valor={el.puntos} onChange={(v) => poner({ puntos: v })} tip="Cada valor medido" />
           <InterruptorCinta simbolo="0,4" texto="Valores" valor={el.valores} onChange={(v) => poner({ valores: v })} tip="Escribe la media sobre cada columna" />
           <InterruptorCinta simbolo="±" texto="± error" valor={el.errores} onChange={(v) => poner({ errores: v })} deshabilitado={!el.valores} tip="Agrega el error al valor escrito" />
-          <InterruptorCinta simbolo="%" texto="CV" valor={el.cv} onChange={(v) => poner({ cv: v })} deshabilitado={modo === 'pocillo'} tip={`Fila con el CV de cada columna (100 × DE ÷ media, con los mismos datos que la barra) debajo de los nombres.\nEn naranja si supera el ${cvLim} % (límite de CV de «Calidad»).`} />
+          <InterruptorCinta simbolo="%" texto={ERROR_REL[tipoRel(o.error)].etq} valor={el.cv} onChange={(v) => poner({ cv: v })} deshabilitado={modo === 'pocillo'} tip={`Fila debajo de los nombres con el error de cada columna en % de la media (mismos datos que la barra):\nDE → DE % (desviación estándar relativa, CV) · SEM → EE % (error estándar relativo) · IC 95 % → IC %.\nCon DE, en naranja si supera el ${cvLim} % (límite de CV de «Calidad»).`} />
           {rel && <InterruptorCinta icono="umbral" texto="Clases" valor={o.lineas !== false} onChange={(v) => setO('lineas', v)} tip={`Líneas en ${umbTxt} (ODc, 2 × ODc y 4 × ODc de cada placa) con el nombre de cada clase.\nEn esta escala los umbrales son los mismos para todas las placas.`} />}
           {rel && <InterruptorCinta simbolo="0,3" texto="Umbrales" valor={!!o.valoresClase} onChange={(v) => setO('valoresClase', v)} deshabilitado={o.lineas === false} tip="Escribe el rango de cada clase bajo su nombre" />}
         </Grupo>

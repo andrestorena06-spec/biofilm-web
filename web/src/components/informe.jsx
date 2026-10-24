@@ -129,7 +129,7 @@ export function abrirInforme(s) {
     const D = armarComparacion(s)
     const el = {
       barras: oc.barras !== false, barrasError: oc.barrasError !== false, caja: oc.caja ?? !!oc.cajas, mediana: oc.mediana ?? !!oc.cajas, bigotes: oc.bigotes ?? !!oc.cajas, media: oc.media ?? !!oc.cajas, puntos: oc.puntos !== false,
-      valores: oc.valores !== false, errores: !!oc.errores, rotar: oc.rotar ?? 45, cv: !!oc.cv && oc.modo !== 'pocillo',
+      valores: oc.valores !== false, errores: !!oc.errores, rotar: oc.rotar ?? 45, cv: !!oc.cv && oc.modo !== 'pocillo', errorTipo: oc.error,
     }
     if (D.grupos.length && (el.barras || el.caja || el.mediana || el.bigotes || el.media || el.puntos)) {
       const fig = svgStr(<CompararChart grupos={D.grupos} leyenda={D.leyenda} o={{ ...el, valoresClase: !!s.opts.comparar.valoresClase }} est={s.estilos.comparar} eje={D.rel ? ESCALAS[D.escala].eje : ejeDe(D.placasSel[0])} tam={{ w: 900, h: 560 }} nota={D.nota} clases={D.rel && s.opts.comparar.lineas !== false} escala={D.escala} unidad={D.rel ? ESCALAS[D.escala].corto : 'OD'} cvLim={Number(det.cvMax) || 20} />)
