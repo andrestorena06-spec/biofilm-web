@@ -216,6 +216,7 @@ export function normalizarEstilo(e = {}) {
   const rg = (r) => (r && (Number.isFinite(r.min) || Number.isFinite(r.max)) ? { min: Number.isFinite(r.min) ? r.min : null, max: Number.isFinite(r.max) ? r.max : null } : null)
   if (rg(e.rango)) out.rango = rg(e.rango)
   if (rg(e.rangoLog)) out.rangoLog = rg(e.rangoLog)
+  if (rg(e.rangoOdc)) out.rangoOdc = rg(e.rangoOdc)
   return out
 }
 
@@ -240,6 +241,26 @@ export const escalaY = (L, eY) => (v) => {
 // Quita la variación de la tinción entre placas (cada una se mide contra su propio ODc) y la varianza que crece con la OD.
 export const logOdc = (od, odc) => (od > 0 && odc > 0 ? 1 + Math.log2(od / odc) : NaN)
 export const TXT_LOGODC = '1 + log₂(OD ÷ ODc)'
-// el rango del eje Y elegido a mano se guarda aparte para la escala log ODc (sus números no son de OD)
-export const estiloEscala = (est, log) => (log ? { ...est, rango: est.rangoLog } : est)
-export const conRango = (prev, nuevo, log) => (log ? { ...prev, rangoLog: nuevo.rango } : { ...prev, rango: nuevo.rango })
+// Escalas relativas al ODc de cada placa (botón «Escala» de Gráfico y Calidad). umbrales: [valor, nombre, múltiplo del ODc]
+//  odc    → OD ÷ ODc: cada unidad es un ODc; las clases quedan en 1, 2 y 4
+//  logodc → 1 + log₂(OD ÷ ODc): cada unidad es una OD del doble; las clases quedan en 1, 2 y 3
+export const ESCALAS = {
+  od: { eje: null, corto: 'OD' },
+  odc: {
+    eje: 'OD ÷ ODc', corto: 'OD ÷ ODc', f: (od, odc) => (Number.isFinite(od) && odc > 0 ? od / odc : NaN),
+    umbrales: [[1, 'ODc', 1], [2, '2 × ODc', 2], [4, '4 × ODc', 4]], nota: '1 = ODc, 2 = 2 × ODc, 4 = 4 × ODc',
+    cuenta: (od, odc) => `OD ÷ ODc = ${od.toFixed(4)} ÷ ${odc.toFixed(4)} = ${(od / odc).toFixed(3)}`,
+  },
+  logodc: {
+    eje: TXT_LOGODC, corto: 'log ODc', f: logOdc,
+    umbrales: [[1, 'ODc', 1], [2, '2 × ODc', 2], [3, '4 × ODc', 4]], nota: '1 = ODc, 2 = 2 × ODc, 3 = 4 × ODc',
+    cuenta: (od, odc) => `${TXT_LOGODC} = 1 + log₂(${od.toFixed(4)} ÷ ${odc.toFixed(4)}) = ${logOdc(od, odc).toFixed(3)}`,
+  },
+}
+// la escala que se puede usar con ese ODc (sin ODc, OD)
+export const escalaValida = (e, odc) => (ESCALAS[e]?.f && odc > 0 ? e : 'od')
+export const fEscala = (e, odc) => (ESCALAS[e]?.f && odc > 0 ? (v) => ESCALAS[e].f(v, odc) : (v) => v)
+// el rango del eje Y elegido a mano se guarda aparte para cada escala (sus números no son de OD)
+const claveRango = (e) => (e === true || e === 'logodc' ? 'rangoLog' : e === 'odc' ? 'rangoOdc' : 'rango')
+export const estiloEscala = (est, e) => ({ ...est, rango: est[claveRango(e)] })
+export const conRango = (prev, nuevo, e) => ({ ...prev, [claveRango(e)]: nuevo.rango })

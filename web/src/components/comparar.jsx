@@ -5,7 +5,7 @@ import { ExportDialog } from './exportar.jsx'
 import { Check, EstiloDialog, MenuContextual, Num, RangoDialog, Select, Vacio, tamDe, useMenuContextual } from './ui.jsx'
 import { BotonCinta, Cajon, CampoCinta, Cinta, Grupo, InterruptorCinta, OpcionesCinta } from './cinta.jsx'
 import { armarComparacion } from '../comparacion.js'
-import { TXT_LOGODC, conRango, estiloDefecto, estiloEscala } from '../utils.js'
+import { ESCALAS, conRango, estiloDefecto, estiloEscala } from '../utils.js'
 
 // Comparación entre placas: el gráfico (por placa, por medio de cultivo o por pocillo). Las pruebas están en «Estadística».
 export function CompararTab({ s, grupoVista }) {
@@ -22,8 +22,9 @@ export function CompararTab({ s, grupoVista }) {
   // todos los datos del gráfico salen de un solo lugar; la vista (barras / cajas / puntos) no cambia nada de esto
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const D = useMemo(() => armarComparacion(s), [s.placas, s.analisisMap, s.muestras, o, s.opts.barras?.escala])
-  const { modo, conAnalisis, placasSel, colores, colorBase, ocultos, clave, muestras, etiqueta, tieneMuestra, grupos, leyenda, nota, sinMedio, log, sinOdc } = D
-  const eje = log ? TXT_LOGODC : s.ejeOD
+  const { modo, conAnalisis, placasSel, colores, colorBase, ocultos, clave, muestras, etiqueta, tieneMuestra, grupos, leyenda, nota, sinMedio, escala, rel, sinOdc } = D
+  const eje = rel ? ESCALAS[escala].eje : s.ejeOD
+  const umbTxt = rel ? ESCALAS[escala].umbrales.map((u) => u[0]).join(', ').replace(/, (\d)$/, ' y $1') : ''
 
   // elementos del gráfico (las sesiones viejas traían una sola opción «cajas»)
   const el = {
@@ -46,7 +47,7 @@ export function CompararTab({ s, grupoVista }) {
   const medios1 = modo === 'medio' && porPlacaG ? [...new Set(grupos.flatMap((g) => g.barras.filter((b) => b.nPlacas < 2).map((b) => b.medio)))] : []
   const nCols = grupos.reduce((a, g) => a + g.barras.length, 0)
   const grafico = (ref, tam, ctx) => <CompararChart ref={ref} grupos={grupos} leyenda={leyenda} o={el} est={s.estilos.comparar} eje={eje} onContext={ctx} tam={tam} nota={nota}
-    clases={log && o.lineas !== false} escalaLog={log} unidad={log ? 'log ODc' : 'OD'} />
+    clases={rel && o.lineas !== false} escala={escala} unidad={rel ? ESCALAS[escala].corto : 'OD'} />
 
   const cambiarCelda = (id, m, v) => { const k = clave(id, m); const sin = (o.ocultos || []).filter((x) => x !== k); setO('ocultos', v ? sin : [...sin, k]) }
   const cambiarFila = (m, v) => {
@@ -92,8 +93,8 @@ export function CompararTab({ s, grupoVista }) {
           <InterruptorCinta icono="puntos" texto="Puntos" valor={el.puntos} onChange={(v) => poner({ puntos: v })} tip="Cada valor medido" />
           <InterruptorCinta simbolo="0,4" texto="Valores" valor={el.valores} onChange={(v) => poner({ valores: v })} tip="Escribe la media sobre cada columna" />
           <InterruptorCinta simbolo="±" texto="± error" valor={el.errores} onChange={(v) => poner({ errores: v })} deshabilitado={!el.valores} tip="Agrega el error al valor escrito" />
-          {log && <InterruptorCinta icono="umbral" texto="Clases" valor={o.lineas !== false} onChange={(v) => setO('lineas', v)} tip={'Líneas en 1, 2 y 3 (ODc, 2 × ODc y 4 × ODc de cada placa) con el nombre de cada clase.\nEn la escala log ODc los umbrales son los mismos para todas las placas.'} />}
-          {log && <InterruptorCinta simbolo="0,3" texto="Umbrales" valor={!!o.valoresClase} onChange={(v) => setO('valoresClase', v)} deshabilitado={o.lineas === false} tip="Escribe el rango de cada clase bajo su nombre" />}
+          {rel && <InterruptorCinta icono="umbral" texto="Clases" valor={o.lineas !== false} onChange={(v) => setO('lineas', v)} tip={`Líneas en ${umbTxt} (ODc, 2 × ODc y 4 × ODc de cada placa) con el nombre de cada clase.\nEn esta escala los umbrales son los mismos para todas las placas.`} />}
+          {rel && <InterruptorCinta simbolo="0,3" texto="Umbrales" valor={!!o.valoresClase} onChange={(v) => setO('valoresClase', v)} deshabilitado={o.lineas === false} tip="Escribe el rango de cada clase bajo su nombre" />}
         </Grupo>
         <Grupo titulo="Ajustes">
           {modo !== 'pocillo' && <CampoCinta etiqueta="Error"><Select value={o.error} onChange={(v) => setO('error', v)} opciones={[['sd', 'DE'], ['sem', 'SEM'], ['ic95', 'IC 95 %'], ['ninguno', 'Ninguno']]} /></CampoCinta>}
@@ -147,7 +148,7 @@ export function CompararTab({ s, grupoVista }) {
         </div>
       </Cajon>
 
-      {sinOdc.length > 0 && <p className="aviso-caja">Sin ODc (faltan blancos aceptados), no entran en la escala log ODc: {sinOdc.map((p) => p.nombre).join(', ')}.</p>}
+      {sinOdc.length > 0 && <p className="aviso-caja">Sin ODc (faltan blancos aceptados), no entran en la escala {ESCALAS[escala].eje}: {sinOdc.map((p) => p.nombre).join(', ')}.</p>}
       {modo === 'medio' && sinMedio.length > 0 && <p className="aviso-caja">Placas sin medio indicado (no se muestran): {sinMedio.map((p) => p.nombre).join(', ')}. Elegí su medio en «Pocillos» o en «Placas».</p>}
       {medios1.length > 0 && <p className="aviso-caja">Con una sola placa en {medios1.join(', ')} no hay error ni dispersión entre placas. Elegí «Pocillos» para verlos.</p>}
       <section className="tarjeta">
@@ -165,8 +166,8 @@ export function CompararTab({ s, grupoVista }) {
         ['Guardar imagen…', () => { cerrarMenu(); setExp(true) }],
         ['Restablecer estilo de texto', () => { cerrarMenu(); s.setEstilos((e) => ({ ...e, comparar: estiloDefecto() })) }],
       ]} />
-      {rng && <RangoDialog est={estiloEscala(s.estilos.comparar, log)} onClose={() => setRng(false)} onGuardar={(e) => { s.setEstilos((x) => ({ ...x, comparar: conRango(x.comparar, e, log) })); setRng(false) }} />}
-      {dlg && <EstiloDialog estilo={s.estilos.comparar} conClases={log} ejeDefecto={eje} onClose={() => setDlg(false)}
+      {rng && <RangoDialog est={estiloEscala(s.estilos.comparar, escala)} onClose={() => setRng(false)} onGuardar={(e) => { s.setEstilos((x) => ({ ...x, comparar: conRango(x.comparar, e, escala) })); setRng(false) }} />}
+      {dlg && <EstiloDialog estilo={s.estilos.comparar} conClases={rel} ejeDefecto={eje} onClose={() => setDlg(false)}
         onGuardar={(e) => { s.setEstilos((x) => ({ ...x, comparar: e })); setDlg(false) }} />}
       {exp && svg.current && <ExportDialog nombre="comparacion_placas" size0={tamDe(svg.current)} onClose={() => setExp(false)} render={(ref, tam) => grafico(ref, tam, (e) => e.preventDefault())} />}
     </div>

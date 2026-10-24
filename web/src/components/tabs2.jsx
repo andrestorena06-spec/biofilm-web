@@ -14,7 +14,7 @@ import { resumenBlancos } from '../blancos.js'
 import { excelDe } from '../api.js'
 import { Q_TABLA } from '../criticos.js'
 import { criticoGrubbs, normalizarMetodo } from '../motor.js'
-import { TXT_LOGODC, conRango, estiloEscala, descargarBlob, estiloDefecto, fmt, tCuantil } from '../utils.js'
+import { ESCALAS, TXT_LOGODC, conRango, escalaValida, estiloEscala, descargarBlob, estiloDefecto, fmt, tCuantil } from '../utils.js'
 
 const nombreMetodo = { q: 'Test Q de Dixon', grubbs: 'Test de Grubbs', cv: 'Coeficiente de variación (%RSD)' }
 const ERRORES = [['ic95', 'IC 95 %'], ['sd', 'DE'], ['sem', 'SEM']]
@@ -47,8 +47,8 @@ export function ExcluirTab({ s }) {
   if (!s.analisis?.estado?.length) return <Vacio titulo="Faltan los pocillos" texto="Indicá qué muestra hay en cada pocillo para revisar las réplicas." accion={<button className="primario" onClick={() => s.irA('pocillos')}>Ir a Pocillos</button>} />
   const estado = s.analisis.estado
   const odcP = s.analisis.odc?.odc
-  const escalaLog = o.escala === 'logodc' && odcP > 0
-  const ejeE = escalaLog ? TXT_LOGODC : s.ejeOD
+  const escE = escalaValida(o.escala, odcP)
+  const ejeE = escE === 'od' ? s.ejeOD : ESCALAS[escE].eje
   const excluidos = estado.filter((e) => !e.Usado)
   const sospechosos = estado.filter((e) => e.Sospechoso && e.Usado)
 
@@ -75,8 +75,9 @@ export function ExcluirTab({ s }) {
           <CampoCinta etiqueta="Rotación (°)"><Num value={o.rotar} min={0} max={90} ancho={56} onChange={(v) => setO('rotar', v === '' ? 0 : v)} /></CampoCinta>
         </Grupo>
         <Grupo titulo="Escala">
-          <OpcionesCinta valor={o.escala === 'logodc' ? 'logodc' : 'od'} onChange={(v) => setO('escala', v)} opciones={[
+          <OpcionesCinta valor={ESCALAS[o.escala] ? o.escala : 'od'} onChange={(v) => setO('escala', v)} opciones={[
             ['od', 'OD', 'OD', null, 'OD tal cual'],
+            ['odc', 'OD ÷ ODc', '÷', null, 'OD ÷ ODc con el ODc de esta placa: cada unidad es un ODc (1 = ODc, 2 = 2 × ODc, 4 = 4 × ODc).\nSolo cambia el dibujo: los valores atípicos se buscan siempre sobre la OD.'],
             ['logodc', 'log ODc', 'log', null, `${TXT_LOGODC} con el ODc de esta placa: 1 = ODc, 2 = 2 × ODc, 3 = 4 × ODc.\nSolo cambia el dibujo: los valores atípicos se buscan siempre sobre la OD.`],
           ]} />
         </Grupo>
@@ -89,9 +90,9 @@ export function ExcluirTab({ s }) {
           <span className="ayuda">Clic sobre un punto para excluirlo o incluirlo <Nota>Azul: aceptado. Cruz roja: excluido. Anillo naranja: sospechoso según el test. Lo que decidís a mano tiene prioridad sobre el test. El desarrollo del cálculo está en «Métodos».</Nota></span>
         </div>
         <div className="figura">
-          <ExcluirChart ref={svg} estado={estado} orden={s.ordenMuestras} o={o} est={s.estilos.excluir} eje={ejeE} odc={odcP} escalaLog={escalaLog} onClickPunto={s.alternarPocillo} onContext={abrirMenu} />
+          <ExcluirChart ref={svg} estado={estado} orden={s.ordenMuestras} o={o} est={s.estilos.excluir} eje={ejeE} odc={odcP} escala={escE} onClickPunto={s.alternarPocillo} onContext={abrirMenu} />
         </div>
-        {o.escala === 'logodc' && !escalaLog && <p className="aviso-caja">Sin ODc (faltan blancos aceptados): se muestra en OD.</p>}
+        {ESCALAS[o.escala]?.f && escE === 'od' && <p className="aviso-caja">Sin ODc (faltan blancos aceptados): se muestra en OD.</p>}
         <div className="fila" style={{ marginTop: 10 }}>
           {sospechosos.length > 0 && <span className="chip aviso" data-tip={`Sospechosos dentro del análisis\n${sospechosos.map((e) => `${e.Pocillo} (${e.Muestra} R${e.Replica}): ${e.Motivo || ''}`).join('\n')}`}>{sospechosos.length} sospechoso{sospechosos.length > 1 ? 's' : ''} sin excluir</span>}
           {excluidos.length ? <span className="ayuda"><b>Excluidos:</b> {excluidos.map((e) => <span key={e.Pocillo} className="chip peligro chip-boton" style={{ margin: '0 4px 4px 0' }} data-tip={`${e.Pocillo} · ${e.Muestra} R${e.Replica}\nOD = ${fmt(e.OD, 4)}\n${e.Manual ? 'Excluido a mano' : e.Motivo || ''}\nClic para volver a incluirlo`} onClick={() => s.alternarPocillo(e.Pocillo)}>{e.Pocillo} · {e.Muestra}</span>)}</span>
@@ -104,13 +105,13 @@ export function ExcluirTab({ s }) {
         ['Guardar imagen…', () => { cerrarMenu(); setExp(true) }],
         ['Restablecer estilo de texto', () => { cerrarMenu(); s.setEstilos((e) => ({ ...e, excluir: estiloDefecto() })) }],
       ]} />
-      {rng && <RangoDialog est={estiloEscala(s.estilos.excluir, escalaLog)} onClose={() => setRng(false)} onGuardar={(e) => { s.setEstilos((x) => ({ ...x, excluir: conRango(x.excluir, e, escalaLog) })); setRng(false) }} />}
+      {rng && <RangoDialog est={estiloEscala(s.estilos.excluir, escE)} onClose={() => setRng(false)} onGuardar={(e) => { s.setEstilos((x) => ({ ...x, excluir: conRango(x.excluir, e, escE) })); setRng(false) }} />}
       {dlg && <EstiloDialog estilo={s.estilos.excluir} conClases={false} ejeDefecto={ejeE} onClose={() => setDlg(false)}
         onGuardar={(e) => { s.setEstilos((x) => ({ ...x, excluir: e })); setDlg(false) }} />}
       {exp && svg.current && (
         <ExportDialog nombre={`calidad_${s.a.nombre}`} size0={tamDe(svg.current)} onClose={() => setExp(false)}
           render={(ref, tam) => <ExcluirChart ref={ref} estado={estado} orden={s.ordenMuestras} o={o} est={s.estilos.excluir}
-            eje={ejeE} odc={odcP} escalaLog={escalaLog} onClickPunto={() => {}} onContext={(e) => e.preventDefault()} tam={tam} />} />
+            eje={ejeE} odc={odcP} escala={escE} onClickPunto={() => {}} onContext={(e) => e.preventDefault()} tam={tam} />} />
       )}
     </div>
   )
@@ -141,8 +142,8 @@ export function GraficoTab({ s, grupoVista }) {
   if (o.orden === 'desc') filas = [...filas].sort((x, y) => y.Media - x.Media)
   const puntos = a.estado.filter((e) => e.Usado && filas.some((f) => f.Muestra === e.Muestra))
   const sinOdc = !Number.isFinite(a.odc.odc)
-  const escalaLog = o.escala === 'logodc' && !sinOdc
-  const ejeG = escalaLog ? TXT_LOGODC : s.ejeOD
+  const escG = escalaValida(o.escala, a.odc.odc)
+  const ejeG = escG === 'od' ? s.ejeOD : ESCALAS[escG].eje
 
   return (
     <div>
@@ -177,14 +178,14 @@ export function GraficoTab({ s, grupoVista }) {
         </div>
       </Cajon>
 
-      {sinOdc && <p className="aviso-caja">Sin ODc (faltan blancos aceptados): las barras no se pueden clasificar{o.escala === 'logodc' ? ' ni pasar a la escala log ODc (se muestran en OD)' : ''}.</p>}
+      {sinOdc && <p className="aviso-caja">Sin ODc (faltan blancos aceptados): las barras no se pueden clasificar{ESCALAS[o.escala]?.f ? ` ni pasar a la escala ${ESCALAS[o.escala].eje} (se muestran en OD)` : ''}.</p>}
       <section className="tarjeta">
         <div className="cabeza-tarjeta">
           <span className="etiqueta-seccion">OD media de las réplicas aceptadas · {NOMBRE_ERROR[o.error]}</span>
           <span className="ayuda">Pasá el mouse por una barra para ver el cálculo<Nota>Clic derecho sobre el gráfico: estilo de los textos, rango del eje Y y guardar la imagen.</Nota></span>
         </div>
         {filas.length ? (
-          <div className="figura"><BarChart ref={svg} filas={filas} puntos={puntos} odc={a.odc.odc} o={o} est={s.estilos.barras} eje={ejeG} escalaLog={escalaLog} onContext={abrirMenu} /></div>
+          <div className="figura"><BarChart ref={svg} filas={filas} puntos={puntos} odc={a.odc.odc} o={o} est={s.estilos.barras} eje={ejeG} escala={escG} onContext={abrirMenu} /></div>
         ) : <Vacio texto="Elegí al menos una muestra con réplicas aceptadas." />}
       </section>
       <MenuContextual menu={menu} items={[
@@ -193,13 +194,13 @@ export function GraficoTab({ s, grupoVista }) {
         ['Guardar imagen…', () => { cerrarMenu(); setExp(true) }],
         ['Restablecer estilo de texto', () => { cerrarMenu(); s.setEstilos((e) => ({ ...e, barras: estiloDefecto() })) }],
       ]} />
-      {rng && <RangoDialog est={estiloEscala(s.estilos.barras, escalaLog)} onClose={() => setRng(false)} onGuardar={(e) => { s.setEstilos((x) => ({ ...x, barras: conRango(x.barras, e, escalaLog) })); setRng(false) }} />}
+      {rng && <RangoDialog est={estiloEscala(s.estilos.barras, escG)} onClose={() => setRng(false)} onGuardar={(e) => { s.setEstilos((x) => ({ ...x, barras: conRango(x.barras, e, escG) })); setRng(false) }} />}
       {dlg && <EstiloDialog estilo={s.estilos.barras} conClases ejeDefecto={ejeG} onClose={() => setDlg(false)}
         onGuardar={(e) => { s.setEstilos((x) => ({ ...x, barras: e })); setDlg(false) }} />}
       {exp && svg.current && (
         <ExportDialog nombre={`barras_${s.a.nombre}`} size0={tamDe(svg.current)} onClose={() => setExp(false)}
           render={(ref, tam) => <BarChart ref={ref} filas={filas} puntos={puntos} odc={a.odc.odc} o={o} est={s.estilos.barras}
-            eje={ejeG} escalaLog={escalaLog} onContext={(e) => e.preventDefault()} tam={tam} />} />
+            eje={ejeG} escala={escG} onContext={(e) => e.preventDefault()} tam={tam} />} />
       )}
     </div>
   )
@@ -480,6 +481,7 @@ function MetodoDetalle({ d, odc }) {
         <li>Productor fuerte: OD &gt; 4 × ODc</li>
       </ul>
       <p>En la escala <b>1 + log₂(OD ÷ ODc)</b> (botón «Escala» en Calidad y Gráfico, «log ODc» en Estadística) cada OD se mide contra el ODc de su placa en escala logarítmica: el ODc vale 1, 2 × ODc vale 2 y 4 × ODc vale 3, así que los umbrales son los mismos en todas las placas. Cada escalón de 1 es una OD del doble. El gráfico de la función con el ODc de la placa activa está en el paso a paso.</p>
+      <p>En la escala <b>OD ÷ ODc</b> (también en el botón «Escala» y en Estadística) cada unidad es un ODc: los umbrales quedan en 1, 2 y 4, iguales en todas las placas, pero la escala es lineal y la dispersión sigue creciendo con la OD.</p>
       <h3>2. Media y errores del gráfico (SD, SEM, IC 95 %)</h3>
       <p>Para cada muestra solo se usan las <b>n réplicas aceptadas</b>; los pocillos excluidos no entran en ningún cálculo. Con n &lt; 2 no se puede calcular ningún error. Sea <code>xᵢ</code> la OD de cada réplica:</p>
       <ul>
@@ -532,7 +534,7 @@ function MetodoDetalle({ d, odc }) {
       <p className="ayuda">Un test estadístico no distingue un error experimental de una variación biológica real: revisá cada sospechoso antes de excluirlo y no elimines datos solo porque no te gusta el resultado.</p>
 
       <h3>8. Comparación entre placas</h3>
-      <p>En <b>Gráfico › Comparar placas</b> cada muestra se dibuja con <b>una columna por placa</b> (la altura es la OD media de sus réplicas aceptadas), <b>una por medio de cultivo</b> (las placas del mismo medio juntas, con todos sus pocillos o un valor por placa) o <b>una por pocillo</b>. Se puede mostrar barras con error, cajas (Q1–Q3, con 5 o más datos por columna), mediana, mínimo y máximo, media y los puntos. En OD no hay líneas de ODc (cada placa tiene el suyo); con la escala log ODc cada valor se mide contra el ODc de su placa y las líneas de clase quedan en 1, 2 y 3 para todas.</p>
+      <p>En <b>Gráfico › Comparar placas</b> cada muestra se dibuja con <b>una columna por placa</b> (la altura es la OD media de sus réplicas aceptadas), <b>una por medio de cultivo</b> (las placas del mismo medio juntas, con todos sus pocillos o un valor por placa) o <b>una por pocillo</b>. Se puede mostrar barras con error, cajas (Q1–Q3, con 5 o más datos por columna), mediana, mínimo y máximo, media y los puntos. En OD no hay líneas de ODc (cada placa tiene el suyo); con las escalas OD ÷ ODc y log ODc cada valor se mide contra el ODc de su placa y las líneas de clase quedan en 1, 2 y 4 o en 1, 2 y 3, iguales para todas.</p>
       <h4>Qué cuenta como réplica</h4>
       <p>Los pocillos de una misma placa son <b>réplicas técnicas</b>: salen del mismo cultivo, el mismo día y el mismo lector. Las <b>placas</b> (hechas en días o experimentos distintos) son las <b>réplicas biológicas</b>. Para las pruebas cada placa aporta <b>un solo número por muestra</b> (su OD media), así que el <b>n es el número de placas</b>. Contar los pocillos como réplicas independientes produce diferencias «significativas» que no lo son (pseudorreplicación).</p>
       <h4>Barras de error del gráfico</h4>

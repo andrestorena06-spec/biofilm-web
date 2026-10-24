@@ -1,6 +1,6 @@
 import { resumenBlancos } from './blancos.js'
 import { resumenGrupo } from './estadistica.js'
-import { TXT_LOGODC, logOdc, paletaMuestras } from './utils.js'
+import { ESCALAS, paletaMuestras } from './utils.js'
 
 // aclara un color hsl(h, s%, l%) (f de 0 a 1): los tonos de una familia, uno por placa
 export const aclarar = (col, f) => {
@@ -24,13 +24,14 @@ export function armarComparacion(s) {
   const conAnalisis = s.placas.filter((p) => !p.oculta && s.analisisMap[p.id]?.resumen?.length)
   // se guardan las placas que se sacaron: una placa nueva entra sola en la comparación y en la estadística
   const fueraPl = new Set(o.placasFuera || [])
-  // escala log ODc (botón «Escala» de Gráfico): cada valor se mide contra el ODc de su propia placa
-  const log = s.opts.barras?.escala === 'logodc'
+  // escalas relativas al ODc (botón «Escala» de Gráfico): cada valor se mide contra el ODc de su propia placa
+  const escala = ESCALAS[s.opts.barras?.escala]?.f ? s.opts.barras.escala : 'od'
+  const rel = escala !== 'od'
   const odcDe = (p) => s.analisisMap[p.id]?.odc?.odc
-  const sinOdc = log ? conAnalisis.filter((p) => !fueraPl.has(p.id) && !(odcDe(p) > 0)) : []
+  const sinOdc = rel ? conAnalisis.filter((p) => !fueraPl.has(p.id) && !(odcDe(p) > 0)) : []
   const sel0 = conAnalisis.filter((p) => !fueraPl.has(p.id) && !sinOdc.includes(p))
-  const tv = log ? (p, v) => logOdc(v, odcDe(p)) : (p, v) => v
-  const V = (p, v) => (log ? `${tv(p, v).toFixed(3)} (OD ${v.toFixed(3)})` : v.toFixed(3))
+  const tv = rel ? (p, v) => ESCALAS[escala].f(v, odcDe(p)) : (p, v) => v
+  const V = (p, v) => (rel ? `${tv(p, v).toFixed(3)} (OD ${v.toFixed(3)})` : v.toFixed(3))
   // las placas se ordenan por medio de cultivo (las del mismo medio quedan juntas)
   const ordenMedios = [...new Set(s.placas.map((p) => p.medio || ''))].filter(Boolean)
   const placasSel = [...sel0].sort((a, b) => (a.medio ? ordenMedios.indexOf(a.medio) : 999) - (b.medio ? ordenMedios.indexOf(b.medio) : 999))
@@ -93,8 +94,8 @@ export function armarComparacion(s) {
       const r = filasDe(p).find((x) => x.Muestra === m)
       if (!r || !Number.isFinite(tv(p, r.Media))) return []
       const pts = pozos(p, m).map((e) => tv(p, e.OD))
-      // en la escala log el error sale de los pocillos ya transformados
-      const err = log ? errRg(resumenGrupo(pts)) : errDe(r)
+      // en las escalas relativas al ODc el error sale de los pocillos ya transformados
+      const err = rel ? errRg(resumenGrupo(pts)) : errDe(r)
       return [{ id: p.id + '|' + m, placa: nombreP(p), color: colores[p.id], media: tv(p, r.Media), err: Number.isFinite(err) ? err : null, pts }]
     })
   }
@@ -109,9 +110,9 @@ export function armarComparacion(s) {
     : modo === 'pocillo'
       ? 'Cada columna es un pocillo aceptado (OD)'
       : `Barra: OD media de las réplicas aceptadas de cada placa${ERR_TXT[o.error] ? `; error: ${ERR_TXT[o.error]} entre pocillos` : ''}`
-  const nota = log ? `${notaOD} · escala ${TXT_LOGODC} con el ODc de cada placa` : notaOD
+  const nota = rel ? `${notaOD} · escala ${ESCALAS[escala].eje} con el ODc de cada placa` : notaOD
   return {
     modo, verBlancos, conAnalisis, placasSel, mediosPres, coloresMedio, colorBase, colores, ocultos, clave, filasDe, muestras, esBlanco, etiqueta,
-    tieneMuestra, grupos, leyenda, nota, sinMedio: placasSel.filter((p) => !p.medio), log, sinOdc,
+    tieneMuestra, grupos, leyenda, nota, sinMedio: placasSel.filter((p) => !p.medio), escala, rel, sinOdc,
   }
 }

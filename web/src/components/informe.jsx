@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { BarChart, ExcluirChart } from './charts.jsx'
 import { CompararChart } from './compararchart.jsx'
 import { armarComparacion } from '../comparacion.js'
-import { TXT_LOGODC, fmt } from '../utils.js'
+import { ESCALAS, escalaValida, fmt } from '../utils.js'
 import { resumenBlancos } from '../blancos.js'
 
 const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
@@ -39,10 +39,10 @@ export function abrirInforme(s) {
       Pocillo: e.Pocillo, Muestra: e.Muestra, Replica: e.Replica, Blanco: e.EsBlanco ? 'Sí' : 'No', OD: r4(e.OD),
       Estado: e.Usado ? 'Aceptado' : 'Excluido', Sospechoso: e.Sospechoso ? 'Sí' : 'No', Motivo: e.Manual ? 'Excluido manualmente' : e.Motivo || '',
     }))
-    const logB = s.opts.barras.escala === 'logodc' && Number.isFinite(a.odc.odc)
-    const gBarras = filas.length ? svgStr(<BarChart filas={filas} puntos={puntos} odc={a.odc.odc} o={ob} est={s.estilos.barras} eje={logB ? TXT_LOGODC : eje} escalaLog={logB} tam={{ w: 900, h: 520 }} />) : ''
-    const logE = s.opts.excluir.escala === 'logodc' && Number.isFinite(a.odc.odc)
-    const gExcluir = svgStr(<ExcluirChart estado={a.estado} orden={orden} o={s.opts.excluir} est={s.estilos.excluir} eje={logE ? TXT_LOGODC : eje} odc={a.odc.odc} escalaLog={logE} onClickPunto={noop} tam={{ w: 900, h: 520 }} />)
+    const escB = escalaValida(s.opts.barras.escala, a.odc.odc)
+    const gBarras = filas.length ? svgStr(<BarChart filas={filas} puntos={puntos} odc={a.odc.odc} o={ob} est={s.estilos.barras} eje={escB === 'od' ? eje : ESCALAS[escB].eje} escala={escB} tam={{ w: 900, h: 520 }} />) : ''
+    const escE = escalaValida(s.opts.excluir.escala, a.odc.odc)
+    const gExcluir = svgStr(<ExcluirChart estado={a.estado} orden={orden} o={s.opts.excluir} est={s.estilos.excluir} eje={escE === 'od' ? eje : ESCALAS[escE].eje} odc={a.odc.odc} escala={escE} onClickPunto={noop} tam={{ w: 900, h: 520 }} />)
     return `<section class="placa ${i ? 'salto' : ''}">
       <h2>${esc(p.nombre)}${p.medio ? ' <small>· ' + esc(p.medio) + '</small>' : ''}</h2>
       <p class="meta">Archivo: ${esc(p.archivo?.nombre || '–')}${p.archivo?.hoja && p.archivo.hoja !== 'csv' ? ' · hoja ' + esc(p.archivo.hoja) : ''}
@@ -66,7 +66,7 @@ export function abrirInforme(s) {
       valores: oc.valores !== false, errores: !!oc.errores, rotar: oc.rotar ?? 45,
     }
     if (D.grupos.length && (el.barras || el.caja || el.mediana || el.bigotes || el.media || el.puntos)) {
-      const fig = svgStr(<CompararChart grupos={D.grupos} leyenda={D.leyenda} o={{ ...el, valoresClase: !!s.opts.comparar.valoresClase }} est={s.estilos.comparar} eje={D.log ? TXT_LOGODC : ejeDe(D.placasSel[0])} tam={{ w: 900, h: 560 }} nota={D.nota} clases={D.log && s.opts.comparar.lineas !== false} escalaLog={D.log} unidad={D.log ? 'log ODc' : 'OD'} />)
+      const fig = svgStr(<CompararChart grupos={D.grupos} leyenda={D.leyenda} o={{ ...el, valoresClase: !!s.opts.comparar.valoresClase }} est={s.estilos.comparar} eje={D.rel ? ESCALAS[D.escala].eje : ejeDe(D.placasSel[0])} tam={{ w: 900, h: 560 }} nota={D.nota} clases={D.rel && s.opts.comparar.lineas !== false} escala={D.escala} unidad={D.rel ? ESCALAS[D.escala].corto : 'OD'} />)
       const filasT = D.grupos.flatMap((g) => g.barras.map((b) => ({
         Muestra: g.etiqueta, [D.modo === 'medio' ? 'Medio' : D.modo === 'pocillo' ? 'Pocillo' : 'Placa']: b.placa,
         OD_media: r4(b.media), Error: b.err === null || b.err === undefined ? '' : r4(b.err), N: (b.vp || b.pts).length,

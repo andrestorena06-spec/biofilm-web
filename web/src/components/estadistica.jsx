@@ -466,7 +466,7 @@ export function EstadisticaTab({ s }) {
         {grupoModo}
         <Grupo titulo="Datos">
           <OpcionesCinta valor={variable} onChange={(v) => setO('variable', v)} opciones={[
-            ['od', 'OD', 'OD', null, 'OD tal cual'], ['ln', 'ln(OD)', 'ln', null, 'Logaritmo natural de la OD\nEstabiliza la varianza cuando la DE crece con la media'], ['odc', 'OD ÷ ODc', '÷', null, 'Cada OD dividida por el ODc de su placa\nReduce las diferencias de fondo entre placas'],
+            ['od', 'OD', 'OD', null, 'OD tal cual'], ['ln', 'ln(OD)', 'ln', null, 'Logaritmo natural de la OD\nEstabiliza la varianza cuando la DE crece con la media'], ['odc', 'OD ÷ ODc', '÷', null, 'Cada OD dividida por el ODc de su placa: cada unidad es un ODc (1 = ODc, 2 = 2 × ODc, 4 = 4 × ODc)\nQuita la diferencia de tinción entre placas; la dispersión sigue creciendo con la OD'],
             ['logodc', 'log ODc', 'log', null, `${TXT_LOGODC}\nCada OD medida contra el ODc de su placa en escala logarítmica: 1 = ODc, 2 = 2 × ODc, 3 = 4 × ODc.\nQuita la variación de la tinción entre placas y la varianza que crece con la OD: los grupos se comparan con los mismos umbrales de clase.`],
           ]} />
         </Grupo>

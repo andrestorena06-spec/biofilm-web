@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useRef, useState } from 'react'
 import { dBarra } from '../calculos.js'
 import { calcularLayout, estiloTexto } from '../layout.js'
-import { CLASES, COLOR_CLASE, FUENTE, TXT_LOGODC, estiloEscala, ejeConRango, escalaY, fmt, fmtTick, logOdc, medir, tCuantil, ticksBonitos } from '../utils.js'
+import { CLASES, COLOR_CLASE, ESCALAS, FUENTE, estiloEscala, ejeConRango, escalaValida, escalaY, fEscala, fmt, fmtTick, medir, tCuantil, ticksBonitos } from '../utils.js'
 
 export function useAncho() {
   const ref = useRef(null)
@@ -70,15 +70,16 @@ export const LeyendaX = ({ L, est }) => est.leyendaX.texto ? (
 // ---------------------------------------------------------------
 // GRÁFICO DE BARRAS
 // ---------------------------------------------------------------
-export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, est, eje, onContext, tam, nota, leyendaPuntos, escalaLog }, svgRef) {
+export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, est, eje, onContext, tam, nota, leyendaPuntos, escala }, svgRef) {
   const [wrap, Wmed] = useAncho()
   const W = tam ? tam.w : Wmed
-  // escala 1 + log₂(OD ÷ ODc): el ODc de la placa vale 1 y los umbrales de clase quedan en 1, 2 y 3
-  const log = !!escalaLog && Number.isFinite(odc) && odc > 0
-  const tv = log ? (v) => logOdc(v, odc) : (v) => v
+  // escalas relativas al ODc de la placa: OD ÷ ODc (clases en 1, 2 y 4) o 1 + log₂(OD ÷ ODc) (clases en 1, 2 y 3)
+  const esc = escalaValida(escala, odc)
+  const log = esc === 'logodc', rel = esc !== 'od'
+  const tv = fEscala(esc, odc)
   const tvB = (v) => (Number.isFinite(tv(v)) ? tv(v) : 0)   // altura de barra (OD ≤ 0 en log: sin barra)
   const lineas = o.lineas && Number.isFinite(odc)
-  const umbrales = log ? [1, 2, 3] : [odc, 2 * odc, 4 * odc]
+  const umbrales = rel ? ESCALAS[esc].umbrales.map((u) => u[0]) : [odc, 2 * odc, 4 * odc]
   const errTxt = { ic95: 'IC 95 %', sd: 'desviación estándar', sem: 'error estándar', ninguno: '' }[o.error]
   const labels = filas.map((f) => (f.EsBlanco ? `${f.Muestra} (blanco)` : f.Muestra))
   const hayBlanco = filas.some((f) => f.EsBlanco)
@@ -95,7 +96,7 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
   // textos "media ± error"; si no caben al lado de los vecinos se apilan en dos líneas
   const textoValor = (f) => {
     const e = errDe(f)
-    return { m: fmt(tv(f.Media), log ? 2 : 3), e: !log && o.errores && Number.isFinite(e) ? fmt(e) : null }
+    return { m: fmt(tv(f.Media), rel ? 2 : 3), e: !log && o.errores && Number.isFinite(e) ? fmt(rel ? e / odc : e, rel ? 2 : 3) : null }
   }
   const wMaxTxt = Math.max(0, ...filas.map((f) => {
     const t = textoValor(f)
@@ -105,20 +106,22 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
   const apilar = o.medias && wMaxTxt > wDisponible * 0.92
   let tope = Math.max(0, ...topDe)
   if (o.medias) tope *= 1 + (est.valores.size * (apilar ? 2.8 : 1.6)) / 340
-  if (lineas) tope = Math.max(tope * 1.05, log ? 3.9 : odc * 4.9)
+  if (lineas) tope = Math.max(tope * 1.05, log ? 3.9 : rel ? 4.9 : odc * 4.9)
   if (!(tope > 0)) tope = 1
-  const eY = ejeConRango(ticksBonitos(lo, tope, 6), estiloEscala(est, log))
+  const eY = ejeConRango(ticksBonitos(lo, tope, 6), estiloEscala(est, esc))
   // las barras salen del 0 (en log ODc, 0 = la mitad del ODc): las que quedan por debajo bajan
   const base = Math.min(Math.max(0, eY.min), eY.max)
   const yLabels = eY.ticks.map((t) => fmtTick(t, eY.paso))
 
-  const [u1, u2, u3] = log ? ['1', '2', '3'] : [fmt(odc), fmt(2 * odc), fmt(4 * odc)]
+  const [u1, u2, u3] = rel ? ESCALAS[esc].umbrales.map((u) => String(u[0])) : [fmt(odc), fmt(2 * odc), fmt(4 * odc)]
+  // posición de cada nombre de clase (a mitad de su franja)
+  const posC = (mLin, mLog) => (log ? mLog : rel ? mLin : mLin * odc)
   const clasesTxt = lineas
     ? [
-        ['Productor fuerte', log ? 3.45 : 4.45 * odc, o.valoresClase ? `Productor fuerte\n(> ${u3})` : 'Productor fuerte'],
-        ['Productor moderado', log ? 2.5 : 3 * odc, o.valoresClase ? `Productor moderado\n(${u2} – ${u3})` : 'Productor moderado'],
-        ['Productor débil', log ? 1.5 : 1.5 * odc, o.valoresClase ? `Productor débil\n(${u1} – ${u2})` : 'Productor débil'],
-        ['No productor', log ? 0.5 : 0.5 * odc, o.valoresClase ? `No productor\n(≤ ${u1})` : 'No productor'],
+        ['Productor fuerte', posC(4.45, 3.45), o.valoresClase ? `Productor fuerte\n(> ${u3})` : 'Productor fuerte'],
+        ['Productor moderado', posC(3, 2.5), o.valoresClase ? `Productor moderado\n(${u2} – ${u3})` : 'Productor moderado'],
+        ['Productor débil', posC(1.5, 1.5), o.valoresClase ? `Productor débil\n(${u1} – ${u2})` : 'Productor débil'],
+        ['No productor', posC(0.5, 0.5), o.valoresClase ? `No productor\n(≤ ${u1})` : 'No productor'],
       ]
     : []
   const wClases = lineas
@@ -171,10 +174,10 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
             <g key={f.Muestra}>
               <rect x={cx(i) - bw / 2} y={y(Math.max(tvB(f.Media), base))} width={bw} height={Math.max(Math.abs(y(base) - y(tvB(f.Media))), 0.5)}
                 fill={colorBarra(f)} stroke="#333" strokeWidth="0.8" strokeDasharray={f.EsBlanco ? '4 2' : undefined}
-                data-tip={(log ? `${TXT_LOGODC} = 1 + log₂(${fmt(f.Media, 4)} ÷ ${fmt(odc, 4)}) = ${fmt(tv(f.Media), 3)}\n` : '') + dBarra(`${f.Muestra}${f.EsBlanco ? ' (blanco)' : ''} · OD media = ${fmt(f.Media)}`, pts.map((q) => q.OD), o.error, f.EsBlanco ? NaN : odc, f.Clasificacion)} />
+                data-tip={(rel ? ESCALAS[esc].cuenta(f.Media, odc) + '\n' : '') + dBarra(`${f.Muestra}${f.EsBlanco ? ' (blanco)' : ''} · OD media = ${fmt(f.Media)}`, pts.map((q) => q.OD), o.error, f.EsBlanco ? NaN : odc, f.Clasificacion)} />
               {Number.isFinite(e) && e > 0 && (
                 <g stroke="#111" strokeWidth="1.3">
-                  {(() => { const hi = y(tv(f.Media + e)), bajo = y(log ? (f.Media - e > 0 ? Math.max(tv(f.Media - e), eY.min) : eY.min) : Math.max(f.Media - e, 0)); return <>
+                  {(() => { const hi = y(tv(f.Media + e)), bajo = y(log ? (f.Media - e > 0 ? Math.max(tv(f.Media - e), eY.min) : eY.min) : Math.max(tv(f.Media - e), 0)); return <>
                     <line x1={cx(i)} x2={cx(i)} y1={bajo} y2={hi} />
                     <line x1={cx(i) - bw * 0.18} x2={cx(i) + bw * 0.18} y1={hi} y2={hi} />
                     <line x1={cx(i) - bw * 0.18} x2={cx(i) + bw * 0.18} y1={bajo} y2={bajo} /></> })()}
@@ -182,7 +185,7 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
               )}
               {o.puntos && pts.map((q, k) => (
                 <circle key={q.Pocillo} cx={cx(i) + (pts.length > 1 ? (k / (pts.length - 1) - 0.5) * bw * 0.45 : 0)} cy={y(Number.isFinite(tv(q.OD)) ? Math.max(tv(q.OD), eY.min) : eY.min)} r={q.color ? 4.4 : 3.3}
-                  fill={q.color || '#1b1f23'} fillOpacity="0.9" stroke={q.color ? '#fff' : 'none'} strokeWidth="1" data-tip={`Pocillo ${q.Pocillo}\nOD = ${fmt(q.OD, 4)}${log ? `\n${TXT_LOGODC} = ${fmt(tv(q.OD), 3)}` : ''}`}>
+                  fill={q.color || '#1b1f23'} fillOpacity="0.9" stroke={q.color ? '#fff' : 'none'} strokeWidth="1" data-tip={`Pocillo ${q.Pocillo}\nOD = ${fmt(q.OD, 4)}${rel ? `\n${ESCALAS[esc].eje} = ${fmt(tv(q.OD), 3)}` : ''}`}>
                 </circle>
               ))}
               {o.medias && (
@@ -243,7 +246,7 @@ export const BarChart = forwardRef(function BarChart({ filas, puntos, odc, o, es
           </g>
         )}
         <text x={L.left + L.plotW} y={L.H - 8} textAnchor="end" style={{ fontSize: 11, fill: '#6b7785' }}>
-          {nota ?? `Barras: media de las réplicas aceptadas${errTxt ? `; error: ${errTxt}` : ''}${log ? ` · escala ${TXT_LOGODC}: 1 = ODc, 2 = 2 × ODc, 3 = 4 × ODc` : ''}`}
+          {nota ?? `Barras: media de las réplicas aceptadas${errTxt ? `; error: ${errTxt}` : ''}${rel ? ` · escala ${ESCALAS[esc].eje}: ${ESCALAS[esc].nota}` : ''}`}
         </text>
       </svg>
     </div>
@@ -265,12 +268,13 @@ export function resumenGrupo(g, tipo, tv = (v) => v) {
   return { m, err, n: u.length }
 }
 
-export const ExcluirChart = forwardRef(function ExcluirChart({ estado, orden, o, est, eje, onClickPunto, onContext, tam, odc, escalaLog }, svgRef) {
+export const ExcluirChart = forwardRef(function ExcluirChart({ estado, orden, o, est, eje, onClickPunto, onContext, tam, odc, escala }, svgRef) {
   const [wrap, Wmed] = useAncho()
   const W = tam ? tam.w : Wmed
-  // escala 1 + log₂(OD ÷ ODc): solo cambia cómo se dibuja; los valores atípicos se buscan siempre sobre la OD
-  const log = !!escalaLog && odc > 0
-  const tv = log ? (v) => logOdc(v, odc) : (v) => v
+  // escalas relativas al ODc: solo cambia cómo se dibuja; los valores atípicos se buscan siempre sobre la OD
+  const esc = escalaValida(escala, odc)
+  const rel = esc !== 'od'
+  const tv = fEscala(esc, odc)
   const labels = orden
   const idx = Object.fromEntries(orden.map((m, i) => [m, i]))
   const porMuestra = orden.map((m) => estado.filter((e) => e.Muestra === m))
@@ -283,12 +287,12 @@ export const ExcluirChart = forwardRef(function ExcluirChart({ estado, orden, o,
   let hi = Math.max(...valores, 0.1)
   if (o.medias) hi += (hi - lo) * (est.valores.size * (o.errores ? 2.8 : 1.8)) / 340
   hi += (hi - lo) * 0.04
-  const eY = ejeConRango(ticksBonitos(lo, hi, 6), estiloEscala(est, log))
+  const eY = ejeConRango(ticksBonitos(lo, hi, 6), estiloEscala(est, esc))
   const yLabels = eY.ticks.map((t) => fmtTick(t, eY.paso))
   const L = calcularLayout({
     W, etiquetas: labels, ang: o.rotar, est, yLabels,
     titulo: !!est.titulo.texto, tituloX: !!est.leyendaX.texto,
-    altoPlot: 280 + est.valores.size * 2, extraAbajo: 40, fijoH: tam ? tam.h : 0, derecha: log ? 62 : undefined,
+    altoPlot: 280 + est.valores.size * 2, extraAbajo: 40, fijoH: tam ? tam.h : 0, derecha: rel ? 62 : undefined,
     anchoTituloY: medir(est.leyendaY.texto || eje, est.leyendaY.size, est.leyendaY.bold, est.leyendaY.italic),
   })
   const y = escalaY(L, eY)
@@ -309,8 +313,8 @@ export const ExcluirChart = forwardRef(function ExcluirChart({ estado, orden, o,
         <Titulo W={W} est={est} />
         <EjeY ticks={eY.ticks} paso={eY.paso} y={y} left={L.left} plotW={L.plotW} est={est} titulo={est.leyendaY.texto || eje} />
         <line x1={L.left} x2={L.left + L.plotW} y1={y(Math.max(0, eY.min))} y2={y(Math.max(0, eY.min))} stroke="#444" />
-        {log && [[1, 'ODc'], [2, '2 × ODc'], [3, '4 × ODc']].filter(([u]) => u > eY.min && u < eY.max).map(([u, t]) => (
-          <g key={u} data-tip={`${u} = ${t} de esta placa (${fmt(odc * 2 ** (u - 1), 3)} de OD)\nlímite de clase`}>
+        {rel && ESCALAS[esc].umbrales.filter(([u]) => u > eY.min && u < eY.max).map(([u, t, k]) => (
+          <g key={u} data-tip={`${u} = ${t} de esta placa (${fmt(k * odc, 3)} de OD)\nlímite de clase`}>
             <line x1={L.left} x2={L.left + L.plotW} y1={y(u)} y2={y(u)} stroke="#999" strokeDasharray="3 3" />
             <text x={L.left + L.plotW + 6} y={y(u) + 4} style={{ fontSize: 11, fill: '#6b7785' }}>{t}</text>
           </g>
@@ -331,7 +335,7 @@ export const ExcluirChart = forwardRef(function ExcluirChart({ estado, orden, o,
 
         {o.puntos && estado.map((e) => (
           <g key={e.Pocillo} onClick={() => onClickPunto(e.Pocillo)} style={{ cursor: 'pointer' }}
-            data-tip={`${e.Pocillo} · ${e.Muestra} R${e.Replica}\nOD = ${fmt(e.OD, 4)}${log ? `\n${TXT_LOGODC} = ${fmt(tv(e.OD), 3)}` : ''}\n${e.Manual ? 'Excluido manualmente' : e.Motivo || (e.Usado ? 'Aceptado' : 'Excluido')}\nClic: ${e.Usado ? 'excluir' : 'reincorporar'}`}>
+            data-tip={`${e.Pocillo} · ${e.Muestra} R${e.Replica}\nOD = ${fmt(e.OD, 4)}${rel ? `\n${ESCALAS[esc].eje} = ${fmt(tv(e.OD), 3)}` : ''}\n${e.Manual ? 'Excluido manualmente' : e.Motivo || (e.Usado ? 'Aceptado' : 'Excluido')}\nClic: ${e.Usado ? 'excluir' : 'reincorporar'}`}>
             <circle cx={px(e)} cy={vy(e)} r="14" fill="transparent" />
             {e.Sospechoso && <circle cx={px(e)} cy={vy(e)} r="9" fill="none" stroke="#f0932b" strokeWidth="2.4" />}
             {e.Usado ? (
