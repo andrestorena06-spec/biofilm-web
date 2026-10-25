@@ -623,3 +623,9 @@ button[data-tip], .chip-placa[data-tip] { cursor: pointer; }
 @media (max-width: 1100px) { .est-paneles { grid-template-columns: 1fr; } }
 @media (max-width: 760px) { .fila-sel { grid-template-columns: 1fr; gap: 2px; } }
 
+
+.veredicto.mixto { background: var(--panel2); border-color: var(--acento); }
+.veredicto.mixto b { color: var(--acento); }
+.sensibilidad summary { font-weight: 600; }
+.sensibilidad .veredicto { margin: 10px 0; }
+.sensibilidad tr.fuera td { opacity: .5; }

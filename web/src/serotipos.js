@@ -33,4 +33,5 @@ export const NIVEL_SERO_TXT = {
   cepa: 'cada punto es una cepa (la media de sus placas)',
   placa: 'cada punto es una placa de una cepa',
   pocillo: 'cada punto es un pocillo',
+  bloque: 'cada punto es una placa de una cepa; la placa es un bloque (se saca la variación entre placas)',
 }

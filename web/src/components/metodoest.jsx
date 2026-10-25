@@ -327,7 +327,7 @@ function Ejemplo({ s }) {
         <Campo label={`Análisis a desarrollar (${P.bloques.length})`}>
           <Select value={b.titulo} onChange={setSel} opciones={P.bloques.map((x) => [x.titulo, x.titulo])} />
         </Campo>
-        <p className="ayuda" style={{ margin: 0, maxWidth: 520 }}>Variable: <b>{P.unidad}</b> · réplica: <b>{P.obj === 'placas' || P.obj === 'placastodas' ? 'pocillo (los grupos son las placas)' : P.nivel === 'cepa' ? 'cepa (la media de sus placas; los grupos son los serotipos)' : P.nivel === 'placa' ? 'placa (un valor por placa)' : 'pocillo'}</b> · prueba: <b>{P.forzado === 'auto' ? 'automática' : NOMBRE[P.forzado]}</b>. Cambian con lo que elijas en la pestaña «Estadística».</p>
+        <p className="ayuda" style={{ margin: 0, maxWidth: 520 }}>Variable: <b>{P.unidad}</b> · réplica: <b>{P.obj === 'placas' || P.obj === 'placastodas' ? 'pocillo (los grupos son las placas)' : P.nivel === 'cepa' ? 'cepa (la media de sus placas; los grupos son los serotipos)' : P.nivel === 'placa' ? 'placa (un valor por placa)' : 'pocillo'}</b> · prueba: <b>{P.forzado === 'auto' ? 'automática' : NOMBRE[P.forzado]}</b>. Cambian con lo que elijas en la pestaña «Estadística».{(['cepas', 'cepastodas', 'libre'].includes(P.obj) && o.nivel !== 'placa' && o.nivel !== 'pocillo') || (P.obj === 'serotipos' && o.nivelSero === 'bloque') ? ' Si en Estadística se usa la placa como bloque, acá se desarrolla la versión de una vía; la tabla del modelo en bloques está en Estadística › «Tabla de la prueba global» (sección 4b).' : ''}</p>
       </div>
 
       <H4>A. Los datos de cada grupo</H4>
@@ -441,7 +441,7 @@ export function MetodoEstadistico({ s }) {
       <h2>Estadística: cálculos, razones y lógica de cada método</h2>
       <p className="ayuda">Todo lo que hace la pestaña «Estadística», con las fórmulas, el motivo de cada elección y un ejemplo desarrollado con tus datos. Los cálculos se hacen en el navegador.</p>
       <nav className="indice-est">
-        {[['e1', '1 Diseño'], ['e2', '2 Datos'], ['e3', '3 Supuestos'], ['e4', '4 Decisión'], ['e5', '5 Con tus datos'], ['e6', '6 Pruebas globales'], ['e7', '7 Pares'], ['e8', '8 Dunnett'], ['e9', '9 Medio y placa'], ['e10', '10 Reproducibilidad'], ['e11', '11 Cómo leerlo']].map(([id, t]) => <a key={id} href={`#${id}`} onClick={(e) => { e.preventDefault(); document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }) }}>{t}</a>)}
+        {[['e1', '1 Diseño'], ['e2', '2 Datos'], ['e3', '3 Supuestos'], ['e4', '4 Decisión'], ['e4b', '4b Bloques y sensibilidad'], ['e5', '5 Con tus datos'], ['e6', '6 Pruebas globales'], ['e7', '7 Pares'], ['e8', '8 Dunnett'], ['e9', '9 Medio y placa'], ['e10', '10 Reproducibilidad'], ['e11', '11 Cómo leerlo']].map(([id, t]) => <a key={id} href={`#${id}`} onClick={(e) => { e.preventDefault(); document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }) }}>{t}</a>)}
       </nav>
 
       <Sec id="e1" n="1" t="Qué se compara y cuál es la réplica">
@@ -493,6 +493,19 @@ H₀: las varianzas de todos los grupos son iguales.   p < 0,05 → varianzas di
         ]} />
         <Flujo r={null} />
         <p>Los umbrales (N ≥ 8, 3 datos por grupo, α = 0,05) evitan decidir con pruebas de diagnóstico sin poder. Si elegís una prueba en «Prueba», se usa esa sin decidir nada. Welch exige 2 o más datos y variación en cada grupo; si no, se usa el ANOVA clásico.</p>
+      </Sec>
+
+      <Sec id="e4b" n="4b" t="La placa como bloque, la escala sugerida y la sensibilidad">
+        <H4>La placa como bloque</H4>
+        <p>Cuando cada placa mide todos los grupos que se comparan (todas las cepas, o todos los serotipos), la placa funciona como un <b>bloque</b>: si un día la tinción salió más fuerte, sube a todos los grupos de esa placa. El ANOVA en bloques separa esa variación y la saca del error, así que las diferencias entre grupos se ven con más claridad. Es la opción por defecto al comparar cepas, siempre que haya 3 o más placas con todos los grupos (las placas a las que les falta algún grupo quedan afuera).</p>
+        <Formula>{`y(grupo, placa) = media general + efecto del grupo + efecto de la placa + error
+SC total = SC grupos + SC placas + SC error      gl error = (k − 1)(b − 1)
+F = CM grupos / CM error      (k grupos, b placas)`}</Formula>
+        <p>Si los residuos de ese modelo no son normales se usa <b>Friedman</b>: dentro de cada placa se ordenan los grupos (rangos) y se compara la suma de rangos de cada grupo. Pares: con el ANOVA en bloques, t con el error del modelo (Holm), Tukey o Dunnett; con Friedman, diferencia de rangos medios con Holm o Nemenyi. Verificado contra R (<code>aov(y ~ grupo + placa)</code>, <code>TukeyHSD</code>, <code>friedman.test</code>).</p>
+        <H4>Escala sugerida</H4>
+        <p>Se mira cómo crece la DE con la media entre los grupos: la pendiente de log(DE) contra log(media). Si es cercana a 1 (la DE crece en proporción a la media, es decir, un CV casi constante), el logaritmo iguala las varianzas y se sugiere ln(OD); si es cercana a 0, la OD tal cual. La sugerencia sale de los datos, no del resultado de la prueba, y no cambia la escala sola.</p>
+        <H4>Sensibilidad</H4>
+        <p>Al final de Estadística se repite la misma comparación con todas las combinaciones razonables de escala, réplica, prueba y ajuste. No sirve para elegir la que da significativo (si se elige por el p, el p deja de valer): sirve para saber si la conclusión es firme. Si todas las combinaciones que cumplen sus supuestos coinciden, la conclusión es robusta; si no, hay que informarla con cautela.</p>
       </Sec>
 
       <Sec id="e5" n="5" t="Desarrollo completo con tus datos">

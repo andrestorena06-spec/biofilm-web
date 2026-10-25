@@ -7,7 +7,7 @@ import { desvio, marcaSig, media } from '../estadistica.js'
 const finito = Number.isFinite
 export const f = (x, d = 3) => (finito(x) ? x.toFixed(d) : x === Infinity ? '∞' : '–')
 export const pTxt = (p) => (!finito(p) ? '–' : p < 0.0001 ? '< 0.0001' : p.toFixed(4))
-export const NOMBRE_TEST = { anova: 'ANOVA', welch: 'ANOVA de Welch', kw: 'Kruskal-Wallis' }
+export const NOMBRE_TEST = { anova: 'ANOVA', welch: 'ANOVA de Welch', kw: 'Kruskal-Wallis', bloques: 'ANOVA en bloques', friedman: 'Friedman' }
 
 // ---------------------------------------------------------------
 // Objetivos (qué se quiere evaluar)
@@ -51,11 +51,11 @@ const lista = (g) => g.map((x) => x.nombre).join(', ')
 export function hipotesisGrupos(tipo, sujeto, factor, grupos, ctrl, dunnett) {
   const n = lista(grupos)
   const base = ctrl ? `entre «${ctrl}» y cada uno de los otros grupos` : `entre ${factor}`
-  if (tipo === 'kw') {
-    return [{ nombre: 'Global (Kruskal-Wallis)', h0: `${sujeto} tiene la misma distribución en todos los grupos comparados (${n}).`, h1: `En al menos un grupo los valores tienden a ser mayores o menores que en otro.` },
+  if (tipo === 'kw' || tipo === 'friedman') {
+    return [{ nombre: tipo === 'friedman' ? 'Global (Friedman, por placa)' : 'Global (Kruskal-Wallis)', h0: `${sujeto} tiene la misma distribución en todos los grupos comparados (${n}).`, h1: `En al menos un grupo los valores tienden a ser mayores o menores que en otro.` },
       { nombre: 'Pares (Dunn, Holm)', h0: 'Dos grupos tienen la misma distribución de OD.', h1: 'Las distribuciones difieren (bilateral).' }]
   }
-  return [{ nombre: tipo === 'welch' ? 'Global (ANOVA de Welch)' : 'Global (ANOVA)', h0: `La OD media (${sujeto}) es igual en todos los grupos comparados: μ(${grupos.map((x) => x.nombre).join(') = μ(')}).`, h1: `Al menos un grupo tiene una OD media distinta; es decir, hay diferencias ${base}.` },
+  return [{ nombre: tipo === 'welch' ? 'Global (ANOVA de Welch)' : tipo === 'bloques' ? 'Global (ANOVA en bloques)' : 'Global (ANOVA)', h0: `La OD media (${sujeto}) es igual en todos los grupos comparados: μ(${grupos.map((x) => x.nombre).join(') = μ(')}).`, h1: `Al menos un grupo tiene una OD media distinta; es decir, hay diferencias ${base}.` },
     dunnett
       ? { nombre: `Contra «${ctrl}» (Dunnett)`, h0: `Cada grupo tiene la misma OD media que el control: μ(grupo) = μ(${ctrl}).`, h1: 'La OD media del grupo difiere de la del control: μ(grupo) ≠ μ(control) (bilateral).' }
       : { nombre: tipo === 'welch' ? 'Pares (t de Welch, Holm)' : 'Pares (t, Holm)', h0: 'Dos grupos tienen la misma OD media: μA = μB.', h1: 'Las OD medias difieren: μA ≠ μB (bilateral).' }]
