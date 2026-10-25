@@ -7,7 +7,6 @@ import { BotonCinta, Cajon, CampoCinta, Cinta, Grupo, InterruptorCinta, Opciones
 import { armarComparacion } from '../comparacion.js'
 import { ERROR_REL, tipoRel } from './charts.jsx'
 import { BotonBlanco } from './blanco.jsx'
-import { OrdenPlacas } from './orden.jsx'
 import { ESCALAS, conRango, estiloDefecto, estiloEscala } from '../utils.js'
 
 // Comparación entre placas: el gráfico (por placa, por medio de cultivo o por pocillo). Las pruebas están en «Estadística».
@@ -180,8 +179,6 @@ export function CompararTab({ s, grupoVista }) {
         {grupos.length && !sinElementos ? <div className="figura">{grafico(svg, undefined, abrirMenu)}</div>
           : <Vacio texto={sinElementos ? 'Activá barras, mediana, media o puntos en la cinta.' : 'Elegí al menos una placa y una muestra para mostrar.'} />}
       </section>
-
-      <OrdenPlacas s={s} D={D} />
 
       <MenuContextual menu={menu} items={[
         ['Estilo de texto…', () => { cerrarMenu(); setDlg(true) }],

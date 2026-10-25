@@ -630,8 +630,9 @@ button[data-tip], .chip-placa[data-tip] { cursor: pointer; }
 .sensibilidad .veredicto { margin: 10px 0; }
 .sensibilidad tr.fuera td { opacity: .5; }
 
-.orden-placas .veredicto { margin: 10px 0 6px; }
-.perfiles-orden { width: 100%; height: auto; display: block; }
 .tabla-puestos td.num { background: hsl(28 75% calc(97% - (1 - var(--puesto, 1)) * 16%)); }
 .tabla-puestos td.num small { color: var(--sec); font-size: 11px; }
 .tabla-puestos tr.placa-rara td:first-child b { color: var(--aviso); }
+.tabla-puestos.con-sel tr:not(.elegida) td.num { background: var(--panel2); color: var(--tenue); }
+.tabla-puestos.con-sel tr:not(.elegida) td.num b { color: var(--tenue); font-weight: 500; }
+.tabla-puestos.con-sel tr:not(.elegida) td:first-child { color: var(--tenue); }

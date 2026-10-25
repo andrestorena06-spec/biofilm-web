@@ -520,7 +520,7 @@ export default function App() {
   const pasos = ORDEN
   const Vista = exp && !enArchivo ? PASOS[tab][1] : null
   const colores = paletaMuestras(placas.map((p) => p.id))
-  const verPlacas = Vista && CON_PLACAS.has(tab) && !(tab === 'grafico' && exp.opts.comparar.vistaG === 'comparar')
+  const verPlacas = Vista && CON_PLACAS.has(tab) && !(tab === 'grafico' && ['comparar', 'orden'].includes(exp.opts.comparar.vistaG))
 
   return (
     <CintaCtx.Provider value={nodoCinta}>
