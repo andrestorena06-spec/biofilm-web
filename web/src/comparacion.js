@@ -143,6 +143,12 @@ export function armarComparacion(s) {
   const grupos = porSero
     ? serosAll.map((sr) => ({ muestra: sr, etiqueta: `${sr} (${nCepasSero(sr)} ${nCepasSero(sr) === 1 ? 'cepa' : 'cepas'})`, barras: columnasSero(sr) })).filter((g) => g.barras.length)
     : muestras.map((m) => ({ muestra: m, etiqueta: etiqueta(m), barras: columnas(m) })).filter((g) => g.barras.length)
+  // orden del eje X: el de la lista, o por la media de todas las columnas del grupo (los blancos siempre al final)
+  if (o.ordenGrupos === 'asc' || o.ordenGrupos === 'desc') {
+    const prom = (g) => { const v = g.barras.map((b) => b.media).filter(Number.isFinite); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : -Infinity }
+    const signo = o.ordenGrupos === 'asc' ? 1 : -1
+    grupos.sort((a, b) => (esBlanco.has(a.muestra) - esBlanco.has(b.muestra)) || signo * (prom(a) - prom(b)))
+  }
   const leyenda = modo === 'medio'
     ? mediosPres.filter((md) => grupos.some((g) => g.barras.some((b) => b.id.startsWith(md + '|')))).map((md) => ({ id: md, nombre: md, color: coloresMedio[md] }))
     : placasSel.map((p) => ({ id: p.id, nombre: nombreP(p), color: colores[p.id] }))

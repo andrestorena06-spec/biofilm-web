@@ -7,6 +7,7 @@ import { BotonCinta, Cajon, CampoCinta, Cinta, Grupo, InterruptorCinta, Opciones
 import { armarComparacion } from '../comparacion.js'
 import { ERROR_REL, tipoRel } from './charts.jsx'
 import { BotonBlanco } from './blanco.jsx'
+import { OrdenPlacas } from './orden.jsx'
 import { ESCALAS, conRango, estiloDefecto, estiloEscala } from '../utils.js'
 
 // Comparación entre placas: el gráfico (por placa, por medio de cultivo o por pocillo). Las pruebas están en «Estadística».
@@ -98,6 +99,7 @@ export function CompararTab({ s, grupoVista }) {
           <BotonCinta icono="placas" texto={`Placas ${placasSel.length}/${conAnalisis.length}`} activo={cajon === 'placas'} onClick={() => setCajon(cajon === 'placas' ? null : 'placas')} tip="Elegir qué placas entran en el gráfico" />
           <BotonCinta icono="filtro" texto={nOcultas ? `Muestras (${nOcultas} ocultas)` : 'Muestras'} activo={cajon === 'muestras'} onClick={() => setCajon(cajon === 'muestras' ? null : 'muestras')} tip="Qué muestra se ve en cada placa" />
           <InterruptorCinta icono="matraz" texto="Blancos" valor={D.verBlancos} onChange={(v) => setO('blancos', v)} tip="Incluir los blancos (medio sin inocular)" />
+          <CampoCinta etiqueta="Orden" tip="Orden de las cepas (o serotipos) en el eje X: el de la lista de muestras, o por la media de todas sus columnas"><Select value={o.ordenGrupos || 'lista'} onChange={(v) => setO('ordenGrupos', v)} opciones={[['lista', 'Como en la lista'], ['asc', 'OD creciente'], ['desc', 'OD decreciente']]} /></CampoCinta>
         </Grupo>
         <Grupo titulo="Ajustes">
           <BotonBlanco s={s} />
@@ -178,6 +180,8 @@ export function CompararTab({ s, grupoVista }) {
         {grupos.length && !sinElementos ? <div className="figura">{grafico(svg, undefined, abrirMenu)}</div>
           : <Vacio texto={sinElementos ? 'Activá barras, mediana, media o puntos en la cinta.' : 'Elegí al menos una placa y una muestra para mostrar.'} />}
       </section>
+
+      <OrdenPlacas s={s} D={D} />
 
       <MenuContextual menu={menu} items={[
         ['Estilo de texto…', () => { cerrarMenu(); setDlg(true) }],

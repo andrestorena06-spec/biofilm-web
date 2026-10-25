@@ -54,6 +54,9 @@ export function ExcluirTab({ s }) {
   const sinBlancoResta = s.restarBlanco && !s.analisis.blanco?.restado
   const escE = escalaValida(o.escala, odcP)
   const ejeE = escE === 'od' ? s.ejeOD : ESCALAS[escE].eje
+  // orden de las muestras: el de la lista o por la media de sus pocillos aceptados
+  const mediaDe = (m) => { const v = estado.filter((e) => e.Muestra === m && e.Usado).map((e) => e.OD); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : -Infinity }
+  const ordenE = o.orden === 'asc' || o.orden === 'desc' ? [...s.ordenMuestras].sort((a, b) => (o.orden === 'asc' ? 1 : -1) * (mediaDe(a) - mediaDe(b))) : s.ordenMuestras
   const excluidos = estado.filter((e) => !e.Usado)
   const sospechosos = estado.filter((e) => e.Sospechoso && e.Usado)
 
@@ -84,6 +87,7 @@ export function ExcluirTab({ s }) {
           <InterruptorCinta simbolo="x̄" texto="Media" valor={o.medias} onChange={(v) => setO('medias', v)} tip="Valor medio escrito sobre cada muestra" />
           <InterruptorCinta simbolo="±" texto="Error" valor={o.errores} onChange={(v) => setO('errores', v)} tip="Agrega el error junto al valor medio" />
           <CampoCinta etiqueta="Error"><Select value={o.error} onChange={(v) => setO('error', v)} opciones={ERRORES} /></CampoCinta>
+          <CampoCinta etiqueta="Orden" tip="Orden de las muestras: el de la lista o por la media de sus pocillos aceptados"><Select value={o.orden || 'lista'} onChange={(v) => setO('orden', v)} opciones={[['lista', 'Como en la lista'], ['asc', 'OD creciente'], ['desc', 'OD decreciente']]} /></CampoCinta>
           <CampoCinta etiqueta="Rotación (°)"><Num value={o.rotar} min={0} max={90} ancho={56} onChange={(v) => setO('rotar', v === '' ? 0 : v)} /></CampoCinta>
         </Grupo>
         <GrupoImagen onGuardar={() => setExp(true)} onEstilo={() => setDlg(true)} onRango={() => setRng(true)} />
@@ -95,7 +99,7 @@ export function ExcluirTab({ s }) {
           <span className="ayuda">Clic sobre un punto para excluirlo o incluirlo <Nota>Azul: aceptado. Cruz roja: excluido. Anillo naranja: sospechoso según el test. Lo que decidís a mano tiene prioridad sobre el test. El desarrollo del cálculo está en «Métodos».</Nota></span>
         </div>
         <div className="figura">
-          <ExcluirChart ref={svg} estado={estado} orden={s.ordenMuestras} o={o} est={s.estilos.excluir} eje={ejeE} odc={odcP} escala={escE} resta={resta} onClickPunto={s.alternarPocillo} onContext={abrirMenu} />
+          <ExcluirChart ref={svg} estado={estado} orden={ordenE} o={o} est={s.estilos.excluir} eje={ejeE} odc={odcP} escala={escE} resta={resta} onClickPunto={s.alternarPocillo} onContext={abrirMenu} />
         </div>
         {ESCALAS[o.escala]?.f && escE === 'od' && <p className="aviso-caja">Sin ODc (faltan blancos aceptados): se muestra en OD.</p>}
         {sinBlancoResta && <p className="aviso-caja">Esta placa no tiene blancos aceptados: no se le puede restar el blanco y queda con la OD leída.</p>}
@@ -118,7 +122,7 @@ export function ExcluirTab({ s }) {
         onGuardar={(e) => { s.setEstilos((x) => ({ ...x, excluir: e })); setDlg(false) }} />}
       {exp && svg.current && (
         <ExportDialog nombre={`calidad_${s.a.nombre}`} size0={tamDe(svg.current)} onClose={() => setExp(false)}
-          render={(ref, tam) => <ExcluirChart ref={ref} estado={estado} orden={s.ordenMuestras} o={o} est={s.estilos.excluir}
+          render={(ref, tam) => <ExcluirChart ref={ref} estado={estado} orden={ordenE} o={o} est={s.estilos.excluir}
             eje={ejeE} odc={odcP} escala={escE} resta={resta} onClickPunto={() => {}} onContext={(e) => e.preventDefault()} tam={tam} />} />
       )}
     </div>

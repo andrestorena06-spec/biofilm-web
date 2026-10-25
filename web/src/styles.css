@@ -629,3 +629,9 @@ button[data-tip], .chip-placa[data-tip] { cursor: pointer; }
 .sensibilidad summary { font-weight: 600; }
 .sensibilidad .veredicto { margin: 10px 0; }
 .sensibilidad tr.fuera td { opacity: .5; }
+
+.orden-placas .veredicto { margin: 10px 0 6px; }
+.perfiles-orden { width: 100%; height: auto; display: block; }
+.tabla-puestos td.num { background: hsl(28 75% calc(97% - (1 - var(--puesto, 1)) * 16%)); }
+.tabla-puestos td.num small { color: var(--sec); font-size: 11px; }
+.tabla-puestos tr.placa-rara td:first-child b { color: var(--aviso); }
