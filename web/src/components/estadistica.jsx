@@ -319,7 +319,7 @@ export function EstadisticaTab({ s }) {
   const nivel = modo === 'serotipos' ? (['cepa', 'placa', 'pocillo'].includes(o.nivelSero) ? o.nivelSero : 'cepa')
     : modo === 'placas' || usaPlacaLibre ? 'pocillo' : o.nivel === 'pocillo' ? 'pocillo' : 'placa'
   const obsN = nivel === 'pocillo' ? X.obsPozo : X.obsPlaca
-  const forzado = o.prueba || 'auto', comp = o.comp || 'pares', ajuste = o.ajuste === 'lsd' ? 'lsd' : 'holm'
+  const forzado = o.prueba || 'auto', comp = o.comp || 'pares', ajuste = ['holm', 'lsd', 'tukey'].includes(o.ajuste) ? o.ajuste : 'holm'
   const unidad = unidadDe(variable, X.corregida)
   const nivelTxt = modo === 'serotipos' ? NIVEL_SERO_TXT[nivel] : nivel === 'placa' ? `cada punto es una placa (${variable === 'od' ? `${unidad} media de sus pocillos` : 'calculado con la OD media de sus pocillos'})` : 'cada punto es un pocillo'
 
@@ -511,8 +511,8 @@ export function EstadisticaTab({ s }) {
             ['pares', 'Todos los pares', null, 'copiar', 'Compara todos los grupos de a pares'],
             ['control', 'Contra control', null, 'flecha', 'Compara cada grupo con uno de referencia (Dunnett con ANOVA clásico)'],
           ]} />
-          <CampoCinta etiqueta="Ajuste" tip={'Holm: controla el error de todas las comparaciones (recomendado)\nLSD de Fisher: sin ajuste; solo con ANOVA clásico significativo y pocos grupos'}>
-            <Select value={ajuste} onChange={(v) => setO('ajuste', v)} opciones={[['holm', 'Holm / Dunnett'], ['lsd', 'LSD de Fisher']]} />
+          <CampoCinta etiqueta="Ajuste" tip={'Holm: controla el error de todas las comparaciones; sirve con cualquier prueba\nTukey / Games-Howell: hecho para comparar todos los pares; Tukey-Kramer con el ANOVA clásico y Games-Howell con el de Welch (con Kruskal-Wallis se usa Dunn con Holm)\nLSD de Fisher: sin ajuste; solo con ANOVA clásico significativo y pocos grupos\nContra un control con ANOVA clásico se usa Dunnett'}>
+            <Select value={ajuste} onChange={(v) => setO('ajuste', v)} opciones={[['holm', 'Holm / Dunnett'], ['tukey', 'Tukey / Games-Howell'], ['lsd', 'LSD de Fisher']]} />
           </CampoCinta>
         </Grupo>
         <GrupoBlanco s={s} />

@@ -238,7 +238,7 @@ function prepararBloques(s, D, o) {
   const cepaF = cepas.includes(o.selCepa) ? o.selCepa : cepas[0]
   const medioF = medios.includes(o.selMedio) ? o.selMedio : medios[0]
   const foco = { serotipos: juntarDe(o) ? 'Todos los medios: entre serotipos' : `Medio ${medioF}: entre serotipos`, medios: `${cepaF}: entre medios`, cepas: `Medio ${medioF}: entre cepas`, cepastodas: 'Todos los medios: entre cepas', placas: `${cepaF} · ${medioF}: entre placas`, placastodas: `${cepaF}: entre todas las placas`, libre: `ANOVA ${(o.selLibre || 0) + 1}:` }[obj]
-  return { obj, foco, variable, nivel, forzado: o.prueba || 'auto', ajuste: o.ajuste === 'lsd' ? 'lsd' : 'holm', bloques, obsPlaca, obsPozo, unidad: unidadDe(variable, D.corregida) }
+  return { obj, foco, variable, nivel, forzado: o.prueba || 'auto', ajuste: ['holm', 'lsd', 'tukey'].includes(o.ajuste) ? o.ajuste : 'holm', bloques, obsPlaca, obsPozo, unidad: unidadDe(variable, D.corregida) }
 }
 
 // ---------------------------------------------------------------

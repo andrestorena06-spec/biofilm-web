@@ -8,6 +8,7 @@
 import { anovaTabla, desvio, holm, media, varianza, welch } from './estadistica.js'
 import { tCuantil } from './utils.js'
 import { fCdf, kruskal, pnorm, rangos, rssRango, shapiro, tSup2 } from './reproducibilidad.js'
+import { pTukey } from './tukey.js'
 
 const finito = Number.isFinite
 const med = (v) => {
@@ -86,6 +87,23 @@ export function pares(grupos, tipo, ctrl, ajuste = 'holm') {
     const tc = tCuantil(0.975, dfe)
     return filas.map((f, i) => ({ ...f, pa: f.p, metodo: 'LSD', lsd: tc * Math.sqrt(mse * (1 / lista[i][0].v.length + 1 / lista[i][1].v.length)) }))
   }
+  // Tukey (todos los pares): Tukey-Kramer con el ANOVA clásico (error común) y Games-Howell con el de Welch
+  // (cada par con su propio error y gl de Welch). Ambos usan la distribución del rango studentizado con k grupos.
+  // Con Kruskal-Wallis no corresponde: se usa Dunn con Holm.
+  if (ajuste === 'tukey' && !ctrl && g.length >= 2) {
+    const k = g.length
+    if (tipo === 'anova' && mse > 0 && finito(dfe)) {
+      return filas.map((f, i) => { const [a, b] = lista[i]; const q = Math.abs(f.dif) / Math.sqrt((mse / 2) * (1 / a.v.length + 1 / b.v.length)); return { ...f, q, pa: pTukey(q, k, dfe), metodo: 'Tukey' } })
+    }
+    if (tipo === 'welch') {
+      return filas.map((f, i) => {
+        const [a, b] = lista[i], va = varianza(a.v) / a.v.length, vb = varianza(b.v) / b.v.length
+        const se = Math.sqrt(va + vb), gl = (va + vb) ** 2 / (va ** 2 / (a.v.length - 1) + vb ** 2 / (b.v.length - 1))
+        const q = se > 0 ? (Math.abs(f.dif) / se) * Math.SQRT2 : NaN
+        return { ...f, q, df: gl, pa: finito(q) && finito(gl) ? pTukey(q, k, gl) : NaN, metodo: 'Games-Howell' }
+      })
+    }
+  }
   // contra un control con ANOVA clásico: prueba de Dunnett (p ajustado exacto); en los demás casos, Holm
   const usaDunnett = !!ctrl && tipo === 'anova' && mse > 0 && finito(dfe) && lista.length > 0
   if (usaDunnett) {
@@ -146,6 +164,9 @@ export function analizar(grupos, forzado = 'auto', ctrl = null, ajuste = 'holm')
   // LSD protegido: si el ANOVA global no es significativo, los pares no se interpretan
   const lsdProtegido = pr[0]?.metodo === 'LSD' && global.p >= 0.05
   if (lsdProtegido) pr = pr.map((x) => ({ ...x, pa: 1, protegido: true }))
+  if (ajuste === 'tukey' && !ctrl && tipo === 'kw') razon += ' Tukey no corresponde después de Kruskal-Wallis: los pares se comparan con Dunn y ajuste de Holm.'
+  if (pr[0]?.metodo === 'Tukey') razon += ' Pares con Tukey-Kramer (rango studentizado con el error común del ANOVA).'
+  if (pr[0]?.metodo === 'Games-Howell') razon += ' Pares con Games-Howell: la versión de Tukey para varianzas distintas (cada par con su propio error).'
   if (pr[0]?.metodo === 'LSD') razon += lsdProtegido ? ' LSD de Fisher: como el ANOVA global no es significativo, no se interpretan las comparaciones de a pares.' : ' Pares con LSD de Fisher (sin ajuste por comparaciones múltiples).'
   return { ok: true, tipo, razon, sw, lev, global, grupos: g, pares: pr, letras: ctrl ? null : letras(g, pr), razonSD: razonSD(vs) }
 }

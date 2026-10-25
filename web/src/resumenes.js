@@ -59,7 +59,7 @@ export function resumenesInforme(s) {
   const usada = (x) => placasUsadas.some((p) => p.id === x.placaId)
   const nivel = o.nivel === 'pocillo' ? 'pocillo' : 'placa'
   const obsN = nivel === 'placa' ? X.obsPlaca : X.obsPozo
-  const forzado = o.prueba || 'auto', ajuste = o.ajuste === 'lsd' ? 'lsd' : 'holm'
+  const forzado = o.prueba || 'auto', ajuste = ['holm', 'lsd', 'tukey'].includes(o.ajuste) ? o.ajuste : 'holm'
   const grupo = (nombre, obs) => { const v = obs.map((x) => x.y); return { nombre, v, m: v.length ? media(v) : NaN, de: v.length > 1 ? desvio(v) : NaN } }
   const correr = (gs) => { const c = gs.filter((g) => g.v.length); return c.length >= 2 ? analizar(c, forzado, null, ajuste) : null }
 

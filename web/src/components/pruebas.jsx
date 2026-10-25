@@ -96,7 +96,7 @@ export function MatrizP({ r }) {
               {nombres.map((b, ib) => {
                 if (ia === ib) return <td key={ib} className="p-diag" />
                 const p = busca(a, b)
-                return <td key={ib} className={p ? clase(p.pa) : 'p-na'} data-tip={p ? `${a} vs ${b}\ndiferencia = ${f(a === p.a ? p.dif : -p.dif, 4)}\np ajustado (Holm) = ${pTxt(p.pa)}` : 'sin comparación'}>{p ? marcaSig(p.pa) : ''}</td>
+                return <td key={ib} className={p ? clase(p.pa) : 'p-na'} data-tip={p ? `${a} vs ${b}\ndiferencia = ${f(a === p.a ? p.dif : -p.dif, 4)}\np ajustado (${p.metodo || 'Holm'}) = ${pTxt(p.pa)}` : 'sin comparación'}>{p ? marcaSig(p.pa) : ''}</td>
               })}
             </tr>
           ))}

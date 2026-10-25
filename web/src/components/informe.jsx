@@ -40,8 +40,11 @@ function estadisticaHTML(R) {
   // método de los pares que se usó de verdad (LSD solo se aplica con el ANOVA clásico; con Welch o Kruskal-Wallis va Holm)
   const todos = [...R.placas.flatMap((b) => b.filas.map((f) => f.r)), ...R.medios.map((f) => f.r), ...R.familias.flatMap((fm) => fm.porMedio.map((f) => f.r)), ...(R.serotipos || []).map((f) => f.r)]
   const metodos = new Set(todos.filter((r) => r?.ok && r.pares[0]).map((r) => r.pares[0].metodo))
-  const metodoTxt = metodos.has('LSD') && metodos.has('Holm') ? 'LSD de Fisher con el ANOVA clásico y Holm con Welch o Kruskal-Wallis' : metodos.has('LSD') ? 'LSD de Fisher' : 'Holm'
-  const ajTxt = metodos.has('LSD') && metodos.has('Holm') ? 'por LSD o Holm' : metodos.has('LSD') ? 'por LSD' : 'por Holm'
+  // métodos de pares que se usaron de verdad (LSD y Tukey dependen de la prueba global; Games-Howell va con Welch y Holm con Kruskal-Wallis)
+  const NOM_M = { LSD: 'LSD de Fisher', Holm: 'Holm', Tukey: 'Tukey-Kramer', 'Games-Howell': 'Games-Howell', Dunnett: 'Dunnett' }
+  const usados = [...metodos].map((m) => NOM_M[m] || m)
+  const metodoTxt = usados.length ? usados.join(', ') : 'Holm'
+  const ajTxt = 'por ' + (usados.length ? usados.join(' o ') : 'Holm')
   const avisos = [
     R.fueraPl.length ? `Placas sacadas de las pruebas en «Estadística»: ${R.fueraPl.map((p) => esc(p.nombre)).join(', ')}.` : '',
     R.sinOdc.length ? `Sin ODc (no entran con OD ÷ ODc): ${R.sinOdc.map((p) => esc(p.nombre)).join(', ')}.` : '',
