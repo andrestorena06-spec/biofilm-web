@@ -3,6 +3,7 @@ import { Campo, Select } from './ui.jsx'
 import { Nota } from './tip.jsx'
 import { dentroDeSel, juntarDe, objetivoDe, usaMedio } from './pruebas.jsx'
 import { seroDe, serotiposDe, valoresSerotipo } from '../serotipos.js'
+import { dentroDeGrupo, nombreGrupo, usaPlaca } from '../grupolibre.js'
 import { armarComparacion } from '../comparacion.js'
 import { unidadDe } from '../resumenes.js'
 import { analizar, anidada, levene, parcelasDivididas, placaCepa, razonSD } from '../decision.js'
@@ -177,7 +178,7 @@ function prepararBloques(s, D, o) {
   const esPl = obj === 'placas' || obj === 'placastodas'
   const libres = obj === 'libre' ? (o.libres || []).filter((c) => c.grupos.length >= 2) : []
   const nivel = obj === 'serotipos' ? (['cepa', 'placa', 'pocillo'].includes(o.nivelSero) ? o.nivelSero : 'cepa')
-    : esPl || libres.some((c) => c.grupos.some((g) => g.placa)) ? 'pocillo' : o.nivel || 'placa'
+    : esPl || libres.some((c) => c.grupos.some(usaPlaca)) ? 'pocillo' : o.nivel || 'placa'
   // resta: blanco restado (Calidad › Restar blanco); OD ÷ ODc se calcula con la OD leída
   const fx = (y, odc, resta = 0) => (variable === 'ln' ? (y > 0 ? Math.log(y) : NaN) : variable === 'odc' ? (odc > 0 ? (y + resta) / odc : NaN) : y)
   const obsPlaca0 = [], obsPozo0 = []
@@ -205,8 +206,8 @@ function prepararBloques(s, D, o) {
   const nomP = (id) => obs.find((x) => x.placaId === id)?.placa || id
   const sfx = (S) => (personal ? ' · ' + S.map((x) => (factorComp === 'placas' ? nomP(x) : x)).join(' vs ') : '')
   const ctrlEn = (S, c) => (comp === 'control' && S.includes(c) ? c : null)
-  const nombreG = (g) => [g.serotipo ? `serotipo ${g.serotipo}` : null, g.cepa || null, g.medio || null, g.placa ? (D.placasSel.find((p) => p.id === g.placa)?.nombre || g.placa) : null].filter(Boolean).join(' · ') || 'Todos los datos'
-  const valsG = (g) => obs.filter((x) => (!g.cepa || x.cepa === g.cepa) && (!g.serotipo || seroDe(s.exp, x.cepa) === g.serotipo) && (!g.medio || x.medio === g.medio) && (!g.placa || x.placaId === g.placa)).map((x) => x.y)
+  const nombreG = (g) => nombreGrupo(g, (id) => D.placasSel.find((p) => p.id === id)?.nombre || id)
+  const valsG = (g) => obs.filter((x) => dentroDeGrupo(g, x, (c) => seroDe(s.exp, c))).map((x) => x.y)
   let bloques = []
   if (obj === 'libre') bloques = libres.map((c, i) => {
     const vistos = new Set()

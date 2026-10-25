@@ -12,6 +12,7 @@ import { ComparadorLibre, GrupoModo, modoBase } from './seleccion.jsx'
 import { ReproTab } from './repro.jsx'
 import { GrupoBlanco } from './blanco.jsx'
 import { NIVEL_SERO_TXT, seroDe, serotiposDe, valoresSerotipo } from '../serotipos.js'
+import { dentroDeGrupo, nombreGrupo, usaPlaca } from '../grupolibre.js'
 import { armarComparacion } from '../comparacion.js'
 import { SIN_MEDIO, UNIDAD, prepararDatos, unidadDe } from '../resumenes.js'
 import { analizar, anidada, parcelasDivididas, placaCepa } from '../decision.js'
@@ -313,7 +314,7 @@ export function EstadisticaTab({ s }) {
 
   // ---- opciones de la prueba ----
   const libres = (o.libres || []).filter((c) => c.grupos.length >= 2)
-  const usaPlacaLibre = modo === 'libre' && libres.some((c) => c.grupos.some((g) => g.placa))
+  const usaPlacaLibre = modo === 'libre' && libres.some((c) => c.grupos.some(usaPlaca))
   // serotipos: la réplica puede ser la cepa (la media de sus placas), la placa de cada cepa o el pocillo
   const nivel = modo === 'serotipos' ? (['cepa', 'placa', 'pocillo'].includes(o.nivelSero) ? o.nivelSero : 'cepa')
     : modo === 'placas' || usaPlacaLibre ? 'pocillo' : o.nivel === 'pocillo' ? 'pocillo' : 'placa'
@@ -349,8 +350,8 @@ export function EstadisticaTab({ s }) {
   const analizarG = (gs) => { const c = gs.filter((g) => g.v.length); return c.length ? { r: analizar(c, forzado, ctrlDe(c), ajuste), ctrl: ctrlDe(c) } : { r: null, ctrl: null } }
 
   // grupos a medida
-  const nombreG = (g) => [g.serotipo ? `serotipo ${g.serotipo}` : null, g.cepa || null, g.medio || null, g.placa ? (X.placas.find((p) => p.id === g.placa)?.nombre || g.placa) : null].filter(Boolean).join(' · ') || 'Todos los datos'
-  const gruposLibre = (c) => c.grupos.map((g) => conDet(nombreG(g), obsN.filter((x) => (!g.cepa || x.cepa === g.cepa) && (!g.serotipo || seroC(x.cepa) === g.serotipo) && (!g.medio || x.medio === g.medio) && (!g.placa || x.placaId === g.placa))))
+  const nombreG = (g) => nombreGrupo(g, (id) => X.placas.find((p) => p.id === id)?.nombre || id)
+  const gruposLibre = (c) => c.grupos.map((g) => conDet(nombreG(g), obsN.filter((x) => dentroDeGrupo(g, x, seroC))))
   const iLibre = Math.min(Math.max(0, o.selLibre || 0), Math.max(0, libres.length - 1))
 
   // ---- foco (lo que muestran los dos paneles) ----

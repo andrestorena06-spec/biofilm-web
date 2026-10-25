@@ -122,6 +122,8 @@ export const aArchivo = (exp, tab, activaId) => ({ tipo: 'biofilm', ...exp, vers
 export const nombreArchivo = (exp) => `${(exp.info.nombre || 'sesion_biofilm').replace(/[^\w\-áéíóúñÁÉÍÓÚÑ ]+/g, '_').trim() || 'sesion_biofilm'}.biofilm.json`
 
 // Renombra una muestra en todo el experimento (lista, pocillos de todas las placas, selecciones de gráficos)
+// en «A medida» cada campo del grupo puede ser una lista (o un texto en sesiones anteriores)
+const cambiaEn = (v, cambia) => (Array.isArray(v) ? v.map(cambia) : cambia(v))
 export function renombrarMuestra(exp, viejo, nuevo) {
   const cambia = (m) => (m === viejo ? nuevo : m)
   const o = exp.opts
@@ -140,7 +142,7 @@ export function renombrarMuestra(exp, viejo, nuevo) {
         eCepasSeroFuera: o.comparar.eCepasSeroFuera ? o.comparar.eCepasSeroFuera.map(cambia) : o.comparar.eCepasSeroFuera,
         selCepa: o.comparar.selCepa === viejo ? nuevo : o.comparar.selCepa,
         ctrlCepa: o.comparar.ctrlCepa === viejo ? nuevo : o.comparar.ctrlCepa,
-        libres: (o.comparar.libres || []).map((c) => ({ ...c, grupos: c.grupos.map((g) => (g.cepa === viejo ? { ...g, cepa: nuevo } : g)) })),
+        libres: (o.comparar.libres || []).map((c) => ({ ...c, grupos: c.grupos.map((g) => ({ ...g, cepa: cambiaEn(g.cepa, cambia) })) })),
       },
     },
   }
@@ -154,7 +156,7 @@ export function renombrarMedio(exp, viejo, nuevo) {
     medios: exp.medios.map(cambia),
     placas: exp.placas.map((p) => (p.medio === viejo ? { ...p, medio: nuevo } : p)),
     opts: { ...exp.opts, comparar: { ...c, eMediosFuera: c.eMediosFuera ? c.eMediosFuera.map(cambia) : c.eMediosFuera, ctrlMedio: c.ctrlMedio === viejo ? nuevo : c.ctrlMedio,
-      libres: (c.libres || []).map((x) => ({ ...x, grupos: x.grupos.map((g) => (g.medio === viejo ? { ...g, medio: nuevo } : g)) })) } },
+      libres: (c.libres || []).map((x) => ({ ...x, grupos: x.grupos.map((g) => ({ ...g, medio: cambiaEn(g.medio, cambia) })) })) } },
   }
 }
 export const usosMuestra = (exp, m) => exp.placas.reduce((a, p) => a + p.config.filter((c) => c.Muestra === m).length, 0)
