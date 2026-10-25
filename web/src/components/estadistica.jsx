@@ -77,7 +77,7 @@ function Dispersion({ grupos, letras, colorDe, unidad, umbrales }) {
         const mu = g.v.length ? media(g.v) : NaN, sd = g.v.length > 1 ? desvio(g.v) : 0
         const paso = Math.min(band * 0.07, 7)
         return (
-          <g key={g.nombre}>
+          <g key={i}>
             {i % 2 === 1 && <rect x={cx - band / 2} y={m.t} width={band} height={H - m.t - m.b} fill="#FBF3E6" opacity=".7" />}
             {finito(mu) && (
               <g data-tip={`${g.nombre}\nx̄ = ${f(mu, 4)}${g.v.length > 1 ? `\nDE = ${f(sd, 4)}` : ''}\nn = ${g.v.length}`}>
@@ -130,10 +130,10 @@ function PanelGrupos({ foco, unidad, nivelTxt, colorDe, fuera, comp, onCtrl, umb
             <table className="tabla compacta">
               <thead><tr><th>Grupo</th><th className="num">n</th><th className="num">Media</th><th className="num">DE</th><th className="num">CV %</th><th>{ctrl ? 'Contra el control' : 'Letra'}</th></tr></thead>
               <tbody>
-                {grupos.map((g) => {
+                {grupos.map((g, i) => {
                   const mu = g.v.length ? media(g.v) : NaN, sd = g.v.length > 1 ? desvio(g.v) : NaN
                   return (
-                    <tr key={g.nombre} className={!g.v.length ? 'fuera' : ''}>
+                    <tr key={i} className={!g.v.length ? 'fuera' : ''}>
                       <td data-tip={g.v.length ? `${g.nombre}: valores que entran\n${g.det.map((d) => `${d.etq}: ${f(d.y, 4)}`).join('\n')}` : 'Sin datos con esta selección'}><b>{g.nombre}</b></td>
                       <td className="num">{g.v.length}</td>
                       <td className="num">{f(mu, 3)}</td>
@@ -351,7 +351,9 @@ export function EstadisticaTab({ s }) {
 
   // grupos a medida
   const nombreG = (g) => nombreGrupo(g, (id) => X.placas.find((p) => p.id === id)?.nombre || id)
-  const gruposLibre = (c) => c.grupos.map((g) => conDet(nombreG(g), obsN.filter((x) => dentroDeGrupo(g, x, seroC))))
+  // dos grupos iguales llevan (2), (3)… para que las letras y los pares no se mezclen
+  const unicos = (ns) => ns.map((n, i) => { const k = ns.slice(0, i).filter((x) => x === n).length; return k ? `${n} (${k + 1})` : n })
+  const gruposLibre = (c) => { const ns = unicos(c.grupos.map(nombreG)); return c.grupos.map((g, i) => conDet(ns[i], obsN.filter((x) => dentroDeGrupo(g, x, seroC)))) }
   const iLibre = Math.min(Math.max(0, o.selLibre || 0), Math.max(0, libres.length - 1))
 
   // ---- foco (lo que muestran los dos paneles) ----

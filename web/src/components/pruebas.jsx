@@ -88,15 +88,15 @@ export function MatrizP({ r }) {
   return (
     <div className="tabla-scroll chica">
       <table className="matriz-p">
-        <thead><tr><th />{nombres.map((n) => <th key={n}>{n}</th>)}</tr></thead>
+        <thead><tr><th />{nombres.map((n, i) => <th key={i}>{n}</th>)}</tr></thead>
         <tbody>
-          {nombres.map((a) => (
-            <tr key={a}>
+          {nombres.map((a, ia) => (
+            <tr key={ia}>
               <th>{a}</th>
-              {nombres.map((b) => {
-                if (a === b) return <td key={b} className="p-diag" />
+              {nombres.map((b, ib) => {
+                if (ia === ib) return <td key={ib} className="p-diag" />
                 const p = busca(a, b)
-                return <td key={b} className={p ? clase(p.pa) : 'p-na'} data-tip={p ? `${a} vs ${b}\ndiferencia = ${f(a === p.a ? p.dif : -p.dif, 4)}\np ajustado (Holm) = ${pTxt(p.pa)}` : 'sin comparación'}>{p ? marcaSig(p.pa) : ''}</td>
+                return <td key={ib} className={p ? clase(p.pa) : 'p-na'} data-tip={p ? `${a} vs ${b}\ndiferencia = ${f(a === p.a ? p.dif : -p.dif, 4)}\np ajustado (Holm) = ${pTxt(p.pa)}` : 'sin comparación'}>{p ? marcaSig(p.pa) : ''}</td>
               })}
             </tr>
           ))}
