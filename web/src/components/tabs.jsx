@@ -3,6 +3,7 @@ import { Nota } from './tip.jsx'
 import { dDE, dMedia, dODc } from '../calculos.js'
 import { Check, Campo, Modal, Vacio } from './ui.jsx'
 import { BotonCinta, CampoCinta, Cinta, Grupo, InterruptorCinta } from './cinta.jsx'
+import { GrupoBlanco } from './blanco.jsx'
 import { CLASES, COLOR_CLASE, FILAS, aCSV, coloresPocillos, descargarTexto, fmt, nombreReplica, pocillos96 } from '../utils.js'
 
 export { Vacio }
@@ -266,15 +267,20 @@ export function PlacaTab({ s }) {
 // ===============================================================
 export function AnalisisTab({ s }) {
   const [det, setDet] = useState(null)
-  // el ODc y el mapa se hacen siempre con la OD leída (aunque esté activo «Restar blanco» en Calidad)
-  const a = s.analisisLeido || s.analisis
+  const a = s.analisis
   if (!s.placa) return <Vacio titulo="Esta placa no tiene datos" texto="Cargá el Excel o escribí las OD en «Placas»." accion={<button className="primario" onClick={() => s.irA('placas')}>Ir a Placas</button>} />
   if (!a?.estado?.length) return <Vacio titulo="Faltan los pocillos" texto="Indicá qué muestra hay en cada pocillo para ver el mapa." accion={<button className="primario" onClick={() => s.irA('pocillos')}>Ir a Pocillos</button>} />
+  // «Restar blanco»: el mapa muestra la OD corregida (OD leída − media de los blancos). El ODc se calcula con la OD leída,
+  // así que en OD corregida los límites de clase quedan en k × ODc − blanco (la clasificación de cada pocillo no cambia)
+  const corr = !!a.blanco?.restado
+  const resta = corr ? a.odc.resta : 0
   const odc = a.odc.odc
   const finito = Number.isFinite(odc)
-  const datos = Object.fromEntries(s.placa.datos.map((d) => [d.Pocillo, d.OD]))
+  const [u1, u2, u3] = [odc - resta, 2 * odc - resta, 4 * odc - resta]
+  const datos = Object.fromEntries(s.placa.datos.map((d) => [d.Pocillo, d.OD - resta]))
   const est = Object.fromEntries(a.estado.map((e) => [e.Pocillo, e]))
-  const clasif = (od) => (!finito ? null : od <= odc ? CLASES[0] : od <= 2 * odc ? CLASES[1] : od <= 4 * odc ? CLASES[2] : CLASES[3])
+  const clasif = (od) => (!finito ? null : od <= u1 ? CLASES[0] : od <= u2 ? CLASES[1] : od <= u3 ? CLASES[2] : CLASES[3])
+  const nomOD = corr ? 'OD corr.' : 'OD'
   const categoria = (p) => {
     const od = datos[p]
     if (!Number.isFinite(od)) return 'Sin datos'
@@ -286,12 +292,13 @@ export function AnalisisTab({ s }) {
   }
   const blancos = a.blancos || []
   const usados = s.blancosUsados ?? blancos
-  const odBl = a.estado.filter((r) => r.EsBlanco && r.Usado && usados.includes(r.Muestra)).map((r) => r.OD)
+  // los blancos del ODc, siempre con la OD leída
+  const odBl = (s.analisisLeido || a).estado.filter((r) => r.EsBlanco && r.Usado && usados.includes(r.Muestra)).map((r) => r.OD)
   const refs = [
-    ['No productor', finito ? `OD ≤ ${fmt(odc)}` : ''],
-    ['Productor débil', finito ? `${fmt(odc)} < OD ≤ ${fmt(2 * odc)}` : ''],
-    ['Productor moderado', finito ? `${fmt(2 * odc)} < OD ≤ ${fmt(4 * odc)}` : ''],
-    ['Productor fuerte', finito ? `OD > ${fmt(4 * odc)}` : ''],
+    ['No productor', finito ? `${nomOD} ≤ ${fmt(u1)}` : ''],
+    ['Productor débil', finito ? `${fmt(u1)} < ${nomOD} ≤ ${fmt(u2)}` : ''],
+    ['Productor moderado', finito ? `${fmt(u2)} < ${nomOD} ≤ ${fmt(u3)}` : ''],
+    ['Productor fuerte', finito ? `${nomOD} > ${fmt(u3)}` : ''],
     ['Blanco', 'medio sin inocular'], ['Excluido', 'fuera del análisis'], ['Sin asignar', 'pocillo libre'],
   ]
   const dp = det && est[det]
@@ -305,20 +312,23 @@ export function AnalisisTab({ s }) {
               onChange={(v) => { const n = v ? [...usados, b] : usados.filter((x) => x !== b); if (!n.length) return s.avisar('Tiene que quedar al menos un blanco.', 'error'); s.setBlancosUsados(n) }} />)}
           </Grupo>
         )}
+        <GrupoBlanco s={s} />
       </Cinta>
 
       <div className="grid-kpi">
         <div className="kpi" data-tip={`Blancos aceptados\nPocillos de ${usados.join(', ') || 'blanco'} que no están excluidos`}><small>Blancos aceptados</small><b>{a.odc.n}</b></div>
-        <div className="kpi" data-tip={`Media de blancos\n${dMedia(odBl)}${s.restarBlanco ? '\nEs lo que se resta a cada OD desde Calidad (Restar blanco)' : ''}`}><small>{s.restarBlanco ? 'Media de los blancos · se resta' : 'Media de los blancos'}</small><b>{fmt(a.odc.media, 4)}</b></div>
+        <div className="kpi" data-tip={`Media de blancos\n${dMedia(odBl)}${corr ? '\nEs lo que se resta a cada OD (Restar blanco)' : ''}`}><small>{corr ? 'Media de los blancos · se resta' : 'Media de los blancos'}</small><b>{fmt(a.odc.media, 4)}</b></div>
         <div className="kpi" data-tip={dDE(odBl)}><small>DE de los blancos</small><b>{fmt(a.odc.sd, 4)}</b></div>
         <div className="kpi destacado" data-tip={a.odc.n > 1 ? dODc(odBl) : 'Punto de corte (ODc)\nHacen falta al menos 2 blancos aceptados'}><small>ODc = media + 3 × DE</small><b>{fmt(odc, 4)}</b></div>
+        {corr && finito && <div className="kpi" data-tip={`Punto de corte en OD corregida\nODc − blanco = ${fmt(odc, 4)} − ${fmt(resta, 4)} = ${fmt(u1, 4)} (= 3 × DE)\nLímites de clase en OD corregida: ${fmt(u1)} · ${fmt(u2)} · ${fmt(u3)}\n(k × ODc − blanco: la clasificación es la misma que con la OD leída)`}><small>ODc − blanco</small><b>{fmt(u1, 4)}</b></div>}
       </div>
+      {s.restarBlanco && !corr && a.odc.n === 0 && <p className="aviso-caja">Esta placa no tiene blancos aceptados: no se le puede restar el blanco y queda con la OD leída.</p>}
       {!blancos.length && <p className="aviso-caja">No hay blancos en esta placa: marcá «Es un blanco» al configurar los pocillos del medio sin inocular.</p>}
       {blancos.length > 0 && !finito && <p className="aviso-caja">Hacen falta al menos 2 pocillos de blanco aceptados para calcular el ODc.</p>}
 
       <section className="tarjeta">
         <div className="cabeza-tarjeta">
-          <span className="etiqueta-seccion">Mapa de la placa · {s.ejeODLeida}</span>
+          <span className="etiqueta-seccion">Mapa de la placa · {corr ? s.ejeOD : s.ejeODLeida}</span>
           <span className="ayuda">Clic en un pocillo para ver su clasificación y excluirlo o incluirlo
             <Nota>Stepanović et al. (2000): cada muestra se clasifica con la media de sus réplicas aceptadas; acá se colorea cada pocillo con su propia OD.</Nota></span>
         </div>
@@ -336,7 +346,7 @@ export function AnalisisTab({ s }) {
                       <td key={p} onClick={() => Number.isFinite(datos[p]) && setDet(p)}>
                         <div className={`celda-mapa cat-${CLASES.indexOf(cat)} ${cat === 'Sin datos' ? 'sin-datos' : ''} ${cat === 'Excluido' ? 'excluido' : ''} ${cat === 'Sin asignar' || cat === 'Sin clasificar' ? 'libre' : ''}`}
                           style={COLOR_CLASE[cat] && cat !== 'Excluido' ? { background: COLOR_CLASE[cat] } : undefined}
-                          data-tip={Number.isFinite(datos[p]) ? `${p}${e ? ` · ${e.Muestra} R${e.Replica}` : ''}\nOD = ${fmt(datos[p], 4)}\n${cat}` : undefined}>
+                          data-tip={Number.isFinite(datos[p]) ? `${p}${e ? ` · ${e.Muestra} R${e.Replica}` : ''}\n${corr ? `OD corregida = ${fmt(datos[p], 4)} (leída ${fmt(datos[p] + resta, 4)} − blanco ${fmt(resta, 4)})` : `OD = ${fmt(datos[p], 4)}`}\n${cat}` : undefined}>
                           {Number.isFinite(datos[p]) && <b>{fmt(datos[p])}</b>}
                           {e && <><span>{e.Muestra}</span><small>R{e.Replica}</small></>}
                         </div>
@@ -361,7 +371,9 @@ export function AnalisisTab({ s }) {
             {dp && <button className="primario" onClick={() => { s.alternarPocillo(det); setDet(null) }}>
               {dp.Usado ? 'Excluir este pocillo' : dp.Manual ? 'Volver a incluir' : 'Conservar pese al test'}</button>}</>}>
           <dl className="datos">
-            <dt>OD</dt><dd>{fmt(datos[det], 4)}</dd>
+            {corr
+              ? <><dt>OD corregida</dt><dd>{fmt(datos[det], 4)}</dd><dt>OD leída</dt><dd>{fmt(datos[det] + resta, 4)} (blanco {fmt(resta, 4)})</dd></>
+              : <><dt>OD</dt><dd>{fmt(datos[det], 4)}</dd></>}
             <dt>Clasificación</dt><dd>{!dp ? 'Sin muestra asignada' : dp.EsBlanco ? 'Blanco (no se clasifica)' : finito ? clasif(datos[det]) : 'Sin ODc: faltan blancos'}</dd>
             {dp && <><dt>Estado</dt><dd>{dp.Usado ? 'Aceptado' : 'Excluido'}</dd></>}
           </dl>

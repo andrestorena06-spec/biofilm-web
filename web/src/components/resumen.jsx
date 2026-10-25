@@ -9,7 +9,7 @@ import { COLOR_CLASE, descargarBlob, fmt, paletaMuestras } from '../utils.js'
 import { nombreArchivo } from '../modelo.js'
 
 const finito = Number.isFinite
-const PASOS_TRABAJO = ['placas', 'pocillos', 'calidad', 'odc', 'grafico', 'estadistica', 'datos']
+const PASOS_TRABAJO = ['placas', 'pocillos', 'odc', 'calidad', 'grafico', 'estadistica', 'datos']
 const r4 = (x, d = 4) => (finito(x) ? Number(x.toFixed(d)) : null)
 const METODO = { q: 'Test Q de Dixon', grubbs: 'Test de Grubbs', cv: 'Coeficiente de variación' }
 
@@ -64,9 +64,7 @@ export async function descargarExcelCompleto(s) {
 }
 
 export function Resumen({ s }) {
-  const { exp } = s
-  // el resumen va antes de Calidad: muestra la OD leída (la misma con la que se clasifica), aunque se reste el blanco
-  const analisisMap = s.analisisMapLeido || s.analisisMap
+  const { exp, analisisMap } = s
   const i = exp.info
   const pend = pendientes(exp, analisisMap)
   const hechos = PASOS_TRABAJO.filter((p) => s.listo(p)).length
@@ -177,7 +175,7 @@ export function Resumen({ s }) {
                           const c = r.Clasificacion
                           return (
                             <td key={p.id} className="num celda-clase" style={{ '--clase': COLOR_CLASE[c] || 'transparent' }} onClick={() => { s.setActiva(p.id); s.irA('odc') }}
-                              data-tip={`${m} · ${p.nombre}\nOD media = ${fmt(r.Media, 3)}${finito(r.SD) ? ` ± ${fmt(r.SD, 3)} (DE)` : ''} · n = ${r.N_aceptadas}${finito(a.odc?.odc) ? `\nODc = ${fmt(a.odc.odc, 4)} → OD ÷ ODc = ${fmt(r.Razon_ODc, 2)}` : ''}\n${c || 'Sin clasificar (falta el ODc)'}`}>
+                              data-tip={`${m} · ${p.nombre}\n${a.blanco?.restado ? 'OD corregida' : 'OD'} media = ${fmt(r.Media, 3)}${finito(r.SD) ? ` ± ${fmt(r.SD, 3)} (DE)` : ''} · n = ${r.N_aceptadas}${a.blanco?.restado ? `\nOD leída = ${fmt(r.MediaLeida, 3)} (blanco ${fmt(a.blanco.valor, 3)})` : ''}${finito(a.odc?.odc) ? `\nODc = ${fmt(a.odc.odc, 4)} → OD ÷ ODc = ${fmt(r.Razon_ODc, 2)}` : ''}\n${c || 'Sin clasificar (falta el ODc)'}`}>
                               {fmt(r.Media, 3)}
                             </td>
                           )
@@ -189,7 +187,7 @@ export function Resumen({ s }) {
               </div>
               <div className="leyenda-clases">
                 {Object.entries(COLOR_CLASE).filter(([k]) => k.startsWith('No') || k.startsWith('Productor')).map(([k, c]) => <span key={k}><i className="punto" style={{ background: c }} />{k}</span>)}
-                <span className="tenue">OD media de las réplicas aceptadas · clic: ver la placa</span>
+                <span className="tenue">{s.restarBlanco ? 'OD corregida (− blanco)' : 'OD'} media de las réplicas aceptadas · clic: ver la placa</span>
               </div>
             </>
           )}

@@ -39,9 +39,9 @@ const PASOS = {
   datos: [TITULO_PASO.datos, DatosTab, 'tabla'],
   metodos: [TITULO_PASO.metodos, MetodosTab, 'libro'],
 }
-const ORDEN = ['resumen', 'placas', 'pocillos', 'calidad', 'odc', 'grafico', 'estadistica', 'datos', 'metodos']
+const ORDEN = ['resumen', 'placas', 'pocillos', 'odc', 'calidad', 'grafico', 'estadistica', 'datos', 'metodos']
 // los pasos que trabajan sobre la placa elegida van juntos en el menú
-const GRUPOS = { placa: { titulo: 'Por placa', icono: 'placa', hijos: ['pocillos', 'calidad', 'odc'] } }
+const GRUPOS = { placa: { titulo: 'Por placa', icono: 'placa', hijos: ['pocillos', 'odc', 'calidad'] } }
 const grupoDe = (id) => Object.keys(GRUPOS).find((g) => GRUPOS[g].hijos.includes(id))
 // pantallas que muestran la barra de placas (trabajan sobre la placa activa)
 const CON_PLACAS = new Set(['pocillos', 'calidad', 'odc', 'grafico', 'datos', 'metodos'])
@@ -264,7 +264,7 @@ export default function App() {
     return () => clearTimeout(t)
   }, [placas, deteccion, avisar]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Calidad › Restar blanco: desde Calidad en adelante todo usa la OD corregida (OD leída − media de los blancos)
+  // Restar blanco (ODc y mapa, Calidad, Gráfico, Estadística): todo usa la OD corregida (OD leída − media de los blancos)
   const restarBlanco = !!exp?.opts?.blanco?.restar
   const analisisMap = useMemo(() => (restarBlanco
     ? Object.fromEntries(Object.entries(analisisLeido).map(([id, a]) => [id, a ? corregirAnalisis(a) : a]))
@@ -477,12 +477,15 @@ export default function App() {
     blancosUsados: activa?.blancosUsados ?? null, setBlancosUsados: (b) => activa && actualizar(activa.id, { blancosUsados: b }),
     analisis, ordenMuestras, ejeOD, ejeODLeida,
     // corrección por blanco: la placa activa y todas con la OD leída (para Pocillos y ODc)
-    // al activarla, Calidad y Gráfico pasan a OD: en OD ÷ ODc la razón se hace con la OD leída y no se vería el cambio
+    // Restar blanco es uno solo para todo el programa (se cambia desde ODc y mapa, Calidad, Gráfico o Estadística).
+    // Al activarlo, lo que estaba en OD ÷ ODc pasa a OD: esa razón se hace con la OD leída y no se vería el cambio.
     restarBlanco, setRestarBlanco: (v) => {
       const o0 = expRef.current?.opts
-      const enOdc = v && (o0?.excluir?.escala === 'odc' || o0?.barras?.escala === 'odc')
-      upd((e) => ({ opts: { ...e.opts, blanco: { ...e.opts.blanco, restar: !!v }, ...(v ? { excluir: { ...e.opts.excluir, escala: 'od' }, barras: { ...e.opts.barras, escala: 'od' } } : {}) } }))
-      if (enOdc) avisar('Blanco restado: los gráficos pasaron a la escala OD (OD corregida). La escala OD ÷ ODc se calcula siempre con la OD leída.')
+      const enOdc = v && (o0?.excluir?.escala === 'odc' || o0?.barras?.escala === 'odc' || o0?.comparar?.variable === 'odc' || o0?.comparar?.reproVar === 'odc')
+      upd((e) => ({ opts: { ...e.opts, blanco: { ...e.opts.blanco, restar: !!v },
+        ...(v ? { excluir: { ...e.opts.excluir, escala: 'od' }, barras: { ...e.opts.barras, escala: 'od' },
+          comparar: { ...e.opts.comparar, variable: e.opts.comparar.variable === 'odc' ? 'od' : e.opts.comparar.variable, reproVar: e.opts.comparar.reproVar === 'odc' ? 'od' : e.opts.comparar.reproVar } } : {}) } }))
+      if (enOdc) avisar('Blanco restado: lo que estaba en OD ÷ ODc pasó a OD (OD corregida). La escala OD ÷ ODc se calcula siempre con la OD leída.')
     },
     analisisLeido: activa ? analisisLeido[activa.id] || null : null, analisisMapLeido: analisisLeido,
     // globales

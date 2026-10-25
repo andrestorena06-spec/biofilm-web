@@ -16,6 +16,7 @@ import { Q_TABLA } from '../criticos.js'
 import { criticoGrubbs, normalizarMetodo } from '../motor.js'
 import { ESCALAS, conRango, escalaValida, estiloEscala, descargarBlob, estiloDefecto, fmt, tCuantil } from '../utils.js'
 import { textoBlanco } from '../correccion.js'
+import { BotonBlanco, GrupoBlanco } from './blanco.jsx'
 
 const nombreMetodo = { q: 'Test Q de Dixon', grubbs: 'Test de Grubbs', cv: 'Coeficiente de variación (%RSD)' }
 const ERRORES = [['ic95', 'IC 95 %'], ['sd', 'DE'], ['sem', 'SEM']]
@@ -70,22 +71,19 @@ export function ExcluirTab({ s }) {
           <InterruptorCinta icono="escudo" texto="Excluir solos" valor={d.usar} onChange={(v) => setD('usar', v)} tip="Excluir automáticamente los pocillos que el test marca como sospechosos (en todas las placas)" />
           <BotonCinta icono="refrescar" texto="Restablecer" onClick={s.restablecerExclusiones} tip="Vuelve a incluir los pocillos excluidos a mano en esta placa" />
         </Grupo>
+        <GrupoBlanco s={s} />
+        <Grupo titulo="Escala">
+          <OpcionesCinta valor={ESCALAS[o.escala] ? o.escala : 'od'} onChange={(v) => setO('escala', v)} opciones={[
+            ['od', 'OD', 'OD', null, s.restarBlanco ? 'OD corregida (OD leída − blanco)' : 'OD tal cual'],
+            ['odc', 'OD ÷ ODc', '÷', null, 'OD ÷ ODc con el ODc de esta placa: cada unidad es un ODc (1 = ODc, 2 = 2 × ODc, 4 = 4 × ODc).\nSe calcula con la OD leída, aunque se reste el blanco.\nSolo cambia el dibujo: los valores atípicos se buscan siempre sobre la OD.'],
+          ]} />
+        </Grupo>
         <Grupo titulo="Mostrar">
           <InterruptorCinta icono="puntos" texto="Puntos" valor={o.puntos} onChange={(v) => setO('puntos', v)} />
           <InterruptorCinta simbolo="x̄" texto="Media" valor={o.medias} onChange={(v) => setO('medias', v)} tip="Valor medio escrito sobre cada muestra" />
           <InterruptorCinta simbolo="±" texto="Error" valor={o.errores} onChange={(v) => setO('errores', v)} tip="Agrega el error junto al valor medio" />
           <CampoCinta etiqueta="Error"><Select value={o.error} onChange={(v) => setO('error', v)} opciones={ERRORES} /></CampoCinta>
           <CampoCinta etiqueta="Rotación (°)"><Num value={o.rotar} min={0} max={90} ancho={56} onChange={(v) => setO('rotar', v === '' ? 0 : v)} /></CampoCinta>
-        </Grupo>
-        <Grupo titulo="Blanco">
-          <InterruptorCinta icono="matraz" texto="Restar blanco" valor={s.restarBlanco} onChange={s.setRestarBlanco}
-            tip={'OD corregida = OD leída − media de los blancos aceptados de cada placa (los mismos del ODc).\nSe aplica desde acá en adelante: gráficos, comparaciones, estadística, datos e informe (en todas las placas).\nLos valores atípicos, el ODc y la clasificación se siguen calculando con la OD leída.'} />
-        </Grupo>
-        <Grupo titulo="Escala">
-          <OpcionesCinta valor={ESCALAS[o.escala] ? o.escala : 'od'} onChange={(v) => setO('escala', v)} opciones={[
-            ['od', 'OD', 'OD', null, s.restarBlanco ? 'OD corregida (OD leída − blanco)' : 'OD tal cual'],
-            ['odc', 'OD ÷ ODc', '÷', null, 'OD ÷ ODc con el ODc de esta placa: cada unidad es un ODc (1 = ODc, 2 = 2 × ODc, 4 = 4 × ODc).\nSe calcula con la OD leída, aunque se reste el blanco.\nSolo cambia el dibujo: los valores atípicos se buscan siempre sobre la OD.'],
-          ]} />
         </Grupo>
         <GrupoImagen onGuardar={() => setExp(true)} onEstilo={() => setDlg(true)} onRango={() => setRng(true)} />
       </Cinta>
@@ -102,7 +100,7 @@ export function ExcluirTab({ s }) {
         {sinBlancoResta && <p className="aviso-caja">Esta placa no tiene blancos aceptados: no se le puede restar el blanco y queda con la OD leída.</p>}
         {s.restarBlanco && escE === 'odc' && <p className="aviso-caja info">La escala OD ÷ ODc se calcula con la OD leída: restar el blanco no la cambia. Elegí <b>OD</b> en «Escala» para ver la OD corregida.</p>}
         <div className="fila" style={{ marginTop: 10 }}>
-          {s.analisis.blanco?.restado && <span className="chip" data-tip={`${textoBlanco(s.analisis)}\nSe resta a todos los pocillos de esta placa, desde Calidad en adelante.\nLos tests de atípicos, el ODc y la clasificación usan la OD leída.`}>OD corregida · blanco {fmt(resta, 3)}</span>}
+          {s.analisis.blanco?.restado && <span className="chip" data-tip={`${textoBlanco(s.analisis)}\nSe resta a todos los pocillos de esta placa, en todas las pantallas.\nLos tests de atípicos, el ODc y la clasificación usan la OD leída.`}>OD corregida · blanco {fmt(resta, 3)}</span>}
           {sospechosos.length > 0 && <span className="chip aviso" data-tip={`Sospechosos dentro del análisis\n${sospechosos.map((e) => `${e.Pocillo} (${e.Muestra} R${e.Replica}): ${e.Motivo || ''}`).join('\n')}`}>{sospechosos.length} sospechoso{sospechosos.length > 1 ? 's' : ''} sin excluir</span>}
           {excluidos.length ? <span className="ayuda"><b>Excluidos:</b> {excluidos.map((e) => <span key={e.Pocillo} className="chip peligro chip-boton" style={{ margin: '0 4px 4px 0' }} data-tip={`${e.Pocillo} · ${e.Muestra} R${e.Replica}\n${resta ? 'OD corregida' : 'OD'} = ${fmt(e.OD, 4)}\n${e.Manual ? 'Excluido a mano' : e.Motivo || ''}\nClic para volver a incluirlo`} onClick={() => s.alternarPocillo(e.Pocillo)}>{e.Pocillo} · {e.Muestra}</span>)}</span>
             : <span className="ayuda">No hay pocillos excluidos en esta placa.</span>}
@@ -165,6 +163,12 @@ export function GraficoTab({ s, grupoVista }) {
           <InterruptorCinta icono="matraz" texto="Blancos" valor={verBlancos} onChange={(v) => setO('blancos', v)} tip="Mostrar también los blancos (medio sin inocular)" />
           <CampoCinta etiqueta="Orden"><Select value={o.orden} onChange={(v) => setO('orden', v)} opciones={[['lista', 'Como en la lista'], ['asc', 'OD creciente'], ['desc', 'OD decreciente']]} /></CampoCinta>
         </Grupo>
+        <Grupo titulo="Ajustes">
+          <BotonBlanco s={s} />
+          <CampoCinta etiqueta="Error"><Select value={o.error} onChange={(v) => setO('error', v)} opciones={[...ERRORES, ['ninguno', 'Ninguno']]} /></CampoCinta>
+          <CampoCinta etiqueta="Color"><Select value={o.color} onChange={(v) => setO('color', v)} opciones={[['clase', 'Según la clase'], ['uno', 'Un solo color']]} /></CampoCinta>
+          <CampoCinta etiqueta="Rotación (°)"><Num value={o.rotar} min={0} max={90} ancho={56} onChange={(v) => setO('rotar', v === '' ? 0 : v)} /></CampoCinta>
+        </Grupo>
         <Grupo titulo="Mostrar">
           <InterruptorCinta icono="puntos" texto="Réplicas" valor={o.puntos} onChange={(v) => setO('puntos', v)} tip="Un punto por pocillo aceptado" />
           <InterruptorCinta simbolo="x̄" texto="Media" valor={o.medias} onChange={(v) => setO('medias', v)} tip="Valor medio escrito sobre cada barra" />
@@ -172,11 +176,6 @@ export function GraficoTab({ s, grupoVista }) {
           <InterruptorCinta icono="umbral" texto="Clases" valor={o.lineas} onChange={(v) => setO('lineas', v)} deshabilitado={sinOdc} tip="Líneas de ODc, 2 × ODc y 4 × ODc con el nombre de cada clase" />
           <InterruptorCinta simbolo="0,3" texto="Umbrales" valor={o.valoresClase} onChange={(v) => setO('valoresClase', v)} deshabilitado={sinOdc || !o.lineas} tip="Escribe el valor numérico bajo el nombre de cada clase" />
           <InterruptorCinta simbolo="%" texto={ERROR_REL[tipoRel(o.error)].etq} valor={!!o.cv} onChange={(v) => setO('cv', v)} tip={`Fila debajo de los nombres con el error de las barras en % de la media:\nDE → DE % (desviación estándar relativa, CV) · SEM → EE % (error estándar relativo) · IC 95 % → IC %.\nCon DE, en naranja si supera el ${cvLim} % (límite de CV de «Calidad»).`} />
-        </Grupo>
-        <Grupo titulo="Barras">
-          <CampoCinta etiqueta="Error"><Select value={o.error} onChange={(v) => setO('error', v)} opciones={[...ERRORES, ['ninguno', 'Ninguno']]} /></CampoCinta>
-          <CampoCinta etiqueta="Color"><Select value={o.color} onChange={(v) => setO('color', v)} opciones={[['clase', 'Según la clase'], ['uno', 'Un solo color']]} /></CampoCinta>
-          <CampoCinta etiqueta="Rotación (°)"><Num value={o.rotar} min={0} max={90} ancho={56} onChange={(v) => setO('rotar', v === '' ? 0 : v)} /></CampoCinta>
         </Grupo>
         <GrupoImagen onGuardar={() => setExp(true)} onEstilo={() => setDlg(true)} onRango={() => setRng(true)} />
       </Cinta>
@@ -507,7 +506,7 @@ function MetodoDetalle({ d, odc, restar }) {
         <li>Productor fuerte: OD &gt; 4 × ODc</li>
       </ul>
       <p>En la escala <b>OD ÷ ODc</b> (botón «Escala» en Calidad y Gráfico, y «Datos» en Estadística) cada OD se divide por el ODc de su placa y cada unidad es un ODc: los umbrales quedan en 1, 2 y 4, iguales en todas las placas, pero la escala es lineal y la dispersión sigue creciendo con la OD.</p>
-      <p><b>Corrección por blanco</b> (Calidad › Restar blanco; ahora {restar ? 'activada' : 'desactivada'}): <code>OD corregida = OD leída − x̄(blancos)</code>, con los mismos blancos aceptados del ODc de cada placa. Desde Calidad en adelante los gráficos, las comparaciones, la estadística, los datos y el informe usan la OD corregida, y el eje dice «OD corregida». El ODc, la clasificación y los tests de atípicos se siguen haciendo con la OD leída: restar una constante no cambia el Q de Dixon ni el G de Grubbs, y los umbrales de Stepanović están definidos sobre la OD leída. Por eso, en OD corregida las líneas de clase quedan en ODc − blanco, 2 × ODc − blanco y 4 × ODc − blanco, y la escala OD ÷ ODc se calcula con la OD leída. La DE no cambia, pero la media corregida es menor: el CV y los errores relativos suben, y con medias cerca de 0 dejan de tener sentido.</p>
+      <p><b>Corrección por blanco</b> (botón «Restar blanco» en ODc y mapa, Calidad, Gráfico y Estadística; ahora {restar ? 'activada' : 'desactivada'}): <code>OD corregida = OD leída − x̄(blancos)</code>, con los mismos blancos aceptados del ODc de cada placa. Es una sola opción para todo el programa: el resumen, el mapa de ODc y mapa, los gráficos, las comparaciones, la estadística, los datos y el informe usan la OD corregida, y el eje dice «OD corregida». El ODc, la clasificación y los tests de atípicos se siguen haciendo con la OD leída: restar una constante no cambia el Q de Dixon ni el G de Grubbs, y los umbrales de Stepanović están definidos sobre la OD leída. Por eso, en OD corregida las líneas de clase quedan en ODc − blanco, 2 × ODc − blanco y 4 × ODc − blanco, y la escala OD ÷ ODc se calcula con la OD leída. La DE no cambia, pero la media corregida es menor: el CV y los errores relativos suben, y con medias cerca de 0 dejan de tener sentido.</p>
       <h3>2. Media y errores del gráfico (SD, SEM, IC 95 %)</h3>
       <p>Para cada muestra solo se usan las <b>n réplicas aceptadas</b>; los pocillos excluidos no entran en ningún cálculo. Con n &lt; 2 no se puede calcular ningún error. Sea <code>xᵢ</code> la OD de cada réplica:</p>
       <ul>

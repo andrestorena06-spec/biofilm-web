@@ -10,6 +10,7 @@ import { BotonCinta, CampoCinta, Cinta, Grupo, OpcionesCinta } from './cinta.jsx
 import { Chip, DiagnosticoGlobal, Hip, MatrizP, NOMBRE_TEST, Tabla, diagnosticoGlobal, f, hipotesisGrupos, juntarDe, lecturaDe, pTxt } from './pruebas.jsx'
 import { ComparadorLibre, GrupoModo, modoBase } from './seleccion.jsx'
 import { ReproTab } from './repro.jsx'
+import { GrupoBlanco } from './blanco.jsx'
 import { armarComparacion } from '../comparacion.js'
 import { SIN_MEDIO, UNIDAD, prepararDatos, unidadDe } from '../resumenes.js'
 import { analizar, anidada, parcelasDivididas, placaCepa } from '../decision.js'
@@ -438,7 +439,7 @@ export function EstadisticaTab({ s }) {
         {grupoModo}
         <Grupo titulo="Datos">
           <OpcionesCinta valor={variable} onChange={(v) => setO('variable', v)} opciones={[
-            ['od', 'OD', 'OD', null, 'OD tal cual'], ['ln', 'ln(OD)', 'ln', null, 'Logaritmo natural de la OD\nEstabiliza la varianza cuando la DE crece con la media'], ['odc', 'OD ÷ ODc', '÷', null, 'Cada OD dividida por el ODc de su placa: cada unidad es un ODc (1 = ODc, 2 = 2 × ODc, 4 = 4 × ODc)\nQuita la diferencia de tinción entre placas; la dispersión sigue creciendo con la OD'],
+            ['od', 'OD', 'OD', null, s.restarBlanco ? 'OD corregida (OD leída − blanco)' : 'OD tal cual'], ['ln', 'ln(OD)', 'ln', null, 'Logaritmo natural de la OD\nEstabiliza la varianza cuando la DE crece con la media'], ['odc', 'OD ÷ ODc', '÷', null, 'Cada OD dividida por el ODc de su placa: cada unidad es un ODc (1 = ODc, 2 = 2 × ODc, 4 = 4 × ODc)\nQuita la diferencia de tinción entre placas; la dispersión sigue creciendo con la OD'],
           ]} />
         </Grupo>
         {modo !== 'placas' && !usaPlacaLibre && (
@@ -461,6 +462,7 @@ export function EstadisticaTab({ s }) {
             <Select value={ajuste} onChange={(v) => setO('ajuste', v)} opciones={[['holm', 'Holm / Dunnett'], ['lsd', 'LSD de Fisher']]} />
           </CampoCinta>
         </Grupo>
+        <GrupoBlanco s={s} />
         <Grupo titulo="Desarrollo"><BotonCinta icono="libro" texto="Ver los cálculos" onClick={irDesarrollo} tip="La comparación de los paneles desarrollada paso a paso (pestaña «Métodos»)" /></Grupo>
       </Cinta>
 

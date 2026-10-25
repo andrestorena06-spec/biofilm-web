@@ -1,7 +1,7 @@
 // ============================================================
-// Corrección por blanco (Calidad › Restar blanco)
+// Corrección por blanco (botón «Restar blanco» de ODc y mapa, Calidad, Gráfico y Estadística)
 // OD corregida = OD leída − media de los blancos aceptados de la placa (los mismos que dan el ODc).
-// Se aplica al análisis de cada placa, así que llega a todo lo que viene después de Calidad.
+// Se aplica al análisis de cada placa, así que llega a todas las pantallas que lo usan.
 // Los valores atípicos, el ODc y la clasificación de Stepanović se calculan antes, con la OD leída:
 // restar una constante no cambia el test Q ni el de Grubbs, y los umbrales de clase están definidos sobre la OD leída.
 // ============================================================

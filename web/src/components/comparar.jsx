@@ -6,6 +6,7 @@ import { Check, EstiloDialog, MenuContextual, Num, RangoDialog, Select, Vacio, t
 import { BotonCinta, Cajon, CampoCinta, Cinta, Grupo, InterruptorCinta, OpcionesCinta } from './cinta.jsx'
 import { armarComparacion } from '../comparacion.js'
 import { ERROR_REL, tipoRel } from './charts.jsx'
+import { BotonBlanco } from './blanco.jsx'
 import { ESCALAS, conRango, estiloDefecto, estiloEscala } from '../utils.js'
 
 // Comparación entre placas: el gráfico (por placa, por medio de cultivo o por pocillo). Las pruebas están en «Estadística».
@@ -87,6 +88,11 @@ export function CompararTab({ s, grupoVista }) {
           <BotonCinta icono="filtro" texto={nOcultas ? `Muestras (${nOcultas} ocultas)` : 'Muestras'} activo={cajon === 'muestras'} onClick={() => setCajon(cajon === 'muestras' ? null : 'muestras')} tip="Qué muestra se ve en cada placa" />
           <InterruptorCinta icono="matraz" texto="Blancos" valor={D.verBlancos} onChange={(v) => setO('blancos', v)} tip="Incluir los blancos (medio sin inocular)" />
         </Grupo>
+        <Grupo titulo="Ajustes">
+          <BotonBlanco s={s} />
+          {modo !== 'pocillo' && <CampoCinta etiqueta="Error"><Select value={o.error} onChange={(v) => setO('error', v)} opciones={[['sd', 'DE'], ['sem', 'SEM'], ['ic95', 'IC 95 %'], ['ninguno', 'Ninguno']]} /></CampoCinta>}
+          <CampoCinta etiqueta="Rotación (°)"><Num value={o.rotar} min={0} max={90} ancho={56} onChange={(v) => setO('rotar', v === '' ? 0 : v)} /></CampoCinta>
+        </Grupo>
         <Grupo titulo="Elementos">
           <InterruptorCinta simbolo="▮" texto="Barras" valor={el.barras} onChange={(v) => poner({ barras: v })} tip="Media de las réplicas aceptadas" />
           <InterruptorCinta simbolo="⊥" texto="Error" valor={el.barrasError} onChange={(v) => poner({ barrasError: v })} deshabilitado={modo === 'pocillo'} tip="Barra de error del tipo elegido" />
@@ -100,10 +106,6 @@ export function CompararTab({ s, grupoVista }) {
           <InterruptorCinta simbolo="%" texto={ERROR_REL[tipoRel(o.error)].etq} valor={el.cv} onChange={(v) => poner({ cv: v })} deshabilitado={modo === 'pocillo'} tip={`Fila debajo de los nombres con el error de cada columna en % de la media (mismos datos que la barra):\nDE → DE % (desviación estándar relativa, CV) · SEM → EE % (error estándar relativo) · IC 95 % → IC %.\nCon DE, en naranja si supera el ${cvLim} % (límite de CV de «Calidad»).`} />
           {rel && <InterruptorCinta icono="umbral" texto="Clases" valor={o.lineas !== false} onChange={(v) => setO('lineas', v)} tip={`Líneas en ${umbTxt} (ODc, 2 × ODc y 4 × ODc de cada placa) con el nombre de cada clase.\nEn esta escala los umbrales son los mismos para todas las placas.`} />}
           {rel && <InterruptorCinta simbolo="0,3" texto="Umbrales" valor={!!o.valoresClase} onChange={(v) => setO('valoresClase', v)} deshabilitado={o.lineas === false} tip="Escribe el rango de cada clase bajo su nombre" />}
-        </Grupo>
-        <Grupo titulo="Ajustes">
-          {modo !== 'pocillo' && <CampoCinta etiqueta="Error"><Select value={o.error} onChange={(v) => setO('error', v)} opciones={[['sd', 'DE'], ['sem', 'SEM'], ['ic95', 'IC 95 %'], ['ninguno', 'Ninguno']]} /></CampoCinta>}
-          <CampoCinta etiqueta="Rotación (°)"><Num value={o.rotar} min={0} max={90} ancho={56} onChange={(v) => setO('rotar', v === '' ? 0 : v)} /></CampoCinta>
         </Grupo>
         <Grupo titulo="Imagen">
           <BotonCinta icono="imagen" texto="Guardar imagen" onClick={() => setExp(true)} deshabilitado={!grupos.length || sinElementos} tip="PNG o SVG con el tamaño y la resolución que elijas" />

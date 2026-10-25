@@ -3,6 +3,7 @@ import { Nota } from './tip.jsx'
 import { Check, Num, Vacio } from './ui.jsx'
 import { BotonCinta, Cajon, CampoCinta, Cinta, Grupo, OpcionesCinta } from './cinta.jsx'
 import { excelDe } from '../api.js'
+import { GrupoBlanco } from './blanco.jsx'
 import { descargarBlob } from '../utils.js'
 import { nivelIcc, reproducibilidad } from '../reproducibilidad.js'
 
@@ -103,6 +104,7 @@ export function ReproTab({ s, D, o, setO, grupoModo }) {
             ['odc', 'OD ÷ ODc', '÷', null, 'OD ÷ ODc de su placa\nCorrige las diferencias de fondo entre días: suele ser la mejor medida para comparar experimentos'],
           ]} />
         </Grupo>
+        <GrupoBlanco s={s} />
         <Grupo titulo="CV entre placas" tip={'Límites del CV entre experimentos\nEn biofilm (cristal violeta) un CV menor que 20–30 % suele considerarse aceptable'}>
           <CampoCinta etiqueta="Bueno hasta (%)"><Num value={cvBueno} min={1} max={100} ancho={56} onChange={(v) => setO('reproCvBueno', v === '' ? 20 : v)} /></CampoCinta>
           <CampoCinta etiqueta="Aceptable hasta (%)"><Num value={cvMax} min={1} max={200} ancho={56} onChange={(v) => setO('reproCvMax', v === '' ? 30 : v)} /></CampoCinta>
