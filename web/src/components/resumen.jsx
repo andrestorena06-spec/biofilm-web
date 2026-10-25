@@ -7,6 +7,7 @@ import { excelDe } from '../api.js'
 import { abrirInforme } from './informe.jsx'
 import { COLOR_CLASE, descargarBlob, fmt, paletaMuestras } from '../utils.js'
 import { nombreArchivo } from '../modelo.js'
+import { seroDe } from '../serotipos.js'
 
 const finito = Number.isFinite
 const PASOS_TRABAJO = ['placas', 'pocillos', 'odc', 'calidad', 'grafico', 'estadistica', 'datos']
@@ -38,7 +39,7 @@ export async function descargarExcelCompleto(s) {
     const corr = !!a?.blanco?.restado
     if (corr) hPlacas[hPlacas.length - 1].Blanco_restado = r4(a.odc.resta)
     ;(a?.resumen || []).forEach((m) => hMuestras.push({
-      Placa: p.nombre, Medio: p.medio || '', Muestra: m.Muestra, Pocillos: m.N_total, Aceptadas: m.N_aceptadas, Excluidas: m.N_excluidas,
+      Placa: p.nombre, Medio: p.medio || '', Muestra: m.Muestra, Serotipo: seroDe(exp, m.Muestra), Pocillos: m.N_total, Aceptadas: m.N_aceptadas, Excluidas: m.N_excluidas,
       [corr ? 'Media_OD_corregida' : 'Media_OD']: r4(m.Media), ...(corr ? { Media_OD_leida: r4(m.MediaLeida) } : {}), DE: r4(m.SD), SEM: r4(m.SEM), IC95_mas_menos: r4(m.IC95), CV_pct: r4(m.CV_pct, 2), OD_sobre_ODc: r4(m.Razon_ODc, 3), Clasificacion: m.Clasificacion || '',
     }))
     ;(a?.estado || []).forEach((e) => hPocillos.push({
@@ -51,7 +52,7 @@ export async function descargarExcelCompleto(s) {
   const nombres = placas.filter((p) => analisisMap[p.id]?.resumen?.length)
   const cepas = [...new Set(nombres.flatMap((p) => analisisMap[p.id].resumen.map((m) => m.Muestra)))]
   const hMedias = cepas.map((c) => {
-    const fila = { Muestra: c }
+    const fila = { Muestra: c, Serotipo: seroDe(exp, c) }
     const v = []
     nombres.forEach((p) => { const m = analisisMap[p.id].resumen.find((x) => x.Muestra === c); fila[p.nombre] = r4(m?.Media); if (finito(m?.Media)) v.push(m.Media) })
     const med = v.length ? v.reduce((a, b) => a + b, 0) / v.length : NaN

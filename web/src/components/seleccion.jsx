@@ -5,11 +5,12 @@ import { Grupo, OpcionesCinta } from './cinta.jsx'
 const MODOS = [
   ['libre', 'A medida', 'editar', 'Armás vos cada comparación: cepa contra cepa, una cepa entre medios, entre placas (réplicas)…'],
   ['cepas', 'Cepas', 'puntos', 'Compara cepas entre sí (por ejemplo L100A1 con L100A1 Rug y L100A1 SCV).'],
+  ['serotipos', 'Serotipos', 'etiqueta', 'Compara los serotipos entre sí: las cepas de cada serotipo juntas (el serotipo de cada cepa se carga en «Datos del experimento»).'],
   ['medios', 'Medios', 'matraz', 'Compara el crecimiento de cada cepa entre los medios de cultivo.'],
   ['placas', 'Placas', 'placas', 'Compara una cepa entre las placas (réplicas): ¿se reproduce el resultado?'],
   ['concordancia', 'Concordancia', 'copiar', '¿Las placas ordenan igual a las cepas? ICC, correlaciones y CV.'],
 ]
-export const modoBase = (o) => (o.objetivo === 'placastodas' ? 'placas' : ['libre', 'cepas', 'medios', 'placas', 'concordancia'].includes(o.objetivo) ? o.objetivo : 'medios')
+export const modoBase = (o) => (o.objetivo === 'placastodas' ? 'placas' : ['libre', 'cepas', 'serotipos', 'medios', 'placas', 'concordancia'].includes(o.objetivo) ? o.objetivo : 'medios')
 
 // «¿Qué comparar?» en la cinta de herramientas
 export function GrupoModo({ o, setO }) {
@@ -22,16 +23,18 @@ export function GrupoModo({ o, setO }) {
 }
 
 // Comparador a medida: cada ANOVA es una lista de grupos; cada grupo se define con cepa, medio y placa (cualquiera = sin fijar)
-const GRUPO0 = { cepa: '', medio: '', placa: '' }
-export function ComparadorLibre({ o, setO, cepas, medios, placas }) {
+const GRUPO0 = { cepa: '', medio: '', placa: '', serotipo: '' }
+export function ComparadorLibre({ o, setO, cepas, medios, placas, serotipos = [] }) {
   const libres = o.libres || []
   const poner = (v) => setO('libres', v)
   const c1 = cepas[0]?.id || '', c2 = cepas[1]?.id || c1, m1 = medios[0]?.id || '', m2 = medios[1]?.id || m1, p1 = placas[0]?.id || '', p2 = placas[1]?.id || p1
+  const s1 = serotipos[0]?.id || '', s2 = serotipos[1]?.id || s1
   const plantillas = [
     ['Cepa vs cepa', 'Compara dos cepas entre sí (con los datos de todas las placas).', [{ ...GRUPO0, cepa: c1 }, { ...GRUPO0, cepa: c2 }]],
     ['Una cepa entre medios', 'Compara una cepa en BHI contra la misma cepa en TSBye (un valor por placa).', [{ ...GRUPO0, cepa: c1, medio: m1 }, { ...GRUPO0, cepa: c1, medio: m2 }]],
     ['Una cepa entre réplicas', 'Compara una cepa entre dos placas (sus pocillos): ¿se reproduce el resultado?', [{ ...GRUPO0, cepa: c1, placa: p1 }, { ...GRUPO0, cepa: c1, placa: p2 }]],
     ['Réplica vs réplica', 'Compara dos placas completas, con todas sus cepas.', [{ ...GRUPO0, placa: p1 }, { ...GRUPO0, placa: p2 }]],
+    ...(serotipos.length >= 2 ? [['Serotipo vs serotipo', 'Compara las cepas de dos serotipos (un valor por placa y cepa).', [{ ...GRUPO0, serotipo: s1 }, { ...GRUPO0, serotipo: s2 }]]] : []),
   ]
   const cambiarG = (i, k, v) => poner(libres.map((c, a) => (a === i ? { ...c, grupos: c.grupos.map((g, b) => (b === k ? v : g)) } : c)))
   const sel = (lista, vacio) => [['', vacio], ...lista.map((x) => [x.id, x.nombre])]
@@ -58,6 +61,7 @@ export function ComparadorLibre({ o, setO, cepas, medios, placas }) {
                 <Select value={g.cepa} onChange={(v) => cambiarG(i, k, { ...g, cepa: v })} opciones={sel(cepas, 'cepa: cualquiera')} />
                 <Select value={g.medio} onChange={(v) => cambiarG(i, k, { ...g, medio: v })} opciones={sel(medios, 'medio: cualquiera')} />
                 <Select value={g.placa} onChange={(v) => cambiarG(i, k, { ...g, placa: v })} opciones={sel(placas, 'placa: cualquiera')} />
+                {serotipos.length > 0 && <Select value={g.serotipo || ''} onChange={(v) => cambiarG(i, k, { ...g, serotipo: v })} opciones={sel(serotipos, 'serotipo: cualquiera')} />}
               </div>
             ))}
             <button className="chico" onClick={() => poner(libres.map((x, a) => (a === i ? { ...x, grupos: [...x.grupos, { ...GRUPO0 }] } : x)))}>+ grupo</button>

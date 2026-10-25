@@ -16,6 +16,7 @@ import { Q_TABLA } from '../criticos.js'
 import { criticoGrubbs, normalizarMetodo } from '../motor.js'
 import { ESCALAS, conRango, escalaValida, estiloEscala, descargarBlob, estiloDefecto, fmt, tCuantil } from '../utils.js'
 import { textoBlanco } from '../correccion.js'
+import { seroDe } from '../serotipos.js'
 import { BotonBlanco, GrupoBlanco } from './blanco.jsx'
 
 const nombreMetodo = { q: 'Test Q de Dixon', grubbs: 'Test de Grubbs', cv: 'Coeficiente de variación (%RSD)' }
@@ -416,8 +417,9 @@ export function DatosTab({ s }) {
   // con «Restar blanco» la tabla muestra la OD corregida y, al lado, la leída y el blanco restado
   const corr = !!a.blanco?.restado
   const resta = a.odc?.resta || 0
+  const conSero = Object.keys(s.exp.serotipos || {}).length > 0
   const muestras = a.resumen.map((m) => ({
-    Muestra: m.Muestra, Pocillos: m.N_total, Aceptadas: m.N_aceptadas, Excluidas: m.N_excluidas,
+    Muestra: m.Muestra, ...(conSero ? { Serotipo: seroDe(s.exp, m.Muestra) } : {}), Pocillos: m.N_total, Aceptadas: m.N_aceptadas, Excluidas: m.N_excluidas,
     ...(corr ? { Media_OD_corregida: r(m.Media) } : { Media_OD: r(m.Media) }),
     DE: r(m.SD), SEM: r(m.SEM), IC95_mas_menos: r(m.IC95), CV_pct: r(m.CV_pct, 2),
     ...(corr ? { Media_OD_leida: r(m.MediaLeida), Blanco_restado: r(resta) } : {}),
@@ -562,6 +564,8 @@ function MetodoDetalle({ d, odc, restar }) {
       <p>En <b>Gráfico › Comparar placas</b> cada muestra se dibuja con <b>una columna por placa</b> (la altura es la OD media de sus réplicas aceptadas), <b>una por medio de cultivo</b> (las placas del mismo medio juntas, con todos sus pocillos o un valor por placa) o <b>una por pocillo</b>. Se puede mostrar barras con error, cajas (Q1–Q3, con 5 o más datos por columna), mediana, mínimo y máximo, media y los puntos. En OD no hay líneas de ODc (cada placa tiene el suyo); con la escala OD ÷ ODc cada valor se divide por el ODc de su placa y las líneas de clase quedan en 1, 2 y 4, iguales para todas.</p>
       <h4>Qué cuenta como réplica</h4>
       <p>Los pocillos de una misma placa son <b>réplicas técnicas</b>: salen del mismo cultivo, el mismo día y el mismo lector. Las <b>placas</b> (hechas en días o experimentos distintos) son las <b>réplicas biológicas</b>. Para las pruebas cada placa aporta <b>un solo número por muestra</b> (su OD media), así que el <b>n es el número de placas</b>. Contar los pocillos como réplicas independientes produce diferencias «significativas» que no lo son (pseudorreplicación).</p>
+      <h4>Serotipos</h4>
+      <p>El serotipo de cada cepa se carga en <b>Datos del experimento</b> (al lado de cada muestra). En <b>Estadística › Serotipos</b> los grupos son los serotipos y cada uno junta sus cepas. La réplica recomendada es la <b>cepa</b>: cada cepa aporta un solo número (la media de sus placas), porque lo que se quiere generalizar es el serotipo y las cepas son sus unidades independientes. También se puede usar un valor por placa de cada cepa o los pocillos, pero esos datos no son independientes y los p salen más chicos de lo que corresponde. En <b>Gráfico › Comparar placas › Agrupar por serotipo</b> cada grupo del eje X es un serotipo.</p>
       <h4>Barras de error del gráfico</h4>
       <p>Son las de la sección 2 (DE, SEM o IC 95 %) calculadas con los datos de cada columna. Con una columna por placa muestran cuánto varían las réplicas técnicas dentro de esa placa; <b>no</b> miden la diferencia entre placas.</p>
       <h4>Pruebas estadísticas</h4>

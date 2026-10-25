@@ -5,6 +5,7 @@ import { armarComparacion } from '../comparacion.js'
 import { ESCALAS, escalaValida, fmt } from '../utils.js'
 import { resumenBlancos } from '../blancos.js'
 import { resumenesInforme } from '../resumenes.js'
+import { seroDe } from '../serotipos.js'
 import { marcaSig, media } from '../estadistica.js'
 
 const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
@@ -37,7 +38,7 @@ function estadisticaHTML(R) {
   const prueba = R.forzado === 'auto' ? 'automática (ANOVA clásico, ANOVA de Welch o Kruskal-Wallis según la normalidad de los residuos y la igualdad de varianzas)' : NOMBRE_TEST[R.forzado]
   const nPl = R.nivel === 'placa' ? 'placas' : 'pocillos'
   // método de los pares que se usó de verdad (LSD solo se aplica con el ANOVA clásico; con Welch o Kruskal-Wallis va Holm)
-  const todos = [...R.placas.flatMap((b) => b.filas.map((f) => f.r)), ...R.medios.map((f) => f.r), ...R.familias.flatMap((fm) => fm.porMedio.map((f) => f.r))]
+  const todos = [...R.placas.flatMap((b) => b.filas.map((f) => f.r)), ...R.medios.map((f) => f.r), ...R.familias.flatMap((fm) => fm.porMedio.map((f) => f.r)), ...(R.serotipos || []).map((f) => f.r)]
   const metodos = new Set(todos.filter((r) => r?.ok && r.pares[0]).map((r) => r.pares[0].metodo))
   const metodoTxt = metodos.has('LSD') && metodos.has('Holm') ? 'LSD de Fisher con el ANOVA clásico y Holm con Welch o Kruskal-Wallis' : metodos.has('LSD') ? 'LSD de Fisher' : 'Holm'
   const ajTxt = metodos.has('LSD') && metodos.has('Holm') ? 'por LSD o Holm' : metodos.has('LSD') ? 'por LSD' : 'por Holm'
@@ -71,6 +72,13 @@ function estadisticaHTML(R) {
     h += `<h4>${fm.cepas.map(esc).join(' · ')}</h4><table><thead><tr><th>Medio</th>${fm.cepas.map((c) => `<th>${esc(c)}</th>`).join('')}<th>Prueba</th><th>p</th><th>Resultado</th><th>Pares que difieren</th></tr></thead><tbody>
       ${fm.porMedio.map((f) => `<tr><td><b>${esc(f.medio)}</b></td>${f.grupos.map((g) => celdaGrupo(g, f.r, true)).join('')}${celdasPrueba(f.r, true)}</tr>`).join('')}</tbody></table>`
   })
+  // 4. serotipos
+  if (R.serotipos?.length) {
+    const nS = { cepa: 'cepas (cada valor es la media de las placas de una cepa)', placa: 'placas de cada cepa', pocillo: 'pocillos' }[R.nivelSero]
+    h += `<h3>4. Entre serotipos</h3><p class="meta">Se comparan los serotipos con las cepas de cada uno juntas (el serotipo de cada cepa se carga en «Datos del experimento»). Réplica: ${nS}. Cada celda: media ± DE (n) y letra.</p>
+      <table><thead><tr><th>Medio</th>${R.serosLista.map((x) => `<th>${esc(x)}</th>`).join('')}<th>Prueba</th><th>p</th><th>Resultado</th><th>Pares que difieren</th></tr></thead><tbody>
+      ${R.serotipos.map((f) => `<tr><td><b>${esc(f.medio)}</b></td>${f.grupos.map((g) => celdaGrupo(g, f.r, true)).join('')}${celdasPrueba(f.r, true)}</tr>`).join('')}</tbody></table>`
+  }
   h += `<p class="meta">Letras: dentro de cada fila, los grupos que comparten una letra no difieren (p ajustado ${ajTxt} ≥ 0.05). * p &lt; 0.05 · ** p &lt; 0.01 · *** p &lt; 0.001. Con pocas réplicas solo se detectan diferencias grandes: un p alto no prueba que los grupos sean iguales.</p></section>`
   return h
 }
@@ -104,7 +112,7 @@ export function abrirInforme(s) {
     const resta = a.odc?.resta || 0
     const restada = !!a.blanco?.restado
     const muestras = a.resumen.map((m) => ({
-      Muestra: m.Muestra, Pocillos: m.N_total, Aceptadas: m.N_aceptadas, Excluidas: m.N_excluidas, ...(restada ? { Media_OD_corregida: r4(m.Media) } : { Media_OD: r4(m.Media) }), DE: r4(m.SD), SEM: r4(m.SEM),
+      Muestra: m.Muestra, ...(Object.keys(s.exp.serotipos || {}).length ? { Serotipo: seroDe(s.exp, m.Muestra) } : {}), Pocillos: m.N_total, Aceptadas: m.N_aceptadas, Excluidas: m.N_excluidas, ...(restada ? { Media_OD_corregida: r4(m.Media) } : { Media_OD: r4(m.Media) }), DE: r4(m.SD), SEM: r4(m.SEM),
       IC95_mas_menos: r4(m.IC95), CV_pct: r4(m.CV_pct, 2), ...(restada ? { Media_OD_leida: r4(m.MediaLeida) } : {}), OD_sobre_ODc: r4(m.Razon_ODc, 2), Clasificacion: m.Clasificacion || '',
     }))
     const pocillos = a.estado.map((e) => ({
@@ -140,7 +148,7 @@ export function abrirInforme(s) {
     if (D.grupos.length && (el.barras || el.caja || el.mediana || el.bigotes || el.media || el.puntos)) {
       const fig = svgStr(<CompararChart grupos={D.grupos} leyenda={D.leyenda} o={{ ...el, valoresClase: !!s.opts.comparar.valoresClase }} est={s.estilos.comparar} eje={D.rel ? ESCALAS[D.escala].eje : ejeDe(D.placasSel[0])} tam={{ w: 900, h: 560 }} nota={D.nota} clases={D.rel && s.opts.comparar.lineas !== false} escala={D.escala} unidad={D.rel ? ESCALAS[D.escala].corto : D.corregida ? 'OD corregida' : 'OD'} cvLim={Number(det.cvMax) || 20} />)
       const filasT = D.grupos.flatMap((g) => g.barras.map((b) => ({
-        Muestra: g.etiqueta, [{ medio: 'Medio', pocillo: 'Pocillo', todas: 'Placas' }[D.modo] || 'Placa']: b.placa,
+        [D.porSero ? 'Serotipo' : 'Muestra']: g.etiqueta, [{ medio: 'Medio', pocillo: 'Pocillo', todas: 'Placas' }[D.modo] || 'Placa']: b.placa,
         [D.corregida && !D.rel ? 'OD_corregida_media' : 'OD_media']: r4(b.media), Error: b.err === null || b.err === undefined ? '' : r4(b.err), N: (b.vp || b.pts).length,
       })))
       comparacion = `<section class="placa salto"><h2>Comparación entre placas${D.modo === 'medio' ? ' por medio de cultivo' : D.modo === 'todas' ? ' (todas las placas juntas)' : D.modo === 'pocillo' ? ' (pocillo por pocillo)' : ''}</h2>

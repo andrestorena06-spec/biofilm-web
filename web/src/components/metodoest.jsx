@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Campo, Select } from './ui.jsx'
 import { Nota } from './tip.jsx'
-import { dentroDeSel, objetivoDe, usaMedio } from './pruebas.jsx'
+import { dentroDeSel, juntarDe, objetivoDe, usaMedio } from './pruebas.jsx'
+import { seroDe, serotiposDe, valoresSerotipo } from '../serotipos.js'
 import { armarComparacion } from '../comparacion.js'
 import { unidadDe } from '../resumenes.js'
 import { analizar, anidada, levene, parcelasDivididas, placaCepa, razonSD } from '../decision.js'
@@ -175,7 +176,8 @@ function prepararBloques(s, D, o) {
   const variable = o.variable || 'od'
   const esPl = obj === 'placas' || obj === 'placastodas'
   const libres = obj === 'libre' ? (o.libres || []).filter((c) => c.grupos.length >= 2) : []
-  const nivel = esPl || libres.some((c) => c.grupos.some((g) => g.placa)) ? 'pocillo' : o.nivel || 'placa'
+  const nivel = obj === 'serotipos' ? (['cepa', 'placa', 'pocillo'].includes(o.nivelSero) ? o.nivelSero : 'cepa')
+    : esPl || libres.some((c) => c.grupos.some((g) => g.placa)) ? 'pocillo' : o.nivel || 'placa'
   // resta: blanco restado (Calidad › Restar blanco); OD ÷ ODc se calcula con la OD leída
   const fx = (y, odc, resta = 0) => (variable === 'ln' ? (y > 0 ? Math.log(y) : NaN) : variable === 'odc' ? (odc > 0 ? (y + resta) / odc : NaN) : y)
   const obsPlaca0 = [], obsPozo0 = []
@@ -188,7 +190,7 @@ function prepararBloques(s, D, o) {
   })
   const sel = (x) => (obj === 'libre' || dentroDeSel(o, x)) && !(usaMedio(obj) && x.medio === '(sin medio)')
   const obsPlaca = obsPlaca0.filter(sel), obsPozo = obsPozo0.filter(sel)
-  const obs = (nivel === 'placa' ? obsPlaca : obsPozo).filter((x) => finito(x.y))
+  const obs = (nivel === 'pocillo' ? obsPozo : obsPlaca).filter((x) => finito(x.y))
   const cepas = [...new Set(obs.map((x) => x.cepa))], medios = [...new Set(obs.map((x) => x.medio))]
   const vals = (c, m, p) => obs.filter((x) => (c === null || x.cepa === c) && (m === null || x.medio === m) && (p === null || x.placa === p)).map((x) => x.y)
   const comp = o.comp || 'pares'
@@ -203,14 +205,24 @@ function prepararBloques(s, D, o) {
   const nomP = (id) => obs.find((x) => x.placaId === id)?.placa || id
   const sfx = (S) => (personal ? ' · ' + S.map((x) => (factorComp === 'placas' ? nomP(x) : x)).join(' vs ') : '')
   const ctrlEn = (S, c) => (comp === 'control' && S.includes(c) ? c : null)
-  const nombreG = (g) => [g.cepa || null, g.medio || null, g.placa ? (D.placasSel.find((p) => p.id === g.placa)?.nombre || g.placa) : null].filter(Boolean).join(' · ') || 'Todos los datos'
-  const valsG = (g) => obs.filter((x) => (!g.cepa || x.cepa === g.cepa) && (!g.medio || x.medio === g.medio) && (!g.placa || x.placaId === g.placa)).map((x) => x.y)
+  const nombreG = (g) => [g.serotipo ? `serotipo ${g.serotipo}` : null, g.cepa || null, g.medio || null, g.placa ? (D.placasSel.find((p) => p.id === g.placa)?.nombre || g.placa) : null].filter(Boolean).join(' · ') || 'Todos los datos'
+  const valsG = (g) => obs.filter((x) => (!g.cepa || x.cepa === g.cepa) && (!g.serotipo || seroDe(s.exp, x.cepa) === g.serotipo) && (!g.medio || x.medio === g.medio) && (!g.placa || x.placaId === g.placa)).map((x) => x.y)
   let bloques = []
   if (obj === 'libre') bloques = libres.map((c, i) => {
     const vistos = new Set()
     const grupos = c.grupos.filter((g) => { const k = nombreG(g); if (vistos.has(k)) return false; vistos.add(k); return true }).map((g) => ({ nombre: nombreG(g), v: valsG(g) }))
     return { titulo: `ANOVA ${i + 1}: ${grupos.map((g) => g.nombre).join(' vs ')}`, grupos, ctrl: comp === 'control' ? grupos[0].nombre : null }
   })
+  else if (obj === 'serotipos') {
+    // serotipos: dentro de cada medio o con todos juntos; cada valor según la réplica (cepa, placa o pocillo)
+    const serosIn = serotiposDe(s.exp, cepas).filter((x) => !(o.eSeroFuera || []).includes(x))
+    const ctrlS = comp === 'control' ? (serosIn.includes(o.ctrlSero) ? o.ctrlSero : serosIn[0]) : null
+    const bloque = (m) => {
+      const b = m ? obs.filter((x) => x.medio === m) : obs
+      return { titulo: `${m ? `Medio ${m}` : 'Todos los medios'}: entre serotipos`, grupos: serosIn.map((sr) => ({ nombre: sr, v: valoresSerotipo(b, b, cepas.filter((c) => seroDe(s.exp, c) === sr), nivel).map((x) => x.y) })), ctrl: ctrlS }
+    }
+    if (serosIn.length >= 2) bloques = juntarDe(o) ? [bloque(null)] : medios.filter((m) => m !== '(sin medio)').map(bloque)
+  }
   else if (obj === 'medios') bloques = conjuntos.flatMap((S) => cepas.map((c) => ({ titulo: `${c}${sfx(S)}: entre medios`, grupos: S.map((m) => ({ nombre: m, v: vals(c, m, null) })), ctrl: ctrlEn(S, ctrlMedio) })))
   else if (obj === 'cepastodas') bloques = conjuntos.map((S) => ({ titulo: `Todos los medios${sfx(S)}: entre cepas`, grupos: S.map((c) => ({ nombre: c, v: vals(c, null, null) })), ctrl: ctrlEn(S, ctrlCepa) }))
   else if (obj === 'cepas') bloques = conjuntos.flatMap((S) => medios.map((m) => ({ titulo: `Medio ${m}${sfx(S)}: entre cepas`, grupos: S.map((c) => ({ nombre: c, v: vals(c, m, null) })), ctrl: ctrlEn(S, ctrlCepa) })))
@@ -224,7 +236,7 @@ function prepararBloques(s, D, o) {
   })))
   const cepaF = cepas.includes(o.selCepa) ? o.selCepa : cepas[0]
   const medioF = medios.includes(o.selMedio) ? o.selMedio : medios[0]
-  const foco = { medios: `${cepaF}: entre medios`, cepas: `Medio ${medioF}: entre cepas`, cepastodas: 'Todos los medios: entre cepas', placas: `${cepaF} · ${medioF}: entre placas`, placastodas: `${cepaF}: entre todas las placas`, libre: `ANOVA ${(o.selLibre || 0) + 1}:` }[obj]
+  const foco = { serotipos: juntarDe(o) ? 'Todos los medios: entre serotipos' : `Medio ${medioF}: entre serotipos`, medios: `${cepaF}: entre medios`, cepas: `Medio ${medioF}: entre cepas`, cepastodas: 'Todos los medios: entre cepas', placas: `${cepaF} · ${medioF}: entre placas`, placastodas: `${cepaF}: entre todas las placas`, libre: `ANOVA ${(o.selLibre || 0) + 1}:` }[obj]
   return { obj, foco, variable, nivel, forzado: o.prueba || 'auto', ajuste: o.ajuste === 'lsd' ? 'lsd' : 'holm', bloques, obsPlaca, obsPozo, unidad: unidadDe(variable, D.corregida) }
 }
 
@@ -314,7 +326,7 @@ function Ejemplo({ s }) {
         <Campo label={`Análisis a desarrollar (${P.bloques.length})`}>
           <Select value={b.titulo} onChange={setSel} opciones={P.bloques.map((x) => [x.titulo, x.titulo])} />
         </Campo>
-        <p className="ayuda" style={{ margin: 0, maxWidth: 520 }}>Variable: <b>{P.unidad}</b> · réplica: <b>{P.obj === 'placas' || P.obj === 'placastodas' ? 'pocillo (los grupos son las placas)' : P.nivel === 'placa' ? 'placa (un valor por placa)' : 'pocillo'}</b> · prueba: <b>{P.forzado === 'auto' ? 'automática' : NOMBRE[P.forzado]}</b>. Cambian con lo que elijas en la pestaña «Estadística».</p>
+        <p className="ayuda" style={{ margin: 0, maxWidth: 520 }}>Variable: <b>{P.unidad}</b> · réplica: <b>{P.obj === 'placas' || P.obj === 'placastodas' ? 'pocillo (los grupos son las placas)' : P.nivel === 'cepa' ? 'cepa (la media de sus placas; los grupos son los serotipos)' : P.nivel === 'placa' ? 'placa (un valor por placa)' : 'pocillo'}</b> · prueba: <b>{P.forzado === 'auto' ? 'automática' : NOMBRE[P.forzado]}</b>. Cambian con lo que elijas en la pestaña «Estadística».</p>
       </div>
 
       <H4>A. Los datos de cada grupo</H4>

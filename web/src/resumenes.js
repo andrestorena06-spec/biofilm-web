@@ -3,6 +3,7 @@
 import { armarComparacion } from './comparacion.js'
 import { analizar } from './decision.js'
 import { desvio, media } from './estadistica.js'
+import { seroDe, serotiposDe, valoresSerotipo } from './serotipos.js'
 
 const finito = Number.isFinite
 export const SIN_MEDIO = '(sin medio)'
@@ -90,7 +91,19 @@ export function resumenesInforme(s) {
       }),
     }))
 
+  // 4. entre serotipos, en cada medio y con todos los medios juntos (réplica: la elegida en Estadística; por defecto, la cepa)
+  const cepasSero = X.cepas.filter((c) => !(o.eCepasSeroFuera || []).includes(c))
+  const seros = serotiposDe(s.exp, cepasSero)
+  const nivelSero = ['cepa', 'placa', 'pocillo'].includes(o.nivelSero) ? o.nivelSero : 'cepa'
+  const filasMedio = X.medios.length > 1 ? [...X.medios, null] : [null]
+  const serotipos = seros.length >= 2 ? filasMedio.map((md) => {
+    const base = (nivelSero === 'pocillo' ? X.obsPozo : X.obsPlaca).filter((x) => usada(x) && (md === null || x.medio === md))
+    const gs = seros.map((sr) => grupo(sr, valoresSerotipo(base, base, cepasSero.filter((c) => seroDe(s.exp, c) === sr), nivelSero)))
+    return { medio: md ?? (X.medios.length > 1 ? 'Todos los medios' : X.medios[0] || 'Todas las placas'), grupos: gs, r: correr(gs) }
+  }) : []
+
   return {
+    serotipos, serosLista: seros, nivelSero,
     variable, unidad: unidadDe(variable, X.corregida), nivel, forzado, ajuste, mediosLista: X.medios, placas, medios, familias,
     fueraPl: X.placas.filter((p) => fueraPl.has(p.id)), sinOdc: X.sinOdc, sinMedio: X.placas.filter((p) => !p.medio),
   }

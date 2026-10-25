@@ -4,15 +4,17 @@ import { Icono } from './iconos.jsx'
 import { Campo, Modal } from './ui.jsx'
 import { renombrarMedio, renombrarMuestra, usosMedio, usosMuestra } from '../modelo.js'
 import { paletaMuestras } from '../utils.js'
+import { SEROTIPOS_SUG } from '../serotipos.js'
 
 // Lista editable: cada fila conserva su nombre original para aplicar el renombre al guardar
-function ListaNombres({ titulo, ayuda, filas, setFilas, usos, colores, placeholder }) {
+// conSerotipo: cada muestra lleva su serotipo (para comparar serotipos en Estadística y agrupar en Gráfico)
+function ListaNombres({ titulo, ayuda, filas, setFilas, usos, colores, placeholder, conSerotipo }) {
   const [nueva, setNueva] = useState('')
   const mover = (i, d) => { const f = [...filas]; const j = i + d; if (j < 0 || j >= f.length) return; [f[i], f[j]] = [f[j], f[i]]; setFilas(f) }
   const agregar = () => {
     const n = nueva.trim()
     if (!n || filas.some((x) => x.nombre.trim().toLowerCase() === n.toLowerCase())) return
-    setFilas([...filas, { orig: null, nombre: n, quitar: false }])
+    setFilas([...filas, { orig: null, nombre: n, quitar: false, sero: '' }])
     setNueva('')
   }
   return (
@@ -26,6 +28,9 @@ function ListaNombres({ titulo, ayuda, filas, setFilas, usos, colores, placehold
             <div key={(f.orig || '') + '|' + i} className={`fila ${f.quitar ? 'tachada' : ''}`}>
               {colores && <i className="punto" style={{ background: colores[f.orig] || 'var(--tenue)' }} />}
               <input value={f.nombre} disabled={f.quitar} onChange={(e) => setFilas(filas.map((x, k) => (k === i ? { ...x, nombre: e.target.value } : x)))} style={{ flex: 1 }} />
+              {conSerotipo && <input value={f.sero || ''} disabled={f.quitar} list="sugerencias-serotipo" placeholder="serotipo" aria-label="Serotipo"
+                data-tip={'Serotipo de la cepa (ej.: 1/2a, 1/2b, 4b)\nSirve para comparar serotipos en Estadística y para agrupar por serotipo en Gráfico › Comparar placas.\nDejalo vacío en los blancos o si no lo sabés.'}
+                onChange={(e) => setFilas(filas.map((x, k) => (k === i ? { ...x, sero: e.target.value } : x)))} style={{ width: 78 }} />}
               <small className="ayuda" style={{ minWidth: 92 }}>{u ? `${u} ${usos.unidad}${u > 1 ? 's' : ''}` : 'sin usar'}</small>
               <button className="fantasma icono" aria-label="Subir" onClick={() => mover(i, -1)} disabled={i === 0} data-tip="Subir (orden en los gráficos)"><Icono n="abajo" size={15} style={{ transform: 'rotate(180deg)' }} /></button>
               <button className="fantasma icono" aria-label="Bajar" onClick={() => mover(i, 1)} disabled={i === filas.length - 1} data-tip="Bajar"><Icono n="abajo" size={15} /></button>
@@ -47,7 +52,7 @@ function ListaNombres({ titulo, ayuda, filas, setFilas, usos, colores, placehold
 export function EditarExperimento({ s, onClose }) {
   const { exp, upd, avisar } = s
   const [info, setInfo] = useState({ ...exp.info })
-  const [muestras, setMuestras] = useState(exp.muestras.map((m) => ({ orig: m, nombre: m, quitar: false })))
+  const [muestras, setMuestras] = useState(exp.muestras.map((m) => ({ orig: m, nombre: m, quitar: false, sero: exp.serotipos?.[m] || '' })))
   const [medios, setMedios] = useState(exp.medios.map((m) => ({ orig: m, nombre: m, quitar: false })))
   const set = (k, v) => setInfo({ ...info, [k]: v })
   const usosM = Object.assign((m) => usosMuestra(exp, m), { unidad: 'pocillo' })
@@ -71,6 +76,7 @@ export function EditarExperimento({ s, onClose }) {
       ren(muestras, renombrarMuestra)
       ren(medios, renombrarMedio)
       x.muestras = muestras.filter((f) => !f.quitar).map((f) => f.nombre.trim())
+      x.serotipos = Object.fromEntries(muestras.filter((f) => !f.quitar && (f.sero || '').trim()).map((f) => [f.nombre.trim(), f.sero.trim()]))
       x.medios = medios.filter((f) => !f.quitar).map((f) => f.nombre.trim())
       return x
     })
@@ -93,8 +99,9 @@ export function EditarExperimento({ s, onClose }) {
       </div>
       <div className="dos-columnas-editar">
         <div>
-          <ListaNombres titulo="Muestras (cepas)" ayuda="Al renombrar, el cambio se aplica en los pocillos de todas las placas, los gráficos y la estadística. El orden es el de los gráficos."
-            filas={muestras} setFilas={setMuestras} usos={usosM} colores={paletaMuestras(exp.muestras)} placeholder="Agregar muestra…" />
+          <ListaNombres titulo="Muestras (cepas) y serotipo" ayuda="Al renombrar, el cambio se aplica en los pocillos de todas las placas, los gráficos y la estadística. El orden es el de los gráficos. El serotipo permite comparar serotipos."
+            filas={muestras} setFilas={setMuestras} usos={usosM} colores={paletaMuestras(exp.muestras)} placeholder="Agregar muestra…" conSerotipo />
+          <datalist id="sugerencias-serotipo">{SEROTIPOS_SUG.map((x) => <option key={x} value={x} />)}</datalist>
         </div>
         <div>
           <ListaNombres titulo="Medios de cultivo" ayuda="El medio de cada placa se elige en «Pocillos». Al renombrar, cambia en todas las placas."

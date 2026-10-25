@@ -16,7 +16,7 @@ export const NOMBRE_TEST = { anova: 'ANOVA', welch: 'ANOVA de Welch', kw: 'Krusk
 // «Separar por medio» (o.juntar = false) compara dentro de cada medio; con o.juntar las placas o las cepas se comparan sin separar por medio
 export const juntarDe = (o) => (o.juntar === undefined ? o.objetivo === 'placastodas' : !!o.juntar)
 export const objetivoDe = (o) => {
-  const b = o.objetivo === 'placastodas' ? 'placas' : ['libre', 'medios', 'placas', 'cepas', 'concordancia'].includes(o.objetivo) ? o.objetivo : 'medios'
+  const b = o.objetivo === 'placastodas' ? 'placas' : ['libre', 'medios', 'placas', 'cepas', 'serotipos', 'concordancia'].includes(o.objetivo) ? o.objetivo : 'medios'
   if (b === 'placas' && juntarDe(o)) return 'placastodas'
   if (b === 'cepas' && juntarDe(o)) return 'cepastodas'
   return b
@@ -25,9 +25,11 @@ export const objetivoDe = (o) => {
 // cada filtro vale solo en el modo que lo muestra: las placas en todos, las cepas al comparar cepas y los medios al comparar medios
 export const dentroDeSel = (o, x, obj = objetivoDe(o)) => !(o.ePlacasFuera || []).includes(x.placaId)
   && (!(obj === 'cepas' || obj === 'cepastodas') || !(o.eCepasFuera || []).includes(x.cepa))
+  && (obj !== 'serotipos' || !(o.eCepasSeroFuera || []).includes(x.cepa))   // los serotipos tienen su propia selección de cepas
   && (obj !== 'medios' || !(o.eMediosFuera || []).includes(x.medio))
 // objetivos que agrupan o separan por medio: las placas sin medio no pueden entrar
 export const usaMedio = (obj) => obj === 'medios' || obj === 'cepas' || obj === 'placas'
+// serotipos: dentro de un medio (como las cepas) o con todos los medios juntos
 
 // Hipótesis en el contexto del biofilm: la OD (cristal violeta) es la medida de biomasa de biofilm producida
 export function Hip({ items, titulo = 'Hipótesis' }) {

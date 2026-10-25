@@ -40,6 +40,7 @@ const P = {
   rotar: 'M4 18L18 4M18 4h-6M18 4v6M6 20h14',
   error: 'M12 4v16M8 4h8M8 20h8M6 12h12',
   matraz: 'M9 3h6M10 3v6L4.5 18.5A1.6 1.6 0 0 0 6 21h12a1.6 1.6 0 0 0 1.5-2.5L14 9V3M7.5 15h9',
+  etiqueta: 'M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9zM7.5 7.5h.01',
   pegar: 'M9 4h6v3H9zM8 5H6a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2M9 12h6M9 16h4',
 }
 export const Icono = ({ n, size = 18, ancho = 1.8, style }) => (

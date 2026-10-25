@@ -11,6 +11,7 @@ import { Chip, DiagnosticoGlobal, Hip, MatrizP, NOMBRE_TEST, Tabla, diagnosticoG
 import { ComparadorLibre, GrupoModo, modoBase } from './seleccion.jsx'
 import { ReproTab } from './repro.jsx'
 import { GrupoBlanco } from './blanco.jsx'
+import { NIVEL_SERO_TXT, seroDe, serotiposDe, valoresSerotipo } from '../serotipos.js'
 import { armarComparacion } from '../comparacion.js'
 import { SIN_MEDIO, UNIDAD, prepararDatos, unidadDe } from '../resumenes.js'
 import { analizar, anidada, parcelasDivididas, placaCepa } from '../decision.js'
@@ -300,6 +301,9 @@ export function EstadisticaTab({ s }) {
   const variable = UNIDAD[o.variable] ? o.variable : 'od'
   const X = useMemo(() => prepararDatos(s, D, variable), [D, variable]) // eslint-disable-line react-hooks/exhaustive-deps
   const modo = modoBase(o)
+  // serotipo de cada cepa (se carga en «Datos del experimento»)
+  const seroC = (c) => seroDe(s.exp, c)
+  const seros = serotiposDe(s.exp, X.cepas)
   const irDesarrollo = () => { s.irA('metodos'); setTimeout(() => document.getElementById('m-estadistica')?.scrollIntoView({ block: 'start' }), 120) }
   const grupoModo = <GrupoModo o={o} setO={setO} />
   const sinAnalisis = s.placas.filter((p) => !p.oculta && !s.analisisMap[p.id]?.resumen?.length)
@@ -310,37 +314,43 @@ export function EstadisticaTab({ s }) {
   // ---- opciones de la prueba ----
   const libres = (o.libres || []).filter((c) => c.grupos.length >= 2)
   const usaPlacaLibre = modo === 'libre' && libres.some((c) => c.grupos.some((g) => g.placa))
-  const nivel = modo === 'placas' || usaPlacaLibre ? 'pocillo' : o.nivel === 'pocillo' ? 'pocillo' : 'placa'
-  const obsN = nivel === 'placa' ? X.obsPlaca : X.obsPozo
+  // serotipos: la réplica puede ser la cepa (la media de sus placas), la placa de cada cepa o el pocillo
+  const nivel = modo === 'serotipos' ? (['cepa', 'placa', 'pocillo'].includes(o.nivelSero) ? o.nivelSero : 'cepa')
+    : modo === 'placas' || usaPlacaLibre ? 'pocillo' : o.nivel === 'pocillo' ? 'pocillo' : 'placa'
+  const obsN = nivel === 'pocillo' ? X.obsPozo : X.obsPlaca
   const forzado = o.prueba || 'auto', comp = o.comp || 'pares', ajuste = o.ajuste === 'lsd' ? 'lsd' : 'holm'
   const unidad = unidadDe(variable, X.corregida)
-  const nivelTxt = nivel === 'placa' ? `cada punto es una placa (${variable === 'od' ? `${unidad} media de sus pocillos` : 'calculado con la OD media de sus pocillos'})` : 'cada punto es un pocillo'
+  const nivelTxt = modo === 'serotipos' ? NIVEL_SERO_TXT[nivel] : nivel === 'placa' ? `cada punto es una placa (${variable === 'od' ? `${unidad} media de sus pocillos` : 'calculado con la OD media de sus pocillos'})` : 'cada punto es un pocillo'
 
   // ---- qué se compara ----
   const juntar = juntarDe(o)
   const medioSel = X.medios.includes(o.selMedio) ? o.selMedio : X.medios[0]
   const cepaSel = X.cepas.includes(o.selCepa) ? o.selCepa : X.cepas[0]
   const fueraPl = o.ePlacasFuera || []
-  const enAlcance = (p) => ((modo === 'placas' || modo === 'cepas') && !juntar ? p.medio === medioSel : modo === 'medios' ? !!p.medio : true)
+  const enAlcance = (p) => ((modo === 'placas' || modo === 'cepas' || modo === 'serotipos') && !juntar ? p.medio === medioSel : modo === 'medios' ? !!p.medio : true)
   const placasAlc = X.placas.filter(enAlcance)
   const placasUsadas = placasAlc.filter((p) => !fueraPl.includes(p.id))
   const mediosIn = X.medios.filter((m) => !(o.eMediosFuera || []).includes(m))
   const cepasIn = X.cepas.filter((c) => !(o.eCepasFuera || []).includes(c))
+  const serosIn = seros.filter((x) => !(o.eSeroFuera || []).includes(x))
+  // el modo Serotipos tiene su propia selección de cepas (no la del modo Cepas)
+  const cepasSero = X.cepas.filter((c) => !(o.eCepasSeroFuera || []).includes(c))
   const usada = (x) => placasUsadas.some((p) => p.id === x.placaId)
   const nombrePl = (p) => (juntar && p.medio ? `${p.nombre} · ${p.medio}` : p.nombre)
   const conDet = (nombre, d, extra = {}) => ({ nombre, det: d, v: d.map((x) => x.y), ...extra })
   const gruposDe = (c) => {
     if (modo === 'medios') return mediosIn.map((m) => conDet(m, obsN.filter((x) => x.cepa === c && x.medio === m && usada(x))))
+    if (modo === 'serotipos') return serosIn.map((sr) => { const cs = cepasSero.filter((c) => seroC(c) === sr); const base = obsN.filter((x) => usada(x)); return conDet(sr, valoresSerotipo(base, base, cs, nivel), { cepas: cs }) })
     if (modo === 'placas') return placasUsadas.map((p) => conDet(nombrePl(p), X.obsPozo.filter((x) => x.cepa === c && x.placaId === p.id), { placaId: p.id })).filter((g) => g.v.length)
     return cepasIn.map((cc) => conDet(cc, obsN.filter((x) => x.cepa === cc && usada(x))))
   }
-  const ctrlKey = { medios: 'ctrlMedio', cepas: 'ctrlCepa', placas: 'ctrlPlaca', libre: 'ctrlLibre' }[modo]
+  const ctrlKey = { medios: 'ctrlMedio', cepas: 'ctrlCepa', serotipos: 'ctrlSero', placas: 'ctrlPlaca', libre: 'ctrlLibre' }[modo]
   const ctrlDe = (gs) => (comp === 'control' && gs.length > 1 ? (gs.some((g) => g.nombre === o[ctrlKey]) ? o[ctrlKey] : gs[0].nombre) : null)
   const analizarG = (gs) => { const c = gs.filter((g) => g.v.length); return c.length ? { r: analizar(c, forzado, ctrlDe(c), ajuste), ctrl: ctrlDe(c) } : { r: null, ctrl: null } }
 
   // grupos a medida
-  const nombreG = (g) => [g.cepa || null, g.medio || null, g.placa ? (X.placas.find((p) => p.id === g.placa)?.nombre || g.placa) : null].filter(Boolean).join(' · ') || 'Todos los datos'
-  const gruposLibre = (c) => c.grupos.map((g) => conDet(nombreG(g), obsN.filter((x) => (!g.cepa || x.cepa === g.cepa) && (!g.medio || x.medio === g.medio) && (!g.placa || x.placaId === g.placa))))
+  const nombreG = (g) => [g.serotipo ? `serotipo ${g.serotipo}` : null, g.cepa || null, g.medio || null, g.placa ? (X.placas.find((p) => p.id === g.placa)?.nombre || g.placa) : null].filter(Boolean).join(' · ') || 'Todos los datos'
+  const gruposLibre = (c) => c.grupos.map((g) => conDet(nombreG(g), obsN.filter((x) => (!g.cepa || x.cepa === g.cepa) && (!g.serotipo || seroC(x.cepa) === g.serotipo) && (!g.medio || x.medio === g.medio) && (!g.placa || x.placaId === g.placa))))
   const iLibre = Math.min(Math.max(0, o.selLibre || 0), Math.max(0, libres.length - 1))
 
   // ---- foco (lo que muestran los dos paneles) ----
@@ -348,11 +358,12 @@ export function EstadisticaTab({ s }) {
   if (modo === 'medios') foco = { pregunta: `¿Cambia la producción de biofilm de ${cepaSel} según el medio?`, sujeto: `la producción de biofilm de «${cepaSel}»`, factor: 'los medios de cultivo', grupos: gruposDe(cepaSel) }
   else if (modo === 'placas') foco = { pregunta: `¿${cepaSel} da lo mismo en todas las placas${juntar ? '' : ` de ${medioSel}`}?`, sujeto: `la producción de biofilm de «${cepaSel}»`, factor: 'las placas', grupos: gruposDe(cepaSel) }
   else if (modo === 'cepas') foco = { pregunta: `¿Difieren las cepas${juntar ? ' (todos los medios juntos)' : ` en ${medioSel}`}?`, sujeto: `la producción de biofilm${juntar ? '' : ` en ${medioSel}`}`, factor: 'las cepas', grupos: gruposDe() }
+  else if (modo === 'serotipos') foco = serosIn.length ? { pregunta: `¿Difieren los serotipos${juntar ? ' (todos los medios juntos)' : ` en ${medioSel}`}?`, sujeto: `la producción de biofilm${juntar ? '' : ` en ${medioSel}`}`, factor: 'los serotipos', grupos: gruposDe() } : null
   else foco = libres.length ? (() => { const gs = gruposLibre(libres[iLibre]); return { pregunta: `¿Difieren ${gs.map((g) => g.nombre).join(', ')}?`, sujeto: 'la OD de los grupos', factor: 'los grupos', grupos: gs } })() : null
   if (foco) Object.assign(foco, analizarG(foco.grupos))
 
   // pocillos excluidos que tocan a la selección
-  const fueraFoco = !foco ? [] : X.fuera.filter((x) => (modo === 'cepas' ? cepasIn.includes(x.cepa) : modo === 'libre' ? true : x.cepa === cepaSel) && (modo === 'libre' || placasUsadas.some((p) => p.id === x.placaId)))
+  const fueraFoco = !foco ? [] : X.fuera.filter((x) => (modo === 'cepas' ? cepasIn.includes(x.cepa) : modo === 'serotipos' ? cepasSero.includes(x.cepa) && serosIn.includes(seroC(x.cepa)) : modo === 'libre' ? true : x.cepa === cepaSel) && (modo === 'libre' || placasUsadas.some((p) => p.id === x.placaId)))
   const colorDe = (d) => D.colores[d.placaId] || D.colorBase[d.placaId] || '#5B8FD9'
 
   // ---- resumen de todas las cepas ----
@@ -388,6 +399,36 @@ export function EstadisticaTab({ s }) {
     })
     resumen = <ResumenTodas titulo={`Todas las cepas${juntar ? ' · todos los medios' : ` · ${medioSel}`}`} nota="Las letras corresponden a la comparación de arriba"
       placas={placasAlc} apagadas={fueraPl} filas={filas} conMedia={false} medios={[]} colResultado={foco.ctrl ? 'Contra el control' : 'Letra'} />
+  } else if (modo === 'serotipos' && foco) {
+    const r = foco.r
+    const sinSero = X.cepas.filter((c) => !seroC(c))
+    const mediaCepa = (c) => { const v = X.obsPlaca.filter((x) => x.cepa === c && usada(x)).map((x) => x.y); return v.length ? media(v) : NaN }
+    resumen = (
+      <section className="tarjeta resumen-todas">
+        <div className="cabeza-tarjeta"><span className="etiqueta-seccion">Todos los serotipos{juntar ? ' · todos los medios' : ` · ${medioSel}`}</span><span className="ayuda">Las letras corresponden a la comparación de arriba</span></div>
+        <div className="tabla-scroll"><table className="tabla compacta">
+          <thead><tr><th>Serotipo</th><th>Cepas (media de cada una)</th><th className="num">n</th><th className="num">Media</th><th className="num">DE</th><th className="col-resultado">{foco.ctrl ? 'Contra el control' : 'Letra'}</th></tr></thead>
+          <tbody>{seros.map((sr) => {
+            const dentro = serosIn.includes(sr)
+            const g = foco.grupos.find((x) => x.nombre === sr)
+            const cs = X.cepas.filter((c) => seroC(c) === sr)
+            const res = !dentro ? { texto: <span className="tenue">no entra</span>, nivel: 'na' }
+              : !r?.ok || !g?.v.length ? { texto: '—', nivel: 'na' }
+                : foco.ctrl ? (sr === foco.ctrl ? { texto: <b>control</b>, nivel: 'na' } : (() => { const p = r.pares.find((x) => x.a === sr); return p && finito(p.pa) ? { texto: <><b>{p.pa < 0.05 ? '≠ control' : '= control'}</b> <small>p {pTxt(p.pa)}</small></>, nivel: p.pa < 0.05 ? 'dif' : 'ok' } : { texto: '—', nivel: 'na' } })())
+                  : { texto: <b>{r.letras?.[sr] || '—'}</b>, nivel: r.global.p < 0.05 ? 'dif' : 'ok', tip: 'Los serotipos que comparten una letra no difieren (p ajustado ≥ 0,05)' }
+            return (
+              <tr key={sr} className={dentro ? '' : 'apagada'}>
+                <td><b>{sr}</b></td>
+                <td>{cs.map((c) => <span key={c} className={`chip-cepa ${cepasSero.includes(c) ? '' : 'tenue'}`}>{c} <small>{finito(mediaCepa(c)) ? f(mediaCepa(c), 3) : '—'}</small></span>)}</td>
+                <td className="num">{g?.v.length || 0}</td><td className="num">{g?.v.length ? f(media(g.v), 3) : '—'}</td><td className="num">{g?.v.length > 1 ? f(desvio(g.v), 3) : '—'}</td>
+                <td className={`col-resultado ${res.nivel}`} data-tip={res.tip}>{res.texto}</td>
+              </tr>
+            )
+          })}</tbody>
+        </table></div>
+        {sinSero.length > 0 && <p className="ayuda">Sin serotipo (no entran): {sinSero.join(', ')}. <button className="fantasma chico" onClick={s.abrirEditar}>Cargar serotipos</button></p>}
+      </section>
+    )
   } else if (libres.length) {
     resumen = (
       <section className="tarjeta resumen-todas">
@@ -442,7 +483,16 @@ export function EstadisticaTab({ s }) {
             ['od', 'OD', 'OD', null, s.restarBlanco ? 'OD corregida (OD leída − blanco)' : 'OD tal cual'], ['ln', 'ln(OD)', 'ln', null, 'Logaritmo natural de la OD\nEstabiliza la varianza cuando la DE crece con la media'], ['odc', 'OD ÷ ODc', '÷', null, 'Cada OD dividida por el ODc de su placa: cada unidad es un ODc (1 = ODc, 2 = 2 × ODc, 4 = 4 × ODc)\nQuita la diferencia de tinción entre placas; la dispersión sigue creciendo con la OD'],
           ]} />
         </Grupo>
-        {modo !== 'placas' && !usaPlacaLibre && (
+        {modo === 'serotipos' && (
+          <Grupo titulo="Réplica">
+            <OpcionesCinta valor={nivel} onChange={(v) => setO('nivelSero', v)} opciones={[
+              ['cepa', 'Cepa', null, 'etiqueta', 'Un valor por cepa: la media de sus placas\nLa cepa es la réplica del serotipo: la opción correcta para concluir'],
+              ['placa', 'Placa', null, 'placas', 'Un valor por placa de cada cepa\nLas placas de una misma cepa no son independientes como cepas distintas: los p salen más chicos'],
+              ['pocillo', 'Pocillos', null, 'puntos', 'Cada pocillo cuenta como réplica\nMuchos más datos, pero no son independientes: los p salen demasiado chicos'],
+            ]} />
+          </Grupo>
+        )}
+        {modo !== 'placas' && modo !== 'serotipos' && !usaPlacaLibre && (
           <Grupo titulo="Réplica">
             <OpcionesCinta valor={nivel} onChange={(v) => setO('nivel', v)} opciones={[
               ['placa', 'Placa', null, 'placas', 'Un valor por placa (OD media de sus pocillos)\nEs la réplica biológica: la opción correcta para concluir'],
@@ -468,7 +518,7 @@ export function EstadisticaTab({ s }) {
 
       <section className="tarjeta est-seleccion">
         <div className="cabeza-tarjeta"><span className="etiqueta-seccion">Qué se compara</span>
-          <span className="ayuda">{{ medios: 'Una cepa entre medios de cultivo', placas: 'Una cepa entre placas (réplicas)', cepas: 'Las cepas entre sí', libre: 'Grupos armados a mano' }[modo]}</span></div>
+          <span className="ayuda">{{ medios: 'Una cepa entre medios de cultivo', placas: 'Una cepa entre placas (réplicas)', cepas: 'Las cepas entre sí', serotipos: 'Los serotipos entre sí (las cepas de cada uno juntas)', libre: 'Grupos armados a mano' }[modo]}</span></div>
         {modo === 'medios' && <>
           {fichasCepa}
           <Fichas etiqueta="Medios" tip="Los medios que se comparan (al menos 2)" multi opciones={X.medios.map((m) => ({ id: m, texto: m }))} activa={(id) => mediosIn.includes(id)} onClick={alternar('eMediosFuera')} />
@@ -485,8 +535,18 @@ export function EstadisticaTab({ s }) {
             extra={<><button className="fantasma chico" onClick={() => setO('eCepasFuera', [])}>Todas</button><button className="fantasma chico" onClick={() => setO('eCepasFuera', X.cepas)}>Ninguna</button></>} />
           {fichasPlacas}
         </>}
+        {modo === 'serotipos' && (seros.length ? <>
+          <Fichas etiqueta="Medio" tip="Los serotipos se comparan dentro de un medio, o con todos los medios juntos" opciones={alcance('Todos juntos')} activa={alcanceActivo} onClick={elegirAlcance} />
+          <Fichas etiqueta="Serotipos" tip="Los serotipos que se comparan (al menos 2)" multi opciones={seros.map((sr) => ({ id: sr, texto: sr, sub: `${X.cepas.filter((c) => seroC(c) === sr).length} cepas` }))} activa={(id) => serosIn.includes(id)} onClick={alternar('eSeroFuera')}
+            extra={<button className="fantasma chico" onClick={s.abrirEditar} data-tip="El serotipo de cada cepa se carga en «Datos del experimento»">Editar serotipos</button>} />
+          <Fichas etiqueta="Cepas" tip="Las cepas que entran en cada serotipo" multi opciones={X.cepas.filter((c) => seroC(c)).map((c) => ({ id: c, texto: c, sub: seroC(c) }))} activa={(id) => cepasSero.includes(id)} onClick={alternar('eCepasSeroFuera')}
+            extra={<><button className="fantasma chico" onClick={() => setO('eCepasSeroFuera', [])}>Todas</button></>} />
+          {fichasPlacas}
+        </> : (
+          <p className="aviso-sel">Todavía ninguna cepa tiene serotipo. Cargalo al lado de cada muestra en «Datos del experimento». <button className="chico" onClick={s.abrirEditar}>Cargar serotipos</button></p>
+        ))}
         {modo === 'libre' && <>
-          <ComparadorLibre o={o} setO={setO} cepas={X.cepas.map((c) => ({ id: c, nombre: c }))} medios={X.medios.map((m) => ({ id: m, nombre: m }))} placas={X.placas.map((p) => ({ id: p.id, nombre: p.nombre }))} />
+          <ComparadorLibre o={o} setO={setO} cepas={X.cepas.map((c) => ({ id: c, nombre: c }))} medios={X.medios.map((m) => ({ id: m, nombre: m }))} placas={X.placas.map((p) => ({ id: p.id, nombre: p.nombre }))} serotipos={seros.map((x) => ({ id: x, nombre: x }))} />
           {libres.length > 1 && <Fichas etiqueta="Ver" opciones={libres.map((c, i) => ({ id: i, texto: `ANOVA ${i + 1}` }))} activa={(id) => id === iLibre} onClick={(id) => setO('selLibre', id)} />}
         </>}
         {(sinAnalisis.length > 0 || X.sinOdc.length > 0 || X.noPos > 0 || (modo !== 'libre' && sinMedio.length > 0 && modo === 'medios')) && (
@@ -504,7 +564,8 @@ export function EstadisticaTab({ s }) {
           <PanelGrupos foco={foco} unidad={unidad} nivelTxt={nivelTxt} colorDe={colorDe} fuera={fueraFoco} comp={comp} onCtrl={(v) => setO(ctrlKey, v)} umbrales={UMBRALES[variable]} />
           <PanelResultado foco={foco} alDesarrollo={irDesarrollo} extra={extraResultado} />
         </div>
-      ) : <Vacio titulo="Todavía no hay comparaciones" texto="Agregá una con las plantillas de arriba («Cepa vs cepa», «Una cepa entre medios»…)." />}
+      ) : modo === 'serotipos' ? <Vacio titulo="Todavía no hay serotipos para comparar" texto="Cargá el serotipo de cada cepa en «Datos del experimento» y elegí al menos dos serotipos." accion={<button className="primario" onClick={s.abrirEditar}>Cargar serotipos</button>} />
+        : <Vacio titulo="Todavía no hay comparaciones" texto="Agregá una con las plantillas de arriba («Cepa vs cepa», «Una cepa entre medios»…)." />}
 
       {resumen}
 

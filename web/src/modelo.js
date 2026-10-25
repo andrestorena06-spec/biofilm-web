@@ -68,7 +68,7 @@ export function expNuevo(nombre) {
   const hoy = new Date()
   return {
     id: nuevoId(), version: VERSION, info: { ...infoDef(), nombre: nombre || `Biofilm ${hoy.toLocaleDateString('es')}` },
-    placas: [], muestras: [...MUESTRAS_DEF], medios: [...MEDIOS_DEF], deteccion: deteccionDef(), opts: optsDef(), estilos: estilosDe({}),
+    placas: [], muestras: [...MUESTRAS_DEF], medios: [...MEDIOS_DEF], serotipos: {}, deteccion: deteccionDef(), opts: optsDef(), estilos: estilosDe({}),
   }
 }
 
@@ -92,8 +92,10 @@ export function normalizarExp(x) {
   placas.forEach((p) => p.config.forEach((c) => { if (!muestras.includes(c.Muestra)) muestras.push(c.Muestra) }))
   const medios = Array.isArray(x.medios) && x.medios.length ? [...x.medios] : [...MEDIOS_DEF]
   placas.forEach((p) => { if (p.medio && !medios.includes(p.medio)) medios.push(p.medio) })
+  // serotipo de cada cepa (sesiones anteriores: ninguno)
+  const serotipos = x.serotipos && typeof x.serotipos === 'object' ? Object.fromEntries(Object.entries(x.serotipos).filter(([, v]) => String(v || '').trim()).map(([k, v]) => [k, String(v).trim()])) : {}
   const exp = {
-    id: x.id || nuevoId(), version: VERSION, info, placas, muestras, medios,
+    id: x.id || nuevoId(), version: VERSION, info, placas, muestras, medios, serotipos,
     deteccion: normDet(x.deteccion || {}), opts: optsDe(x.opts), estilos: estilosDe(x.estilos),
   }
   aListasFuera(exp)
@@ -126,6 +128,7 @@ export function renombrarMuestra(exp, viejo, nuevo) {
   return {
     ...exp,
     muestras: exp.muestras.map(cambia),
+    serotipos: Object.fromEntries(Object.entries(exp.serotipos || {}).map(([k, v]) => [cambia(k), v])),
     placas: exp.placas.map((p) => ({ ...p, config: p.config.map((c) => (c.Muestra === viejo ? { ...c, Muestra: nuevo } : c)), blancosUsados: p.blancosUsados ? p.blancosUsados.map(cambia) : p.blancosUsados })),
     opts: {
       ...o,
@@ -134,6 +137,8 @@ export function renombrarMuestra(exp, viejo, nuevo) {
         ...o.comparar,
         ocultos: (o.comparar.ocultos || []).map((k) => { const [id, m] = k.split('|'); return m === viejo ? `${id}|${nuevo}` : k }),
         eCepasFuera: o.comparar.eCepasFuera ? o.comparar.eCepasFuera.map(cambia) : o.comparar.eCepasFuera,
+        eCepasSeroFuera: o.comparar.eCepasSeroFuera ? o.comparar.eCepasSeroFuera.map(cambia) : o.comparar.eCepasSeroFuera,
+        selCepa: o.comparar.selCepa === viejo ? nuevo : o.comparar.selCepa,
         ctrlCepa: o.comparar.ctrlCepa === viejo ? nuevo : o.comparar.ctrlCepa,
         libres: (o.comparar.libres || []).map((c) => ({ ...c, grupos: c.grupos.map((g) => (g.cepa === viejo ? { ...g, cepa: nuevo } : g)) })),
       },

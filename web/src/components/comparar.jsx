@@ -70,14 +70,25 @@ export function CompararTab({ s, grupoVista }) {
     <div>
       <Cinta>
         {grupoVista}
+        <Grupo titulo="Agrupar">
+          <OpcionesCinta valor={D.porSero ? 'serotipo' : 'cepa'} onChange={(v) => { if (v === 'serotipo' && !D.serotipos.length) { s.avisar('Todavía ninguna cepa tiene serotipo: cargalo en «Datos del experimento».', 'error'); s.abrirEditar(); return } setO('agrupar', v) }} opciones={[
+            ['cepa', 'Por cepa', null, 'puntos', 'Cada grupo del eje X es una cepa'],
+            ['serotipo', 'Por serotipo', null, 'etiqueta', 'Cada grupo del eje X es un serotipo: sus cepas juntas\nEl serotipo de cada cepa se carga en «Datos del experimento»' + (D.serotipos.length ? '' : '\nTodavía ninguna cepa tiene serotipo')],
+          ]} />
+        </Grupo>
         <Grupo titulo="Columnas">
           <OpcionesCinta valor={modo} onChange={(v) => setO('modo', v)} opciones={[
-            ['placas', 'Por placa', null, 'placas', 'Una columna por placa (la altura es la OD media de sus réplicas)'],
+            ['placas', 'Por placa', null, 'placas', D.porSero ? 'Una columna por placa: cada punto es una cepa del serotipo en esa placa' : 'Una columna por placa (la altura es la OD media de sus réplicas)'],
             ['medio', 'Por medio', null, 'matraz', 'Una columna por medio de cultivo: las placas del mismo medio juntas (el medio se elige en «Pocillos»)'],
-            ['todas', 'Todas', 'x̄', null, 'Una columna por cepa con todas las placas juntas, sin separar por medio: el promedio de cada cepa en todo el experimento'],
-            ['pocillo', 'Por pocillo', null, 'puntos', 'Una columna por pocillo (sin error: un solo valor por columna)'],
+            ['todas', 'Todas', 'x̄', null, D.porSero ? 'Una columna por serotipo con todas las placas juntas, sin separar por medio' : 'Una columna por cepa con todas las placas juntas, sin separar por medio: el promedio de cada cepa en todo el experimento'],
+            ...(D.porSero ? [] : [['pocillo', 'Por pocillo', null, 'puntos', 'Una columna por pocillo (sin error: un solo valor por columna)']]),
           ]} />
-          {(modo === 'medio' || modo === 'todas') && (
+          {D.porSero && (modo === 'medio' || modo === 'todas') && (
+            <CampoCinta etiqueta="Datos del serotipo" tip={'Define los puntos, la media, el error y la dispersión de cada serotipo.\nUn valor por cepa: la media de sus placas (la cepa es la réplica del serotipo).\nUn valor por placa: cada placa de cada cepa.\nPocillos: todos los pocillos de sus cepas.'}>
+              <Select value={D.datosSero} onChange={(v) => setO('puntosSero', v)} opciones={[['cepas', 'Un valor por cepa'], ['placas', 'Un valor por placa'], ['pocillos', 'Pocillos']]} />
+            </CampoCinta>
+          )}
+          {!D.porSero && (modo === 'medio' || modo === 'todas') && (
             <CampoCinta etiqueta={modo === 'medio' ? 'Datos de cada medio' : 'Datos'} tip={`Define los puntos, la media, el error y la dispersión.\nPocillos: todos los pocillos ${modo === 'medio' ? 'del medio' : 'de todas las placas'}.\nUn valor por placa: cada placa es una réplica biológica (hacen falta 2 o más placas para el error).`}>
               <Select value={o.puntosMedio || 'pocillos'} onChange={(v) => setO('puntosMedio', v)} opciones={[['pocillos', 'Pocillos'], ['placas', 'Un valor por placa']]} />
             </CampoCinta>

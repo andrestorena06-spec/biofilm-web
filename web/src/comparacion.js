@@ -1,6 +1,7 @@
 import { resumenBlancos } from './blancos.js'
 import { resumenGrupo } from './estadistica.js'
 import { ESCALAS, paletaMuestras } from './utils.js'
+import { seroDe, serotiposDe } from './serotipos.js'
 
 // aclara un color hsl(h, s%, l%) (f de 0 a 1): los tonos de una familia, uno por placa
 export const aclarar = (col, f) => {
@@ -17,10 +18,16 @@ export const ERR_TXT = { ic95: 'IC 95 %', sd: 'desviación estándar', sem: 'err
 //                   dispersión, puntos y pruebas): todos los pocillos del medio, o un valor por placa (réplica biológica)
 //  modo 'todas'   → una columna por cepa con todas las placas juntas (sin separar por medio), con las mismas opciones
 //  modo 'pocillo' → una columna por pocillo
+// agrupar 'serotipo' → cada grupo del eje X es un serotipo (sus cepas juntas) en vez de una cepa; «Datos del serotipo»
+//                   decide los valores: uno por cepa (la media de sus placas), uno por placa de cada cepa, o los pocillos
 // Los elementos que se dibujan (barras, cajas, puntos, errores, valores) los decide el gráfico con las mismas opciones.
 export function armarComparacion(s) {
   const o = s.opts.comparar
-  const modo = ['placas', 'medio', 'todas', 'pocillo'].includes(o.modo) ? o.modo : 'placas'
+  // serotipos presentes (sin blancos): con «Agrupar por serotipo» reemplazan a las cepas en el eje X
+  const serosAll = serotiposDe(s.exp, s.muestras)
+  const porSero = o.agrupar === 'serotipo' && serosAll.length > 0
+  const modo0 = ['placas', 'medio', 'todas', 'pocillo'].includes(o.modo) ? o.modo : 'placas'
+  const modo = porSero && modo0 === 'pocillo' ? 'placas' : modo0
   const verBlancos = o.blancos !== false
   const conAnalisis = s.placas.filter((p) => !p.oculta && s.analisisMap[p.id]?.resumen?.length)
   // se guardan las placas que se sacaron: una placa nueva entra sola en la comparación y en la estadística
@@ -103,7 +110,39 @@ export function armarComparacion(s) {
       return [{ id: p.id + '|' + m, placa: nombreP(p), color: colores[p.id], media: tv(p, r.Media), err: Number.isFinite(err) ? err : null, pts }]
     })
   }
-  const grupos = muestras.map((m) => ({ muestra: m, etiqueta: etiqueta(m), barras: columnas(m) })).filter((g) => g.barras.length)
+  // ---- agrupado por serotipo: cada columna junta las cepas del serotipo ----
+  const colorCepa = paletaMuestras(s.muestras)
+  const datosSero = ['cepas', 'placas', 'pocillos'].includes(o.puntosSero) ? o.puntosSero : 'cepas'
+  const columnaSero = (ps, cs, id, nombre, color, medio, unaPlaca) => {
+    const pares = ps.flatMap((p) => cs.filter((c) => !ocultos.has(clave(p.id, c))).map((c) => ({ p, c, r: filasDe(p).find((x) => x.Muestra === c) })))
+      .filter((x) => x.r && Number.isFinite(tv(x.p, x.r.Media)))
+    if (!pares.length) return []
+    const modoD = unaPlaca ? 'cepas' : datosSero
+    let detalle
+    if (modoD === 'pocillos') detalle = pares.flatMap((x) => pozos(x.p, x.c).map((e) => ({ v: tv(x.p, e.OD), color: colores[x.p.id], tip: `${x.c} · ${x.p.nombre} · ${e.Pocillo}: ${V(x.p, e.OD)}` })))
+    else if (modoD === 'placas') detalle = pares.map((x) => ({ v: tv(x.p, x.r.Media), color: colores[x.p.id], tip: `${x.c} · ${x.p.nombre}: media ${V(x.p, x.r.Media)}` }))
+    else detalle = [...new Set(pares.map((x) => x.c))].map((c) => {
+      const vs = pares.filter((x) => x.c === c).map((x) => tv(x.p, x.r.Media))
+      const v = vs.reduce((a, b) => a + b, 0) / vs.length
+      return { v, color: colorCepa[c], tip: `${c}: ${v.toFixed(3)}${vs.length > 1 ? ` (media de ${vs.length} placas)` : ''}` }
+    })
+    const valores = detalle.map((d) => d.v)
+    const rg = resumenGrupo(valores)
+    const er = errRg(rg)
+    const nC = new Set(pares.map((x) => x.c)).size
+    const nTxt = modoD === 'cepas' ? `n = ${nC} ${nC === 1 ? 'cepa' : 'cepas'}` : modoD === 'placas' ? `n = ${valores.length} placas de ${nC} cepas` : `n = ${valores.length} pocillos`
+    return [{ id, medio, muestra: nombre, placa: `${nombre} (${nTxt})`, color, media: rg.media, err: Number.isFinite(er) ? er : null, pts: valores, detalle, vp: valores, nPlacas: ps.length }]
+  }
+  const columnasSero = (sr) => {
+    const cs = muestras.filter((m) => !esBlanco.has(m) && seroDe(s.exp, m) === sr)
+    if (modo === 'medio') return mediosPres.flatMap((md) => columnaSero(placasSel.filter((p) => p.medio === md), cs, md + '|' + sr, md, coloresMedio[md], md))
+    if (modo === 'todas') return columnaSero(placasSel, cs, 'todas|' + sr, 'Todas las placas', '#6b8fb5', null)
+    return placasSel.flatMap((p) => columnaSero([p], cs, p.id + '|' + sr, nombreP(p), colores[p.id], p.medio, true))
+  }
+  const nCepasSero = (sr) => muestras.filter((m) => !esBlanco.has(m) && seroDe(s.exp, m) === sr).length
+  const grupos = porSero
+    ? serosAll.map((sr) => ({ muestra: sr, etiqueta: `${sr} (${nCepasSero(sr)} ${nCepasSero(sr) === 1 ? 'cepa' : 'cepas'})`, barras: columnasSero(sr) })).filter((g) => g.barras.length)
+    : muestras.map((m) => ({ muestra: m, etiqueta: etiqueta(m), barras: columnas(m) })).filter((g) => g.barras.length)
   const leyenda = modo === 'medio'
     ? mediosPres.filter((md) => grupos.some((g) => g.barras.some((b) => b.id.startsWith(md + '|')))).map((md) => ({ id: md, nombre: md, color: coloresMedio[md] }))
     : placasSel.map((p) => ({ id: p.id, nombre: nombreP(p), color: colores[p.id] }))
@@ -118,9 +157,14 @@ export function armarComparacion(s) {
     : modo === 'pocillo'
       ? 'Cada columna es un pocillo aceptado (OD)'
       : `Barra: OD media de las réplicas aceptadas de cada placa${ERR_TXT[o.error] ? `; error: ${ERR_TXT[o.error]} entre pocillos` : ''}`
-  const nota = rel ? `${notaOD} · escala ${ESCALAS[escala].eje} con el ODc de cada placa` : corregida ? `${notaOD} · OD corregida = OD leída − blanco de cada placa` : notaOD
+  const notaSero = porSero ? ` · agrupado por serotipo: ${modo === 'placas' ? 'cada punto es una cepa en esa placa' : datosSero === 'cepas' ? 'cada punto es una cepa (la media de sus placas)' : datosSero === 'placas' ? 'cada punto es una placa de una cepa' : 'cada punto es un pocillo'}` : ''
+  // agrupado por serotipo: la barra es la media del serotipo y el error se calcula entre sus cepas, placas o pocillos
+  const unidadErr = modo === 'placas' || datosSero === 'cepas' ? 'cepas' : datosSero === 'placas' ? 'placas' : 'pocillos'
+  const notaBase = porSero ? `Barra: media del serotipo${ERR_TXT[o.error] ? `; error: ${ERR_TXT[o.error]} entre ${unidadErr}` : ''}` : notaOD
+  const nota0 = rel ? `${notaBase} · escala ${ESCALAS[escala].eje} con el ODc de cada placa` : corregida ? `${notaBase} · OD corregida = OD leída − blanco de cada placa` : notaBase
+  const nota = nota0 + notaSero
   return {
     modo, verBlancos, conAnalisis, placasSel, mediosPres, coloresMedio, colorBase, colores, ocultos, clave, filasDe, muestras, esBlanco, etiqueta,
-    tieneMuestra, grupos, leyenda, nota, sinMedio: placasSel.filter((p) => !p.medio), escala, rel, sinOdc, corregida,
+    tieneMuestra, grupos, leyenda, nota, sinMedio: placasSel.filter((p) => !p.medio), escala, rel, sinOdc, corregida, porSero, serotipos: serosAll, datosSero,
   }
 }

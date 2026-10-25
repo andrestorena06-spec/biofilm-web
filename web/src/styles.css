@@ -604,6 +604,9 @@ button[data-tip], .chip-placa[data-tip] { cursor: pointer; }
 .resumen-todas td.col-resultado.dif b { color: var(--aviso); }
 .resumen-todas td.col-resultado.ok b { color: var(--ok); }
 .resumen-todas .apagada { opacity: .4; }
+.chip-cepa { display: inline-flex; align-items: baseline; gap: 4px; margin: 1px 6px 1px 0; padding: 0 8px; border-radius: 99px; font-size: 12px; background: var(--panel2); border: 1px solid var(--borde); }
+.chip-cepa small { color: var(--sec); font-size: 11px; }
+.chip-cepa.tenue { opacity: .45; }
 .tabla tr.fila-clic { cursor: pointer; }
 .tabla tr.elegida td { box-shadow: inset 0 2px 0 var(--acento), inset 0 -2px 0 var(--acento); }
 .tabla tr.elegida td:first-child { box-shadow: inset 3px 0 0 var(--acento), inset 0 2px 0 var(--acento), inset 0 -2px 0 var(--acento); }
