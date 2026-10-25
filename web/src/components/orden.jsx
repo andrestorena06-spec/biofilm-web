@@ -17,10 +17,11 @@ const GRIS = '#cfc8bc'
 const f2 = (x) => (Number.isFinite(x) ? x.toFixed(2).replace('.', ',') : '–')
 
 // ---------------------------------------------------------------
-// perfiles: una línea por cepa a lo largo de las placas (puestos u OD). Con una placa elegida,
-// esa placa queda en color y el resto en gris.
+// perfiles: una línea por cepa a lo largo de las placas (puestos u OD).
+//  · placa elegida: sus puntos en color (con el nombre de cada cepa) y el resto en gris
+//  · cepa elegida: su recorrido en color (con el puesto u OD en cada placa) y el resto en gris
 // ---------------------------------------------------------------
-const Perfiles = forwardRef(function Perfiles({ R, colores, ver, sel, onPlaca, tam }, svgRef) {
+const Perfiles = forwardRef(function Perfiles({ R, colores, ver, sel, selU, onPlaca, onUnidad, tam }, svgRef) {
   const [wrap, Wmed] = useAncho()
   const W = tam ? tam.w : Wmed
   const nP = R.placas.length, k = R.unidades.length
@@ -30,7 +31,7 @@ const Perfiles = forwardRef(function Perfiles({ R, colores, ver, sel, onPlaca, t
   const filasLey = []
   items.forEach((it) => { const f = filasLey[filasLey.length - 1]; if (f && f.w + it.w <= W - 40) { f.items.push(it); f.w += it.w } else filasLey.push({ items: [it], w: it.w }) })
   // los nombres de las placas van inclinados: el de la última necesita lugar a la derecha
-  const m = { l: 56, r: Math.max(24, largoEtq * 0.85 + 8), t: 16, b: 24 + largoEtq * 0.6 + filasLey.length * 20 + 12 }
+  const m = { l: 56, r: Math.max(24, largoEtq * 0.85 + 8), t: 30, b: 24 + largoEtq * 0.6 + filasLey.length * 20 + 12 }
   const H = tam ? tam.h : Math.max(320, 250 + m.b)
   const x = (i) => m.l + (nP > 1 ? (i * (W - m.l - m.r)) / (nP - 1) : (W - m.l - m.r) / 2)
   const vals = ver === 'od' ? R.M : R.P
@@ -42,37 +43,58 @@ const Perfiles = forwardRef(function Perfiles({ R, colores, ver, sel, onPlaca, t
   const ticks = ver === 'od' ? [0, 1, 2, 3, 4].map((i) => bot + (i * (top - bot)) / 4) : Array.from({ length: k }, (_, i) => i + 1)
   const iSel = sel ? R.placas.findIndex((p) => p.id === sel) : -1
   const conSel = iSel >= 0
+  const jSel = selU ? R.unidades.indexOf(selU) : -1
+  const conSelU = jSel >= 0
+  const apagada = (j) => (conSelU ? j !== jSel : conSel)   // línea en gris
   const yEje = H - m.b
   return (
     <div ref={wrap} className="chart-wrap">
       <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} width={W} height={H} fontFamily={FUENTE}>
         <rect width={W} height={H} fill="#fff" />
-        {conSel && <rect x={x(iSel) - 18} y={m.t} width={36} height={altoPlot} fill="#fff3c4" />}
+        {conSel && !conSelU && <rect x={x(iSel) - 18} y={m.t} width={36} height={altoPlot} fill="#fff3c4" />}
         {ticks.map((t) => <g key={t}><line x1={m.l} x2={W - m.r} y1={y(t)} y2={y(t)} stroke="#eee6da" /><text x={m.l - 8} y={y(t) + 4} textAnchor="end" style={{ fontSize: 12, fill: '#333' }}>{ver === 'od' ? fmt(t, 2) : t}</text></g>)}
         <line x1={m.l} x2={m.l} y1={m.t} y2={yEje} stroke="#444" />
         <text transform={`translate(16 ${m.t + altoPlot / 2}) rotate(-90)`} textAnchor="middle" style={{ fontSize: 13, fill: '#333' }}>{ver === 'od' ? 'OD media de la placa' : 'Puesto (1 = más biofilm)'}</text>
         {R.placas.map((p, i) => (
-          <text key={p.id} transform={`translate(${x(i)} ${yEje + 14}) rotate(35)`} onClick={() => onPlaca?.(p.id)} style={{ fontSize: 11, cursor: 'pointer', fill: conSel ? (i === iSel ? '#2b2118' : '#a59a8c') : i === R.iPeor && R.rhoMedio[i] < 0.4 ? '#c25e00' : '#333', fontWeight: i === iSel ? 700 : 400 }}>{p.nombre}</text>
+          <text key={p.id} transform={`translate(${x(i)} ${yEje + 14}) rotate(35)`} onClick={() => onPlaca?.(p.id)} style={{ fontSize: 11, cursor: 'pointer', fill: conSel && !conSelU ? (i === iSel ? '#2b2118' : '#a59a8c') : i === R.iPeor && R.rhoMedio[i] < 0.4 ? '#c25e00' : '#333', fontWeight: i === iSel && !conSelU ? 700 : 400 }}>{p.nombre}</text>
         ))}
-        {/* líneas: en gris cuando hay una placa elegida */}
-        {R.unidades.map((u, j) => (
-          <polyline key={u} fill="none" stroke={conSel ? GRIS : colores[u]} strokeWidth={conSel ? 1.6 : 2.2} points={R.placas.map((_, i) => `${x(i)},${y(vals[i][j])}`).join(' ')} />
-        ))}
+        {/* líneas: la cepa elegida en color y arriba de todo; con una placa elegida, todas en gris */}
+        {[...R.unidades.keys()].sort((a, b) => (a === jSel) - (b === jSel)).map((j) => {
+          const u = R.unidades[j], pts = R.placas.map((_, i) => `${x(i)},${y(vals[i][j])}`).join(' ')
+          return (
+            <g key={u} onClick={() => onUnidad?.(u)} style={{ cursor: onUnidad ? 'pointer' : undefined }}>
+              <polyline fill="none" stroke="transparent" strokeWidth="12" points={pts} />
+              <polyline fill="none" stroke={apagada(j) ? GRIS : colores[u]} strokeWidth={j === jSel ? 3.6 : apagada(j) ? 1.6 : 2.2} points={pts} />
+            </g>
+          )
+        })}
         {R.unidades.map((u, j) => R.placas.map((p, i) => {
-          const elegida = i === iSel
-          return <circle key={u + p.id} cx={x(i)} cy={y(vals[i][j])} r={elegida ? 6.5 : conSel ? 3.6 : 4.8} fill={conSel && !elegida ? GRIS : colores[u]} stroke="#fff" strokeWidth={elegida ? 1.5 : 1}
-            style={{ cursor: 'pointer' }} onClick={() => onPlaca?.(p.id)} data-tip={`${u} · ${p.nombre}\nOD media = ${fmt(R.M[i][j], 3)}\npuesto ${R.P[i][j]} de ${k}`} />
+          const enfoque = conSelU ? j === jSel : i === iSel
+          const gris = conSelU ? j !== jSel : conSel && i !== iSel
+          return <circle key={u + p.id} cx={x(i)} cy={y(vals[i][j])} r={enfoque ? 6.5 : gris ? 3.6 : 4.8} fill={gris ? GRIS : colores[u]} stroke="#fff" strokeWidth={enfoque ? 1.5 : 1}
+            style={{ cursor: onUnidad ? 'pointer' : undefined }} onClick={() => onUnidad?.(u)} data-tip={`${u} · ${p.nombre}\nOD media = ${fmt(R.M[i][j], 3)}\npuesto ${R.P[i][j]} de ${k}\nClic: ver el recorrido de ${u}`} />
         }))}
-        {/* nombres junto a los puntos de la placa elegida */}
-        {conSel && R.unidades.map((u, j) => {
+        {/* placa elegida: el nombre de cada cepa junto a su punto */}
+        {conSel && !conSelU && R.unidades.map((u, j) => {
           const derecha = iSel < nP - 1 || nP === 1
           return <text key={'e' + u} x={x(iSel) + (derecha ? 10 : -10)} y={y(vals[iSel][j]) + 4} textAnchor={derecha ? 'start' : 'end'} paintOrder="stroke" stroke="#fff" strokeWidth="3"
             style={{ fontSize: 11.5, fontWeight: 600, fill: colores[u] }}>{u}</text>
         })}
-        {/* leyenda */}
+        {/* cepa elegida: su puesto (u OD) en cada placa */}
+        {conSelU && R.placas.map((p, i) => (
+          <text key={'v' + p.id} x={x(i)} y={y(vals[i][jSel]) - 11} textAnchor="middle" paintOrder="stroke" stroke="#fff" strokeWidth="3"
+            style={{ fontSize: 12, fontWeight: 700, fill: colores[selU] }}>{ver === 'od' ? fmt(R.M[i][jSel], 2) : `${R.P[i][jSel]}.º`}</text>
+        ))}
+        {/* leyenda: clic en una cepa para ver su recorrido */}
         {filasLey.map((f, r) => {
           let xx = (W - f.w) / 2
-          return f.items.map((it) => { const g = <g key={it.u} transform={`translate(${xx},${H - 14 - (filasLey.length - 1 - r) * 20})`}><circle cx="6" cy="-4" r="5" fill={colores[it.u]} /><text x="16" style={{ fontSize: 12, fill: '#333' }}>{it.u}</text></g>; xx += it.w; return g })
+          return f.items.map((it) => {
+            const off = conSelU && it.u !== selU
+            const g = <g key={it.u} transform={`translate(${xx},${H - 14 - (filasLey.length - 1 - r) * 20})`} onClick={() => onUnidad?.(it.u)} style={{ cursor: onUnidad ? 'pointer' : undefined }}>
+              <circle cx="6" cy="-4" r="5" fill={off ? GRIS : colores[it.u]} /><text x="16" style={{ fontSize: 12, fill: off ? '#a59a8c' : '#333', fontWeight: it.u === selU ? 700 : 400 }}>{it.u}</text></g>
+            xx += it.w
+            return g
+          })
         })}
       </svg>
     </div>
@@ -83,7 +105,8 @@ export function OrdenTab({ s, grupoVer }) {
   const svg = useRef()
   const [cajon, setCajon] = useState(null)   // 'medios' | 'placas' | 'cepas' | 'serotipos'
   const [exp, setExp] = useState(false)
-  const [sel, setSel] = useState(null)       // placa resaltada
+  const [sel, setSel] = useState(null)       // placa resaltada (sus puntos)
+  const [selU, setSelU] = useState(null)     // cepa o serotipo resaltado (su recorrido)
   const o = s.opts.comparar
   const setO = (k, v) => s.setOpts((x) => ({ ...x, comparar: { ...x.comparar, [k]: v } }))
   const D = useMemo(() => armarComparacion(s), [s.placas, s.analisisMap, s.muestras, o, s.opts.barras?.escala]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -118,11 +141,14 @@ export function OrdenTab({ s, grupoVer }) {
   const paletaS = paletaMuestras(seros)
   const colores = porSero ? paletaS : paletaMuestras(s.muestras)
   const selV = R.ok && R.placas.some((p) => p.id === sel) ? sel : null
-  const elegir = (id) => setSel(selV === id ? null : id)
+  const selUV = R.ok && R.unidades.includes(selU) ? selU : null
+  const elegir = (id) => { setSelU(null); setSel(selV === id ? null : id) }
+  const elegirU = (u) => { setSel(null); setSelU(selUV === u ? null : u) }
+  const quitar = () => { setSel(null); setSelU(null) }
 
   const titulo = { ok: 'El orden se mantiene: se puede usar la placa como bloque', medio: 'El orden se parece, pero cambia en algunas placas: bloque con cautela', no: 'El orden cambia entre placas: no conviene usar la placa como bloque' }
   const clase = { ok: 'ok', medio: 'mixto', no: 'dif' }
-  const grafico = (ref, tam) => <Perfiles ref={ref} R={R} colores={colores} ver={ver} sel={selV} onPlaca={tam ? undefined : elegir} tam={tam} />
+  const grafico = (ref, tam) => <Perfiles ref={ref} R={R} colores={colores} ver={ver} sel={selV} selU={selUV} onPlaca={tam ? undefined : elegir} onUnidad={tam ? undefined : elegirU} tam={tam} />
 
   // cajón de selección (tildar = entra)
   const lista = (k, fuera, opciones) => (
@@ -175,9 +201,9 @@ export function OrdenTab({ s, grupoVer }) {
       <section className="tarjeta">
         <div className="cabeza-tarjeta">
           <span className="etiqueta-seccion">{ver === 'od' ? 'OD' : 'Puesto'} de cada {porSero ? 'serotipo' : 'cepa'} en cada placa · {R.placas.length} {R.placas.length === 1 ? 'placa' : 'placas'} · {unidades.length} {nom}</span>
-          <span className="ayuda">Clic en una placa (en la tabla o en el gráfico) para resaltarla
+          <span className="ayuda">Clic en una {porSero ? 'línea o serotipo' : 'línea o cepa'} para ver su recorrido; en una placa (tabla o nombre) para ver sus puntos
             <Nota>{'Antes de usar la placa como bloque en Estadística: el modelo en bloques supone que una placa más teñida sube a todas las cepas sin cambiar su ORDEN. Si las líneas se cruzan mucho, el orden cambia de placa en placa.'}</Nota>
-            {selV && <button className="chico" style={{ marginLeft: 8 }} onClick={() => setSel(null)}>Quitar resaltado</button>}</span>
+            {(selV || selUV) && <button className="chico" style={{ marginLeft: 8 }} onClick={quitar}>Quitar resaltado</button>}</span>
         </div>
         {R.ok ? <div className="figura">{grafico(svg)}</div> : <Vacio texto={R.motivo} />}
       </section>
@@ -189,7 +215,7 @@ export function OrdenTab({ s, grupoVer }) {
               <b>{titulo[R.nivel]}</b>
               <span>W de Kendall = {f2(R.kw.W)} (p {pTxt(R.kw.p)}) con {R.placas.length} placas y {R.unidades.length} {nom}</span>
             </div>
-            {R.mejoraSinPeor && <p className="lectura">La placa <b>{R.placas[R.iPeor].nombre}</b> es la que menos se parece a las demás (correlación media {f2(R.rhoMedio[R.iPeor])}). Sin ella, W sube a {f2(R.sinPeor.W)}: revisala (pocillos asignados, columnas corridas, tinción). <button className="chico" onClick={() => setSel(R.placas[R.iPeor].id)}>Resaltarla</button></p>}
+            {R.mejoraSinPeor && <p className="lectura">La placa <b>{R.placas[R.iPeor].nombre}</b> es la que menos se parece a las demás (correlación media {f2(R.rhoMedio[R.iPeor])}). Sin ella, W sube a {f2(R.sinPeor.W)}: revisala (pocillos asignados, columnas corridas, tinción). <button className="chico" onClick={() => elegir(R.placas[R.iPeor].id)}>Resaltarla</button></p>}
             {R.multiplica && <p className="lectura">El efecto de la placa <b>multiplica</b> (las {nom} altas suben más que las bajas): para el modelo en bloques conviene ln(OD) o Friedman, que solo mira el orden.</p>}
             {R.porMedio.length > 1 && R.nivel !== 'ok' && R.porMedio.some((x) => x.W >= 0.7) && <p className="lectura">Dentro de {R.porMedio.filter((x) => x.W >= 0.7).map((x) => x.medio).join(' y ')} el orden se mantiene bien: conviene comparar por medio.</p>}
             <div className="indicadores">
@@ -207,14 +233,14 @@ export function OrdenTab({ s, grupoVer }) {
           </section>
 
           <section className="tarjeta">
-            <div className="cabeza-tarjeta"><span className="etiqueta-seccion">Puesto de cada {porSero ? 'serotipo' : 'cepa'} en cada placa</span><span className="ayuda">1 = más biofilm · clic en una placa para resaltarla</span></div>
+            <div className="cabeza-tarjeta"><span className="etiqueta-seccion">Puesto de cada {porSero ? 'serotipo' : 'cepa'} en cada placa</span><span className="ayuda">1 = más biofilm · clic en una fila (placa) o en el nombre de una {porSero ? 'columna (serotipo)' : 'columna (cepa)'} para resaltarla</span></div>
             <div className="tabla-scroll">
-              <table className={`tabla compacta tabla-puestos ${selV ? 'con-sel' : ''}`}>
-                <thead><tr><th>Placa</th>{R.unidades.map((u) => <th key={u} className="num"><i className="punto" style={{ background: colores[u] }} /> {u}</th>)}<th className="num" data-tip="Correlación de Spearman media con las otras placas (1 = mismo orden)">Parecido</th></tr></thead>
+              <table className={`tabla compacta tabla-puestos ${selV ? 'con-sel' : ''} ${selUV ? 'con-sel-u' : ''}`}>
+                <thead><tr><th>Placa</th>{R.unidades.map((u) => <th key={u} className={`num th-clic ${u === selUV ? 'col-sel' : ''}`} onClick={() => elegirU(u)} data-tip={`Ver el recorrido de ${u}`}><i className="punto" style={{ background: colores[u] }} /> {u}</th>)}<th className="num" data-tip="Correlación de Spearman media con las otras placas (1 = mismo orden)">Parecido</th></tr></thead>
                 <tbody>{R.placas.map((p, i) => (
                   <tr key={p.id} className={`fila-clic ${p.id === selV ? 'elegida' : ''} ${i === R.iPeor && R.rhoMedio[i] < 0.4 ? 'placa-rara' : ''}`} onClick={() => elegir(p.id)}>
                     <td><b>{p.nombre}</b> <small className="tenue">{p.medio}</small></td>
-                    {R.unidades.map((u, j) => <td key={u} className="num" style={{ '--puesto': (R.P[i][j] - 1) / Math.max(1, R.unidades.length - 1) }} data-tip={`${u} · ${p.nombre}\nOD media = ${fmt(R.M[i][j], 3)}`}><b>{Number.isInteger(R.P[i][j]) ? R.P[i][j] : f2(R.P[i][j])}</b> <small>{fmt(R.M[i][j], 2)}</small></td>)}
+                    {R.unidades.map((u, j) => <td key={u} className={`num ${u === selUV ? 'col-sel' : ''}`} style={{ '--puesto': (R.P[i][j] - 1) / Math.max(1, R.unidades.length - 1) }} data-tip={`${u} · ${p.nombre}\nOD media = ${fmt(R.M[i][j], 3)}`}><b>{Number.isInteger(R.P[i][j]) ? R.P[i][j] : f2(R.P[i][j])}</b> <small>{fmt(R.M[i][j], 2)}</small></td>)}
                     <td className="num">{f2(R.rhoMedio[i])}</td>
                   </tr>))}</tbody>
               </table>
